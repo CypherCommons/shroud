@@ -37,6 +37,7 @@ import {
   isSilentPaymentAddress,
   findSmallestOutpoint,
   resolveSilentPaymentTargets,
+  type StagedScanData,
 } from '../../helpers/silent-payments';
 import { clampBirthHeight } from '../../modules/constants';
 import { normaliseStoredNetworkId } from './abstract-wallet';
@@ -577,6 +578,64 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       throw new Error(`UTXO ${utxo.txid}:${utxo.vout}: our key does not reproduce the output key of ${utxo.address}`);
     }
     return { keyPair, tapInternalKey };
+  }
+
+  getScanPrivateKey(): Uint8Array {
+    const seed = this.getSeed();
+    return getScanPrivateKey(seed);
+  }
+
+  getBirthHeight(): number {
+    return this._birthHeight;
+  }
+
+  getLastScannedBlock(): number {
+    return this.lastScannedBlock;
+  }
+
+  /**
+   * Merge UTXOs found by background scans into the wallet. Idempotent: UTXOs
+   * dedup on txid:vout and the cursor never regresses, so re-merging stale
+   * staging (e.g. after a race with a finishing background run) is harmless.
+   *
+   * @returns number of newly added UTXOs
+   */
+  mergeStagedScanResults(staged: StagedScanData | null): number {
+    if (!staged || staged.walletID !== this.getID()) {
+      return 0;
+    }
+
+    let addedCount = 0;
+    for (const serializable of staged.utxos) {
+      const { tweakHex, ...rest } = serializable;
+      const utxo: SilentPaymentUTXO = {
+        ...rest,
+        tweak: new Uint8Array(Buffer.from(tweakHex, 'hex')),
+      };
+      if (this.addUTXO(utxo)) {
+        addedCount++;
+      }
+    }
+
+    // Only adopt the staged cursor when it's past the wallet's effective birth.
+    // A background scan run with stale credentials (birth height not yet set)
+    // may have scanned from the BIP-352 activation height; adopting such a low
+    // cursor into a never-scanned wallet (lastScannedBlock = 0) would drag the
+    // next foreground scan years behind its real birth height.
+    const effectiveBirthHeight = Math.max(this._birthHeight, BIP352_ACTIVATION_HEIGHT);
+    const cursorAdvanced = staged.cursor > this.lastScannedBlock && staged.cursor >= effectiveBirthHeight;
+    if (cursorAdvanced) {
+      this.lastScannedBlock = staged.cursor;
+    }
+
+    if (addedCount > 0) {
+      this.onBalanceChangeCallback?.();
+    }
+    if (addedCount > 0 || cursorAdvanced) {
+      this.onPersistCallback?.();
+    }
+
+    return addedCount;
   }
 
   private getSeed(): Buffer {

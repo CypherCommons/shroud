@@ -18,14 +18,28 @@ export class RustTransactionProcessor {
   private silentPaymentAddress: string;
   private network: NetworkConfig;
 
-  constructor(seed: Buffer, network: NetworkConfig) {
+  /**
+   * Scanning only needs the scan private key + spend public key (BIP-352) — never the seed.
+   * Use `fromSeed` when the seed is available, or pass the keys directly (e.g. background
+   * scanning, where only the scan-only credentials are accessible).
+   */
+  constructor(scanPrivkeyHex: string, spendPubkeysHex: string[], silentPaymentAddress: string, network: NetworkConfig) {
+    this.scanPrivkeyHex = scanPrivkeyHex;
+    this.spendPubkeysHex = spendPubkeysHex;
+    this.silentPaymentAddress = silentPaymentAddress;
     this.network = network;
-    this.scanPrivkeyHex = Buffer.from(getScanPrivateKey(seed, network)).toString('hex');
-    this.spendPubkeysHex = [
-      Buffer.from(getSpendPublicKey(seed, network)).toString('hex'),
-      Buffer.from(getSilentPaymentChangeSpendPublicKey(seed, network)).toString('hex'),
-    ];
-    this.silentPaymentAddress = getSilentPaymentAddress(seed, network);
+  }
+
+  static fromSeed(seed: Buffer, network: NetworkConfig): RustTransactionProcessor {
+    return new RustTransactionProcessor(
+      Buffer.from(getScanPrivateKey(seed, network)).toString('hex'),
+      [
+        Buffer.from(getSpendPublicKey(seed, network)).toString('hex'),
+        Buffer.from(getSilentPaymentChangeSpendPublicKey(seed, network)).toString('hex'),
+      ],
+      getSilentPaymentAddress(seed, network),
+      network,
+    );
   }
 
   private convertToSilentPaymentUTXO(rustUtxo: RustMatchedUTXO): SilentPaymentUTXO {
@@ -86,5 +100,5 @@ export class RustTransactionProcessor {
 }
 
 export function createTransactionProcessor(seed: Buffer, network: NetworkConfig): RustTransactionProcessor {
-  return new RustTransactionProcessor(seed, network);
+  return RustTransactionProcessor.fromSeed(seed, network);
 }

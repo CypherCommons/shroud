@@ -129,3 +129,34 @@ export interface TransactionByTxidResponse {
 }
 
 export type ScanProgressCallback = (progress: ScanProgress) => void | Promise<void>;
+
+/**
+ * Scan-only credentials for background scanning. Stored in the keychain with
+ * AFTER_FIRST_UNLOCK accessibility so a background task can detect incoming
+ * payments while the device is locked. These keys can detect but NEVER spend.
+ */
+export interface ScanCredentials {
+  walletID: string;
+  scanPrivkeyHex: string;
+  spendPubkeyHex: string;
+  silentPaymentAddress: string;
+  baseUrl: string;
+  /** Floor for the background cursor, refreshed after foreground scans. */
+  cursor: number;
+  birthHeight: number;
+  schema: 1;
+}
+
+/**
+ * Results of background scans, staged until the main app merges them into the
+ * wallet on next launch/foreground (main wallet storage may be unreadable
+ * while the device is locked or password-encrypted).
+ */
+export interface StagedScanData {
+  walletID: string;
+  /** Highest block height fully staged. Only advanced AFTER utxos are written (kill-safe). */
+  cursor: number;
+  utxos: SilentPaymentUTXOSerializable[];
+  updatedAt: number;
+  schema: 1;
+}
