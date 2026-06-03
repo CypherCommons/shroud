@@ -1,10 +1,18 @@
 import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { InteractionManager } from 'react-native';
+import { AppState, InteractionManager } from 'react-native';
 import A from '../../modules/analytics';
 import { ShroudApp, TTXMetadata } from '../../class';
 import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
 import type { TWallet } from '../../class/wallets/types';
 import presentAlert from '../../components/Alert';
+import { updateScanCursor } from '../../helpers/silent-payments/BackgroundScanCredentials';
+import {
+  findScannableWallet,
+  mergeStagedResults,
+  syncBackgroundScanState,
+  teardownBackgroundScanState,
+} from '../../helpers/silent-payments/BackgroundScanSetup';
+import { markForegroundActive, markForegroundInactive } from '../../helpers/silent-payments/ScanLock';
 import loc from '../../loc';
 import * as Electrum from '../../modules/Electrum';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
@@ -192,6 +200,32 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     };
   }, []);
 
+  // Stamp the foreground flag so headless background scans know to bail while
+  // the live app owns scanning (AppState is useless inside a headless context).
+  // On return to foreground, also merge anything a background scan staged while
+  // we were suspended — the cold-start merge won't re-run in that case.
+  useEffect(() => {
+    // Don't claim the foreground on a cold BACKGROUND launch (BGTask relaunching
+    // a killed app mounts this provider too) — only when actually active.
+    if (AppState.currentState === 'active') {
+      markForegroundActive();
+    }
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        markForegroundActive();
+        mergeStagedResults(shroudApp.getWallets())
+          .then(merged => {
+            if (merged > 0) return saveToDisk();
+          })
+          .catch(error => console.warn('[StorageProvider] Foreground staged merge failed:', error));
+      } else {
+        markForegroundInactive();
+      }
+    });
+    return () => subscription.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const addWallet = useCallback(
     (wallet: TWallet): boolean => {
       // Single-wallet mode is *per chain*: checking every network's wallets here would make it
@@ -216,6 +250,12 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
 
       shroudApp.wallets.push(wallet);
       setWallets([...shroudApp.getWallets()]);
+
+      // Provision scan-only credentials + OS scheduling for background scanning.
+      // Fire-and-forget; re-synced on every app start (which also self-heals the
+      // birth height that onboarding sets after this point).
+      syncBackgroundScanState([wallet]).catch(error => console.warn('[StorageProvider] Background scan provisioning failed:', error));
+
       return true;
     },
     [forceWalletsUpdate, debouncedPersist],
@@ -228,6 +268,9 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     }
 
     if ('clearCache' in wallet && typeof wallet.clearCache === 'function') wallet.clearCache();
+
+    // Remove scan-only keychain credentials, staged results and OS scheduling.
+    teardownBackgroundScanState().catch(error => console.warn('[StorageProvider] Background scan teardown failed:', error));
 
     shroudApp.deleteWallet(wallet);
     setWallets([...shroudApp.getWallets()]);
@@ -403,8 +446,24 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       txMetadata.current = shroudApp.tx_metadata;
       const currentWallets = shroudApp.getWallets();
       attachWalletCallbacks(currentWallets);
-      setWallets(currentWallets);
+
+      // Merge staged background-scan results and (re-)provision scan credentials
+      // BEFORE exposing wallets — the foreground scan kicked off by WalletsList
+      // must start from the merged cursor, not behind it.
+      (async () => {
+        try {
+          const merged = await syncBackgroundScanState(currentWallets);
+          if (merged > 0) {
+            await saveToDisk();
+          }
+        } catch (error) {
+          console.warn('[StorageProvider] Background scan sync failed:', error);
+        } finally {
+          setWallets(currentWallets);
+        }
+      })();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletsInitialized, attachWalletCallbacks]);
 
   // Add a refresh lock to prevent concurrent refreshes
@@ -465,6 +524,13 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
 
             console.debug('[refreshAllWalletTransactions] Saving data to disk');
             await saveToDisk();
+
+            // Refresh the background-scan cursor floor (once per scan, not per
+            // batch) so background runs don't re-scan foreground-covered ranges.
+            const scanWallet = findScannableWallet(shroudApp.getWallets());
+            if (scanWallet) {
+              await updateScanCursor(scanWallet.getID(), scanWallet.getLastScannedBlock());
+            }
           })(),
           timeoutPromise,
         ]);
