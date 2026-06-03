@@ -521,6 +521,10 @@
         "explanation": "Silent Payment addresses are reusable. Share one address for multiple payments without compromising privacy.",
         "explanation_emphasis": "without compromising privacy"
     },
+    "notifications": {
+        "received_title": "Payment received",
+        "received_body": "You received bitcoin. Open Shroud to see it."
+    },
     "onboarding": {
         "shroud": "Shroud",
         "subtitle": "A simple bitcoin wallet for all\nyour payments.",
