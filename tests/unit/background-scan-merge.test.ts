@@ -1,5 +1,6 @@
 import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet.ts';
 import { BIP352_ACTIVATION_HEIGHT } from '../../modules/constants.ts';
+import { isScannable } from '../../helpers/silent-payments/types.ts';
 import type { SilentPaymentUTXOSerializable, StagedScanData } from '../../helpers/silent-payments/types.ts';
 
 const SEED = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -38,6 +39,15 @@ function makeStaged(wallet: HDSilentPaymentsWallet, overrides: Partial<StagedSca
     ...overrides,
   };
 }
+
+describe('HDSilentPaymentsWallet scan contract', () => {
+  it('satisfies the isScannable() structural guard', () => {
+    // The entire scan UI (home banner, SyncScreen, scan-state callback wiring)
+    // is gated on this guard. It once silently broke when isScanActive() was
+    // deleted as "unused" — every method in IScannableWallet is load-bearing.
+    expect(isScannable(makeWallet())).toBe(true);
+  });
+});
 
 describe('HDSilentPaymentsWallet.mergeStagedScanResults', () => {
   it('merges staged UTXOs and adopts the staged cursor', () => {

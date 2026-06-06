@@ -110,6 +110,10 @@ type Ownership = {
 // wallet-internal detail.
 type RegularOutputMatch = OwnedOutput & { index: number };
 
+// `implements IScannableWallet` is load-bearing: the isScannable() runtime guard
+// checks for every interface method structurally, so removing one (e.g. in an
+// "unused members" sweep) silently hides the entire scan UI. The implements
+// clause turns that into a compile error.
 export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannableWallet {
   static readonly type = 'HDSilentPaymentsWallet';
   static readonly typeReadable = 'HD Silent Payments';
