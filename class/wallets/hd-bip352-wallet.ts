@@ -630,6 +630,13 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     const cursorAdvanced = staged.cursor > this.lastScannedBlock && staged.cursor >= effectiveBirthHeight;
     if (cursorAdvanced) {
       this.lastScannedBlock = staged.cursor;
+      // Surface the advanced cursor to scan-state listeners (home-screen banner,
+      // sync screen). Without this the UI keeps the pre-merge cursor, and when
+      // the merge brings the wallet up to the tip the next foreground scan
+      // early-returns without emitting either — leaving the banner hidden
+      // forever. Re-emit the current status rather than forcing 'idle' so a
+      // paused scan isn't clobbered.
+      this._emitScanState(this._scanState.status);
     }
 
     if (addedCount > 0) {

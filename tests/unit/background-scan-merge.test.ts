@@ -141,6 +141,22 @@ describe('HDSilentPaymentsWallet.mergeStagedScanResults', () => {
     expect(onPersist).toHaveBeenCalledTimes(1);
   });
 
+  it('emits scan state with the advanced cursor so the UI sees the merge', () => {
+    const wallet = makeWallet();
+    const onScanStateChange = jest.fn();
+    wallet.setOnScanStateChangeCallback(onScanStateChange);
+
+    const staged = makeStaged(wallet);
+    wallet.mergeStagedScanResults(staged);
+
+    expect(onScanStateChange).toHaveBeenCalledTimes(1);
+    expect(onScanStateChange).toHaveBeenCalledWith(expect.objectContaining({ status: 'idle', lastScannedBlock: staged.cursor }));
+
+    // idempotent re-merge: cursor unchanged → no emission
+    wallet.mergeStagedScanResults(staged);
+    expect(onScanStateChange).toHaveBeenCalledTimes(1);
+  });
+
   it('survives serialization round-trip after merge', () => {
     const wallet = makeWallet();
     wallet.mergeStagedScanResults(makeStaged(wallet));
