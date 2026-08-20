@@ -38,7 +38,25 @@ cd shroud
 npm install
 ```
 
-make sure to copy .env.example → .env, set INDEXER_BASE_URL in `.env`, then reset metro cache with `npx react-native start --reset-cache`.
+make sure to copy .env.example → .env, set at least one indexer URL in `.env`, then reset metro cache with `npx react-native start --reset-cache`.
+
+### Networks
+
+The wallet runs on mainnet, testnet4 or signet, switchable at runtime under **Settings → Network → Bitcoin Network**. Each network needs its own silent-payment indexer:
+
+```
+INDEXER_BASE_URL_MAINNET=...
+INDEXER_BASE_URL_TESTNET4=...
+INDEXER_BASE_URL_SIGNET=...
+```
+
+`INDEXER_BASE_URL` is still honoured as an alias for `INDEXER_BASE_URL_MAINNET`. Networks with no indexer configured are shown in the picker but cannot be selected without one.
+
+To reach an indexer over Tor, give each network its own `.onion` address: `INDEXER_ONION_URL` (mainnet, its original name), `INDEXER_ONION_URL_TESTNET4` and `INDEXER_ONION_URL_SIGNET`. A network only ever uses its own address, so one with none is reached over clearnet (or not at all in Tor-only mode).
+
+Each network keeps a completely separate wallet, balance and transaction history; switching does not migrate anything between them.
+
+Electrum only powers the regular-output branch, since silent payments go through the indexer. Default servers ship for mainnet and for testnet4 (`testnet.aranguren.org:52002`, TLS). Signet has none, so add one by hand under **Settings → Network → Change server** if you need the regular-output branch there. The server you pick is remembered per network.
 
 Please make sure that your console is running the most stable versions of npm and node (even-numbered versions).
 
