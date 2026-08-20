@@ -84,6 +84,13 @@ const MAINNET_ELECTRUM_PEERS: Peer[] = [
   { host: 'electrum.bitaroo.net', ssl: 50002 },
 ];
 
+// testnet.aranguren.org's public Fulcrum server, protocol 1.4 over TLS (self-signed certificate,
+// which the Electrum client accepts). The host serves several chains on different ports and only
+// 52002 is testnet4: 51002 is testnet3, whose scripthashes come back empty here and whose
+// broadcasts a testnet4 transaction would never survive. Signet has no verified server, so it
+// still ships empty and relies on manual entry.
+const TESTNET4_ELECTRUM_PEERS: Peer[] = [{ host: 'testnet.aranguren.org', ssl: 52002 }];
+
 const NETWORKS: Record<NetworkId, NetworkConfig> = {
   bitcoin: {
     id: 'bitcoin',
@@ -104,7 +111,7 @@ const NETWORKS: Record<NetworkId, NetworkConfig> = {
     coinType: 1,
     isTestnet: true,
     bip352ActivationHeight: 0,
-    electrumPeers: [],
+    electrumPeers: TESTNET4_ELECTRUM_PEERS,
     explorerTxUrl: txid => `https://mempool.space/testnet4/tx/${txid}`,
     indexerBaseUrl: '',
     indexerOnionUrl: '',
