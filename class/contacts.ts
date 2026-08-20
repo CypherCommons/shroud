@@ -1,4 +1,5 @@
-import { SilentPayment } from 'silent-payments';
+import { isSilentPaymentAddress } from '../helpers/silent-payments';
+import { getActiveNetwork } from '../modules/network';
 
 export const MAX_CONTACT_NAME_LENGTH = 50;
 
@@ -38,15 +39,15 @@ export const normalizeAddress = (raw: string): string => raw.trim().toLowerCase(
 /**
  * The app's one definition of "an address we can pay".
  *
- * SilentPayment.isPaymentCodeValid only decodes bech32m and checks the version, so it accepts any
- * HRP — `tsp1…` and even `lol1…` pass. The transaction builder routes on `sp1` (see
- * abstract-hd-electrum-wallet's hasSilentPaymentOutput), so anything else would save, prefill the
- * send screen and then quietly take the non-SP path. Check the prefix here rather than let the two
- * layers disagree about what is payable.
+ * A bare bech32m decode accepts any HRP — `tsp1…` and even `lol1…` pass — so the address is
+ * checked against the active network's HRP (`sp` on mainnet, `tsp` on the test chains), the same
+ * rule the transaction builder routes on (see abstract-hd-electrum-wallet's hasSilentPaymentOutput).
+ * Anything else would save, prefill the send screen and then quietly take the non-SP path. Check it
+ * here rather than let the two layers disagree about what is payable.
  */
 export const isValidContactAddress = (addr: string): boolean => {
   const normalized = normalizeAddress(addr);
-  return normalized.startsWith('sp1') && SilentPayment.isPaymentCodeValid(normalized);
+  return isSilentPaymentAddress(normalized, getActiveNetwork().bitcoinjs);
 };
 
 export const getContact = (contacts: TContacts, address: string): TContact | undefined => contacts[normalizeAddress(address)];

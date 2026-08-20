@@ -29,7 +29,8 @@ import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet.ts'
 import { useStorage } from '../../hooks/context/useStorage';
 import presentAlert from '../../components/Alert';
 import { WalletBirthSection } from '../../components/WalletBirthSection';
-import { BIP352_ACTIVATION_HEIGHT, clampBirthHeight } from '../../modules/constants';
+import { clampBirthHeight } from '../../modules/constants';
+import { getActiveNetwork } from '../../modules/network';
 import { getDefaultIndexer } from '../../modules/SilentPaymentIndexer';
 import { readClipboardForPaste } from '../../helpers/clipboard';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
@@ -42,9 +43,11 @@ type BirthHeightResult =
   | { ok: false; error: 'invalid_date' | 'future_date' };
 
 async function resolveBirthHeight(dateStr: string): Promise<BirthHeightResult> {
+  // The wallet being imported is created on the selected chain, so its floor is that chain's.
+  const floor = getActiveNetwork().bip352ActivationHeight;
   const trimmed = dateStr.trim();
   if (trimmed.length === 0) {
-    return { ok: true, height: BIP352_ACTIVATION_HEIGHT, pendingTimestamp: null };
+    return { ok: true, height: floor, pendingTimestamp: null };
   }
 
   // Append T00:00:00 to treat YYYY-MM-DD as local time, not UTC
@@ -65,11 +68,11 @@ async function resolveBirthHeight(dateStr: string): Promise<BirthHeightResult> {
   try {
     const indexer = getDefaultIndexer();
     const [tip, byTimestamp] = await Promise.all([indexer.getLatestBlockHeight(), indexer.getBlockHeightByTimestamp(timestampSeconds)]);
-    const height = clampBirthHeight(byTimestamp.blockHeight, tip.height);
+    const height = clampBirthHeight(byTimestamp.blockHeight, tip.height, floor);
     return { ok: true, height, pendingTimestamp: null };
   } catch (error) {
     console.warn('[SP] Birth height lookup failed, deferring resolution to the first scan:', error);
-    return { ok: true, height: BIP352_ACTIVATION_HEIGHT, pendingTimestamp: timestampSeconds };
+    return { ok: true, height: floor, pendingTimestamp: timestampSeconds };
   }
 }
 

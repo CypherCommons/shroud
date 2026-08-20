@@ -99,6 +99,12 @@ export interface IScannableWallet {
   pauseScan(): void;
   resumeScan(): void;
   cancelScan(): void;
+  /**
+   * Cancel and wait for the scan loop to actually exit. Needed before repointing the indexer at
+   * another chain: `cancelScan` only raises a flag, so without awaiting, an in-flight batch can
+   * still land and commit the previous chain's UTXOs into this wallet.
+   */
+  cancelScanAndWait(): Promise<void>;
   isScanActive(): boolean;
   fetchTransactions(): Promise<void>;
 }
@@ -112,6 +118,7 @@ export function isScannable(wallet: unknown): wallet is IScannableWallet {
     typeof w.pauseScan === 'function' &&
     typeof w.resumeScan === 'function' &&
     typeof w.cancelScan === 'function' &&
+    typeof w.cancelScanAndWait === 'function' &&
     typeof w.isScanActive === 'function' &&
     typeof w.fetchTransactions === 'function'
   );

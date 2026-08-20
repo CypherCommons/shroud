@@ -6,7 +6,6 @@ import { AbstractHDElectrumWallet } from './abstract-hd-electrum-wallet.ts';
 import * as Electrum from '../../modules/Electrum';
 import { getDefaultIndexer, SilentPaymentIndexer } from '../../modules/SilentPaymentIndexer';
 import ecc from '../../modules/noble_ecc';
-import { SilentPayment } from 'silent-payments';
 import { calculateSumOfPrivateKeys, createInputHash, scanOutputs, type PrivateKey } from '@silent-pay/core';
 import {
   getSilentPaymentAddress,
@@ -28,8 +27,12 @@ import {
   type ScanStatus,
   IDLE_SCAN_STATE,
   type IScannableWallet,
+  isSilentPaymentAddress,
+  findSmallestOutpoint,
+  resolveSilentPaymentTargets,
 } from '../../helpers/silent-payments';
-import { BIP352_ACTIVATION_HEIGHT, clampBirthHeight } from '../../modules/constants';
+import { clampBirthHeight } from '../../modules/constants';
+import { normaliseStoredNetworkId } from './abstract-wallet';
 import { CreateTransactionResult, CreateTransactionTarget, CreateTransactionUtxo, Transaction, Utxo } from './types.ts';
 import * as bitcoin from 'bitcoinjs-lib';
 import { HDTaprootWallet } from './hd-taproot-wallet.ts';
@@ -95,7 +98,11 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   private spendKeyCandidates: SpendKeyPair[] | null = null;
   private transactionProcessor: RustTransactionProcessor | null = null;
   private lastScannedBlock: number = 0;
-  private _birthHeight: number = BIP352_ACTIVATION_HEIGHT;
+  // 0 means "not set yet"; the per-network activation height is applied by
+  // `getEffectiveBirthHeight`. Deliberately *not* initialised from the network here: on
+  // deserialization this field initialiser runs before `fromJson` has restored `networkId`, so
+  // reading the network at this point would use whichever chain happens to be selected.
+  private _birthHeight: number = 0;
   private _birthTimestamp: number | null = null; // set when indexer is unreachable, resolved to height on next scan
   private _birthResolutionFailures: number = 0; // consecutive failed attempts to resolve _birthTimestamp
   private spUTXOsCache: SilentPaymentUTXO[] | null = null;
@@ -209,6 +216,12 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     const data = JSON.parse(obj);
     const wallet = new HDSilentPaymentsWallet();
 
+    // `new` stamped the wallet with whichever chain is selected right now. Pin it to the stored
+    // one before the copy loop, so nothing computed from `networkId` can inherit the ambient
+    // chain. Wallets stored before multi-network support carry no `networkId` and are all
+    // mainnet — see `normaliseStoredNetworkId`.
+    wallet.networkId = normaliseStoredNetworkId(data.networkId);
+
     for (const key of Object.keys(data)) {
       if (key === '_utxos_serializable') {
         const serializable = data[key] || [];
@@ -219,14 +232,17 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       } else if (key === 'lastScannedBlock') {
         wallet.lastScannedBlock = data[key] || 0;
       } else if (key === '_birthHeight') {
-        wallet._birthHeight = data[key] || BIP352_ACTIVATION_HEIGHT;
+        wallet._birthHeight = data[key] || 0;
       } else if (key === '_birthTimestamp') {
         wallet._birthTimestamp = data[key] ?? null;
       } else if (key === '_sp_spending_txs') {
         wallet._sp_spending_txs = data[key] || [];
       } else if (key === '_sp_pending_inputs') {
         wallet._sp_pending_inputs = new Set(data[key] || []);
-      } else if (!HDSilentPaymentsWallet.NON_PERSISTED_KEYS.has(key)) {
+      } else if (
+        key !== 'networkId' && // resolved above; the raw value may be unrecognised
+        !HDSilentPaymentsWallet.NON_PERSISTED_KEYS.has(key)
+      ) {
         (wallet as any)[key] = data[key];
       }
     }
@@ -234,6 +250,10 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     if (!(wallet._sp_pending_inputs instanceof Set)) {
       wallet._sp_pending_inputs = new Set();
     }
+
+    // Anything the constructor defaulted from the ambient chain and the blob did not override has
+    // to be recomputed for the stored one — here, the derivation path.
+    if (data._derivationPath === undefined) wallet.applyNetworkDefaults();
 
     return wallet;
   }
@@ -362,17 +382,17 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     if (this.transactionProcessor !== null) return;
 
     const seed = this.getSeed();
-    this.transactionProcessor = createTransactionProcessor(seed);
+    this.transactionProcessor = createTransactionProcessor(seed, this.getNetworkConfig());
   }
 
   getSilentPaymentAddress(): string | null {
     const seed = this.getSeed();
-    return getSilentPaymentAddress(seed);
+    return getSilentPaymentAddress(seed, this.getNetworkConfig());
   }
 
   getSilentPaymentChangeAddress(): string {
     const seed = this.getSeed();
-    return getSilentPaymentChangeAddress(seed);
+    return getSilentPaymentChangeAddress(seed, this.getNetworkConfig());
   }
 
   /**
@@ -393,21 +413,25 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
   getSpendPrivateKey(): Uint8Array {
     const seed = this.getSeed();
-    return getSpendPrivateKey(seed);
+    return getSpendPrivateKey(seed, this.getNetworkConfig());
   }
 
   getSpendPublicKey(): Uint8Array {
     const seed = this.getSeed();
-    return getSpendPublicKey(seed);
+    return getSpendPublicKey(seed, this.getNetworkConfig());
   }
 
   /** Every spend key this wallet can own an output under: the main one and label-0 change. */
   private getSpendKeyCandidates(): SpendKeyPair[] {
     if (!this.spendKeyCandidates) {
       const seed = this.getSeed();
+      const network = this.getNetworkConfig();
       this.spendKeyCandidates = [
-        { spendPriv: getSpendPrivateKey(seed), spendPub: getSpendPublicKey(seed) },
-        { spendPriv: getSilentPaymentChangeSpendPrivateKey(seed), spendPub: getSilentPaymentChangeSpendPublicKey(seed) },
+        { spendPriv: getSpendPrivateKey(seed, network), spendPub: getSpendPublicKey(seed, network) },
+        {
+          spendPriv: getSilentPaymentChangeSpendPrivateKey(seed, network),
+          spendPub: getSilentPaymentChangeSpendPublicKey(seed, network),
+        },
       ];
     }
     return this.spendKeyCandidates;
@@ -530,6 +554,21 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     return this.activeScanPromise !== null;
   }
 
+  /**
+   * Cancel and wait for the scan loop to unwind. `cancelScan` only raises a flag that the loop
+   * polls between batches, so callers that are about to repoint the indexer at another chain
+   * must await this — otherwise an in-flight batch commits the previous chain's UTXOs after the
+   * switch.
+   */
+  async cancelScanAndWait(): Promise<void> {
+    this.cancelScan();
+    try {
+      await this.activeScanPromise;
+    } catch (error) {
+      console.warn('[SP] Scan ended with an error while being cancelled:', error);
+    }
+  }
+
   private startPolling(): void {
     if (this.isPollingActive) {
       return;
@@ -608,7 +647,8 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         return 0;
       }
 
-      const effectiveBirthHeight = Math.max(this._birthHeight, BIP352_ACTIVATION_HEIGHT);
+      // After the pending-birth resolution above, which may have just moved `_birthHeight`.
+      const effectiveBirthHeight = this.getEffectiveBirthHeight();
 
       let startHeight: number;
       const endHeight: number = latestHeight;
@@ -964,6 +1004,16 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     return regularBalance + silentPaymentBalance;
   }
 
+  /**
+   * Where scanning actually starts: the wallet's own birth height, floored at the chain's BIP-352
+   * activation height. On mainnet that floor skips ~840k blocks predating the spec; the test
+   * chains deliberately have no floor, so a fresh wallet there scans from genesis — see
+   * `bip352ActivationHeight` in `modules/network.ts`.
+   */
+  getEffectiveBirthHeight(): number {
+    return Math.max(this._birthHeight, this.getNetworkConfig().bip352ActivationHeight);
+  }
+
   setBirthHeight(height: number): void {
     this.updateBirthHeight(height);
   }
@@ -1003,7 +1053,9 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         throw new Error(`Invalid block height for timestamp ${this._birthTimestamp}: ${blockHeight}`);
       }
 
-      this.updateBirthHeight(clampBirthHeight(blockHeight, latestHeight), { resetScan: true });
+      this.updateBirthHeight(clampBirthHeight(blockHeight, latestHeight, this.getNetworkConfig().bip352ActivationHeight), {
+        resetScan: true,
+      });
       this.onPersistCallback?.();
       return true;
     } catch (error) {
@@ -1172,7 +1224,8 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         return { input, spendPub, tweakedPriv, outputKey: Buffer.from(spUtxo.pubKey, 'hex') };
       });
 
-      const psbt = new bitcoin.Psbt();
+      const network = this.getNetworkConfig().bitcoinjs;
+      const psbt = new bitcoin.Psbt({ network });
 
       // add taproot inputs with tweaked public keys
       resolvedInputs.forEach(({ input, spendPub, outputKey }) => {
@@ -1198,17 +1251,23 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         value: o.value,
       }));
 
-      const hasSilentPaymentOutput = finalOutputs.some(o => o.address?.startsWith('sp1'));
+      const hasSilentPaymentOutput = finalOutputs.some(o => isSilentPaymentAddress(o.address, network));
       if (hasSilentPaymentOutput) {
-        const inputsForSP = resolvedInputs.map(({ input, tweakedPriv }) => ({
-          txid: input.txid,
-          vout: input.vout,
-          wif: ECPair.fromPrivateKey(Buffer.from(tweakedPriv), { compressed: true }).toWIF(),
-          utxoType: 'p2tr' as const,
+        // Every input here is a taproot SP spend, so all keys go in x-only and
+        // `calculateSumOfPrivateKeys` negates the ones whose pubkey has an odd Y. Passing the
+        // tweaked private keys straight through also drops a WIF encode/decode round-trip that
+        // would otherwise need the network threaded into it.
+        const inputPrivateKeys: PrivateKey[] = resolvedInputs.map(({ tweakedPriv }) => ({
+          key: Buffer.from(tweakedPriv).toString('hex'),
+          isXOnly: true,
         }));
 
-        const sp = new SilentPayment();
-        finalOutputs = sp.createTransaction(inputsForSP, finalOutputs) as typeof finalOutputs;
+        finalOutputs = resolveSilentPaymentTargets(
+          finalOutputs,
+          resolvedInputs.map(({ input }) => ({ txid: input.txid, vout: input.vout })),
+          inputPrivateKeys,
+          network,
+        );
       }
 
       finalOutputs.forEach(output => {
@@ -1305,16 +1364,9 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       return;
     }
 
-    // BIP-352 keys the input hash on the lexicographically smallest outpoint,
-    // serialised as reverse(txid) || vout (little endian).
-    const smallestOutpoint = [...ourInputs].sort((a, b) => {
-      const serialise = (o: { txid: string; vout: number }) => {
-        const buf = Buffer.alloc(4);
-        buf.writeUInt32LE(o.vout);
-        return Buffer.concat([Buffer.from(o.txid, 'hex').reverse(), buf]);
-      };
-      return Buffer.compare(serialise(a), serialise(b));
-    })[0];
+    // BIP-352 keys the input hash on the lexicographically smallest outpoint. Shared with the
+    // sender side so both compute it the same way.
+    const smallestOutpoint = findSmallestOutpoint(ourInputs);
 
     // Taproot outputs as the 33-byte even-Y pubkeys the scanner compares against.
     const outputsByHex = new Map<string, number>();
@@ -1327,13 +1379,14 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     if (outputsByHex.size === 0) return;
 
     const seed = this.getSeed();
+    const networkConfig = this.getNetworkConfig();
     const matches = scanOutputs(
-      getScanPrivateKey(seed),
-      getSpendPublicKey(seed),
+      getScanPrivateKey(seed, networkConfig),
+      getSpendPublicKey(seed, networkConfig),
       sumOfInputPubKeys,
       createInputHash(sumOfInputPubKeys, smallestOutpoint),
       [...outputsByHex.keys()].map(hex => Buffer.from(hex, 'hex')),
-      getSilentPaymentChangeLabelMap(seed),
+      getSilentPaymentChangeLabelMap(seed, networkConfig),
     );
 
     const blockTime = Math.floor(Date.now() / 1000);
@@ -1347,7 +1400,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         vout,
         value: Number(tx.outs[vout].value),
         height: 0,
-        address: bitcoin.payments.p2tr({ pubkey: Buffer.from(pubKey, 'hex') }).address!,
+        address: bitcoin.payments.p2tr({ pubkey: Buffer.from(pubKey, 'hex'), network: networkConfig.bitcoinjs }).address!,
         silentPaymentAddress: this.getSilentPaymentAddress()!,
         pubKey,
         tweak,
@@ -1427,7 +1480,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
           }
 
           try {
-            const address = bitcoin.address.fromOutputScript(output.script, bitcoin.networks.bitcoin);
+            const address = bitcoin.address.fromOutputScript(output.script, this.getNetworkConfig().bitcoinjs);
             if (this.weOwnAddress(address)) {
               value += Number(output.value);
             }
@@ -1464,7 +1517,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
             // Decode the address from the output script
             let addresses: string[] = [];
             try {
-              const address = bitcoin.address.fromOutputScript(output.script, bitcoin.networks.bitcoin);
+              const address = bitcoin.address.fromOutputScript(output.script, this.getNetworkConfig().bitcoinjs);
               addresses = [address];
             } catch (e) {
               // If address decoding fails, leave empty

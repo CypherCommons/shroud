@@ -1,5 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 
+import { BIP352_ACTIVATION_HEIGHT } from './constants';
+
 /**
  * Bitcoin network support.
  *
@@ -89,7 +91,7 @@ const NETWORKS: Record<NetworkId, NetworkConfig> = {
     bitcoinjs: bitcoin.networks.bitcoin,
     coinType: 0,
     isTestnet: false,
-    bip352ActivationHeight: 842579, // May 8, 2024, when BIP-352 was merged
+    bip352ActivationHeight: BIP352_ACTIVATION_HEIGHT,
     electrumPeers: MAINNET_ELECTRUM_PEERS,
     explorerTxUrl: txid => `https://mempool.space/tx/${txid}`,
     indexerBaseUrl: '',
