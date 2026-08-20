@@ -588,6 +588,7 @@ describe('BIP-352 Silent Payments', () => {
         'internal_addresses_cache',
         'label',
         'lastScannedBlock',
+        'networkId',
         'next_free_address_index',
         'next_free_change_address_index',
         'passphrase',
