@@ -11,6 +11,8 @@ import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/haptic
 import { startAndDecrypt } from '../../modules/start-and-decrypt';
 import { navigationRef } from '../../NavigationService';
 import { type ScanStateInfo, IDLE_SCAN_STATE, isScannable } from '../../helpers/silent-payments';
+import { getActiveNetworkId, type NetworkId } from '../../modules/network';
+import { assertIndexerConfigured, rollbackNetworkSwitch, switchNetworkBackends } from '../../modules/networkPreference';
 
 const shroudApp = ShroudApp.getInstance();
 
@@ -49,6 +51,9 @@ interface StorageContextType {
   setItem: typeof shroudApp.setItem;
   handleWalletDeletion: (walletID: string) => Promise<boolean>;
   scanState: ScanStateInfo;
+  activeNetworkId: NetworkId;
+  switchNetwork: (next: NetworkId) => Promise<void>;
+  isSwitchingNetwork: boolean;
 }
 
 export enum WalletTransactionsStatus {
@@ -68,6 +73,10 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
   );
   const [walletsInitialized, setWalletsInitialized] = useState<boolean>(false);
   const [scanState, setScanState] = useState<ScanStateInfo>(IDLE_SCAN_STATE);
+  // Seeded from the registry rather than a default: App gates the provider tree on the stored
+  // network being applied, so this is already correct on first render.
+  const [activeNetworkId, setActiveNetworkIdState] = useState<NetworkId>(() => getActiveNetworkId());
+  const [isSwitchingNetwork, setIsSwitchingNetwork] = useState<boolean>(false);
 
   const selectedWalletID = useCallback((): string | undefined => {
     if (!navigationRef.current || !navigationRef.current.isReady()) return undefined;
@@ -180,8 +189,10 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
 
   const addWallet = useCallback(
     (wallet: TWallet): boolean => {
-      if (shroudApp.wallets.length > 0) {
-        console.warn('[StorageProvider] Single-wallet mode: refusing to add a second wallet');
+      // Single-wallet mode is *per chain*: checking every network's wallets here would make it
+      // impossible to create a wallet on signet once one exists on mainnet.
+      if (shroudApp.getWallets().length > 0) {
+        console.warn('[StorageProvider] Single-wallet mode: refusing to add a second wallet on this network');
         return false;
       }
 
@@ -274,28 +285,109 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     setWallets(shroudApp.getWallets());
   }, []);
 
-  // Initialize wallets
-  useEffect(() => {
-    if (walletsInitialized) {
-      txMetadata.current = shroudApp.tx_metadata;
-      const currentWallets = shroudApp.getWallets();
-
-      currentWallets.forEach(wallet => {
+  const attachWalletCallbacks = useCallback(
+    (walletsToWire: TWallet[]) => {
+      walletsToWire.forEach(wallet => {
         if ('setOnBalanceChangeCallback' in wallet && typeof wallet.setOnBalanceChangeCallback === 'function') {
           wallet.setOnBalanceChangeCallback(forceWalletsUpdate);
         }
         if ('setOnPersistCallback' in wallet && typeof wallet.setOnPersistCallback === 'function') {
           wallet.setOnPersistCallback(debouncedPersist);
         }
+        // NOTE: there is a single shared `scanState`. This assumes at most one scannable
+        // (silent-payments) wallet is active at a time; multiple would clobber each other here.
         if (isScannable(wallet)) {
           wallet.setOnScanStateChangeCallback(setScanState);
           setScanState(wallet.getScanState());
         }
       });
+    },
+    [forceWalletsUpdate, debouncedPersist],
+  );
 
+  /** Drop callbacks so a wallet left behind on another chain cannot write into the live UI. */
+  const detachWalletCallbacks = useCallback((walletsToDetach: TWallet[]) => {
+    walletsToDetach.forEach(wallet => {
+      if ('setOnBalanceChangeCallback' in wallet && typeof wallet.setOnBalanceChangeCallback === 'function') {
+        wallet.setOnBalanceChangeCallback(null);
+      }
+      if ('setOnPersistCallback' in wallet && typeof wallet.setOnPersistCallback === 'function') {
+        wallet.setOnPersistCallback(null);
+      }
+      if (isScannable(wallet)) {
+        wallet.setOnScanStateChangeCallback(null);
+      }
+    });
+  }, []);
+
+  /**
+   * Move the app to another chain.
+   *
+   * Wallet objects are *not* rebuilt. Each one is pinned to a single chain by its immutable
+   * `networkId`, so its cached xpub, derived nodes, addresses and UTXO view were computed with
+   * that chain's parameters and stay valid — there is nothing to invalidate. What does have to
+   * happen, in order: stop any in-flight scan (and *wait* for it, or a late batch commits the old
+   * chain's UTXOs), flush pending writes, repoint the indexer and Electrum, then re-wire
+   * callbacks and swap the visible wallet list.
+   *
+   * The module-level network (`getActiveNetworkId`) and this provider's `activeNetworkId` state
+   * must never disagree, so a failure after the module has moved puts it back.
+   */
+  const switchNetwork = useCallback(
+    async (next: NetworkId) => {
+      const previous = getActiveNetworkId();
+      if (next === previous) return;
+
+      // Before any teardown: a chain that cannot be scanned must not cost the user their running
+      // scan or leave the outgoing wallets detached.
+      assertIndexerConfigured(next);
+
+      setIsSwitchingNetwork(true);
+      const outgoingWallets = shroudApp.getWallets();
+      let backendsTouched = false;
+      try {
+        await Promise.all(outgoingWallets.filter(isScannable).map(wallet => wallet.cancelScanAndWait()));
+        detachWalletCallbacks(outgoingWallets);
+
+        // Flush before repointing anything, and cancel the debounce so a queued save cannot fire
+        // after the switch.
+        if (persistTimeoutRef.current) {
+          clearTimeout(persistTimeoutRef.current);
+          persistTimeoutRef.current = null;
+        }
+        shroudApp.tx_metadata = txMetadata.current;
+        await shroudApp.saveToDisk();
+
+        backendsTouched = true;
+        await switchNetworkBackends(next);
+
+        const incomingWallets = shroudApp.getWallets();
+        setScanState(IDLE_SCAN_STATE);
+        attachWalletCallbacks(incomingWallets);
+        setActiveNetworkIdState(next);
+        setWallets([...incomingWallets]);
+      } catch (error) {
+        // Stay on the chain the UI is still showing: restore the module (and the stored
+        // preference), then hand the outgoing wallets their callbacks back.
+        if (backendsTouched) await rollbackNetworkSwitch(previous);
+        attachWalletCallbacks(outgoingWallets);
+        throw error;
+      } finally {
+        setIsSwitchingNetwork(false);
+      }
+    },
+    [attachWalletCallbacks, detachWalletCallbacks],
+  );
+
+  // Initialize wallets
+  useEffect(() => {
+    if (walletsInitialized) {
+      txMetadata.current = shroudApp.tx_metadata;
+      const currentWallets = shroudApp.getWallets();
+      attachWalletCallbacks(currentWallets);
       setWallets(currentWallets);
     }
-  }, [walletsInitialized, forceWalletsUpdate, debouncedPersist]);
+  }, [walletsInitialized, attachWalletCallbacks]);
 
   // Add a refresh lock to prevent concurrent refreshes
   const refreshingRef = useRef<boolean>(false);
@@ -457,6 +549,9 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       setWalletTransactionUpdateStatus,
       handleWalletDeletion,
       scanState,
+      activeNetworkId,
+      switchNetwork,
+      isSwitchingNetwork,
     }),
     [
       wallets,
@@ -473,6 +568,9 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       walletTransactionUpdateStatus,
       handleWalletDeletion,
       scanState,
+      activeNetworkId,
+      switchNetwork,
+      isSwitchingNetwork,
     ],
   );
 
