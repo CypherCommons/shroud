@@ -19,14 +19,15 @@ export class HDTaprootWallet extends AbstractHDElectrumWallet {
   // @ts-ignore: override
   public readonly typeReadable = HDTaprootWallet.typeReadable;
   public readonly segwitType = 'p2tr';
-  static readonly derivationPath = "m/86'/0'/0'";
+  static derivationPathForCoinType = (coinType: number) => `m/86'/${coinType}'/0'`;
 
   getXpub() {
     if (this._xpub) {
       return this._xpub; // cache hit
     }
+    const network = this.getNetworkConfig().bitcoinjs;
     const seed = this._getSeed();
-    const root = bip32.fromSeed(seed);
+    const root = bip32.fromSeed(seed, network);
 
     const path = this.getDerivationPath();
     if (!path) {
@@ -37,7 +38,8 @@ export class HDTaprootWallet extends AbstractHDElectrumWallet {
     this._xpub = xpub;
 
     // returning regular xpub since industry standard is to use regular xpubs for Taproot wallets without any
-    // kind of prefix change (like ypub or zpub)
+    // kind of prefix change (like ypub or zpub). On the test chains this is a tpub, since the
+    // version bytes come from the network.
     return xpub;
   }
 
@@ -50,6 +52,7 @@ export class HDTaprootWallet extends AbstractHDElectrumWallet {
 
     const { address } = bitcoin.payments.p2tr({
       internalPubkey: xOnlyPubkey,
+      network: this.getNetworkConfig().bitcoinjs,
     });
 
     if (!address) {
@@ -61,14 +64,15 @@ export class HDTaprootWallet extends AbstractHDElectrumWallet {
 
   _getNodePubkeyByIndex(node: number, index: number) {
     index = index * 1; // cast to int
+    const network = this.getNetworkConfig().bitcoinjs;
 
     if (node === 0 && !this._node0) {
-      const hdNode = bip32.fromBase58(this.getXpub());
+      const hdNode = bip32.fromBase58(this.getXpub(), network);
       this._node0 = hdNode.derive(node);
     }
 
     if (node === 1 && !this._node1) {
-      const hdNode = bip32.fromBase58(this.getXpub());
+      const hdNode = bip32.fromBase58(this.getXpub(), network);
       this._node1 = hdNode.derive(node);
     }
 
@@ -95,6 +99,7 @@ export class HDTaprootWallet extends AbstractHDElectrumWallet {
 
     const p2tr = bitcoin.payments.p2tr({
       internalPubkey: pubkey,
+      network: this.getNetworkConfig().bitcoinjs,
     });
     if (!p2tr.output) throw new Error('Could not build p2tr.output');
 
