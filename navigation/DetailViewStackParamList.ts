@@ -1,6 +1,6 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
 
-import { Transaction, TWallet } from '../class/wallets/types';
+import { Transaction } from '../class/wallets/types';
 import { OwnedOutput } from '../class/wallets/hd-bip352-wallet';
 import { ElectrumServerItem } from '../modules/Electrum';
 import { SendDetailsStackParamList } from './SendDetailsStackParamList';
@@ -26,12 +26,6 @@ export type DetailViewStackParamList = {
   WalletsList: { onBarScanned?: string };
   TransactionDetails: { tx: Transaction; hash: string; walletID: string };
 
-  CPFP: {
-    wallet: TWallet | null;
-    txid: string;
-  };
-  RBFBumpFee: { txid: string; wallet: TWallet | null };
-  RBFCancel: { txid: string; wallet: TWallet | null };
   Broadcast: object;
   Success: undefined;
   AddWalletRoot?: {

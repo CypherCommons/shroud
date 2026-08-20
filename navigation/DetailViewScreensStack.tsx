@@ -5,10 +5,7 @@ import { useTheme } from '../components/themes';
 import loc from '../loc';
 import Broadcast from '../screen/send/Broadcast';
 import Success from '../screen/send/success';
-import CPFP from '../screen/transactions/CPFP';
 import TransactionDetails from '../screen/transactions/TransactionDetails';
-import RBFBumpFee from '../screen/transactions/RBFBumpFee';
-import RBFCancel from '../screen/transactions/RBFCancel';
 import WalletsList from '../screen/wallets/WalletsList';
 import { DetailViewStack } from './index';
 import SettingsButton from '../components/icons/SettingsButton';
@@ -76,17 +73,6 @@ const DetailViewStackScreensStack = () => {
           statusBarStyle: 'auto',
           headerTitle: loc.transactions.details_title,
         })(theme)}
-      />
-      <DetailViewStack.Screen name="CPFP" component={CPFP} options={navigationStyle({ title: loc.transactions.cpfp_title })(theme)} />
-      <DetailViewStack.Screen
-        name="RBFBumpFee"
-        component={RBFBumpFee}
-        options={navigationStyle({ title: loc.transactions.rbf_title })(theme)}
-      />
-      <DetailViewStack.Screen
-        name="RBFCancel"
-        component={RBFCancel}
-        options={navigationStyle({ title: loc.transactions.cancel_title })(theme)}
       />
       <DetailViewStack.Screen
         name="Broadcast"
