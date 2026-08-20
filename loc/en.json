@@ -318,6 +318,12 @@
         "tor_save_port": "Save Port",
         "tor_invalid_port": "Please enter a valid port between 1 and 65535.",
         "tor_port_saved": "SOCKS5 port saved.",
+        "bitcoin_network": "Bitcoin Network",
+        "network_description": "Each network keeps its own wallet, balance and transaction history. Coins on Testnet4 and Signet have no value.",
+        "network_no_indexer": "No indexer configured",
+        "network_switching": "Switching network…",
+        "network_switch_scan_title": "Stop the current scan?",
+        "network_switch_scan_message": "A scan is in progress. Switching networks will stop it, and it will resume from where it left off when you switch back.",
         "delete_wallet": "Delete Wallet",
         "license": "License",
         "success_transaction_broadcasted": "Your transaction has been successfully broadcasted!"

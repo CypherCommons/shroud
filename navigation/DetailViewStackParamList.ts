@@ -53,6 +53,7 @@ export type DetailViewStackParamList = {
   BlockExplorerSettings: undefined;
   TorSettings: undefined;
   NetworkSettings: undefined;
+  BitcoinNetworkSettings: undefined;
   ReceiveDetails: {
     walletID?: string;
     address: string;
