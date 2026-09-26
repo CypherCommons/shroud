@@ -2,6 +2,8 @@
   "compilerOptions": {
     "allowJs": true,
     "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
+    "allowArbitraryExtensions": true,
     "esModuleInterop": true,
     "isolatedModules": true,
     "jsx": "react",
@@ -12,9 +14,12 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "module": "esnext",
+    "types": ["react-native", "jest"],
+    // Causes issues with package.json "exports"
+    "forceConsistentCasingInFileNames": false,
     "paths": {
     }
   },
-  "extends": "@react-native/typescript-config/tsconfig.json",
-  "exclude": ["node_modules", "babel.config.js", "jest.config.js", "components/react-native-draggable-flatlist", "scripts/maccatalystpatches"],
+  "extends": "expo/tsconfig.base",
+  "exclude": ["node_modules", "babel.config.js", "jest.config.js", "metro.config.js", "components/react-native-draggable-flatlist", "scripts/maccatalystpatches"]
 }

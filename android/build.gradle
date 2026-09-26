@@ -77,3 +77,6 @@ subprojects {
 
     }
 }
+
+// Sets expo module defaults (compile/min/target SDK) for anything not set above
+apply plugin: "expo-root-project"

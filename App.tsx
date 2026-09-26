@@ -19,7 +19,7 @@ const ThemedNavigationContainer = () => {
   const colorScheme = useColorScheme();
   const { themePreference, settingsLoaded } = useSettings();
 
-  useLogger(navigationRef);
+  useLogger(navigationRef as unknown as Parameters<typeof useLogger>[0]);
 
   if (!settingsLoaded) return null;
 

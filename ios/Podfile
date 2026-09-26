@@ -11,6 +11,10 @@ min_ios_version_supported = '15.1'
 node_require('react-native/scripts/react_native_pods.rb')
 node_require('react-native-permissions/scripts/setup.rb')
 
+# Expo autolinking (bare workflow): installs expo modules via CocoaPods
+# and exposes `use_expo_modules!` / `expo_patch_react_imports!`.
+require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), 'scripts/autolinking')
+
 # Resolve react_native_pods.rb with node to allow for hoisting
 require Pod::Executable.execute_command('node', ['-p',
   'require.resolve(
@@ -30,7 +34,14 @@ end
 
 # Define a common function to configure shared settings for targets
 def configure_target()
-  config = use_native_modules!
+  # Expo modules are resolved by expo-modules-autolinking; its config command
+  # also returns the community RN modules, so pass it to use_native_modules!.
+  use_expo_modules!
+
+  config_command = [
+    'npx', 'expo-modules-autolinking', 'react-native-config', '--json', '--platform', 'ios',
+  ]
+  config = use_native_modules!(config_command)
 
   use_react_native!(
     # Specify the path directly if use_native_modules! does not provide it

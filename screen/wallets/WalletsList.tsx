@@ -120,7 +120,7 @@ function reducer(state: WalletListState, action: WalletListAction) {
 type NavigationProps = NativeStackNavigationProp<DetailViewStackParamList, 'WalletsList'>;
 
 const WalletsList: React.FC = () => {
-  const [state, dispatch] = useReducer<React.Reducer<WalletListState, WalletListAction>>(reducer, initialState);
+  const [state, dispatch] = useReducer(reducer, initialState);
   const { isLoading } = state;
   const { sizeClass, isLarge } = useSizeClass();
   const { wallets, getTransactions, getBalance, refreshAllWalletTransactions, saveToDisk, scanState } = useStorage();
@@ -135,7 +135,7 @@ const WalletsList: React.FC = () => {
   const walletsCount = useRef<number>(wallets.length);
   const [showZeroBalanceToast, setShowZeroBalanceToast] = useState(false);
   const toastOpacity = useRef(new Animated.Value(0)).current;
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const dismissToast = useCallback(() => {
     Animated.timing(toastOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(({ finished }) => {

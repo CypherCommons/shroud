@@ -113,13 +113,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		6D9946672555A661000E52E8 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 6D99465D2555A660000E52E8;
-			remoteInfo = MarketWidgetExtension;
-		};
 		6DD410A5266CADF40087DE03 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
@@ -612,7 +605,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				6D9946682555A661000E52E8 /* PBXTargetDependency */,
 				6DD410A6266CADF40087DE03 /* PBXTargetDependency */,
 			);
 			name = Shroud;
@@ -981,10 +973,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		6D9946682555A661000E52E8 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			targetProxy = 6D9946672555A661000E52E8 /* PBXContainerItemProxy */;
-		};
 		6DD410A6266CADF40087DE03 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 6DD4109B266CADF10087DE03 /* WidgetsExtension */;

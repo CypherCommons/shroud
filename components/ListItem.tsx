@@ -10,7 +10,7 @@ interface ListItemProps {
   rightIcon?: any;
   leftAvatar?: React.JSX.Element;
   containerStyle?: object;
-  Component?: typeof React.Component | typeof PressableWrapper;
+  Component?: any; // TouchableWithoutFeedback, View, PressableWrapper... rneui only types this as `typeof React.Component`
   bottomDivider?: boolean;
   topDivider?: boolean;
   testID?: string;
