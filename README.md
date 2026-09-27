@@ -39,7 +39,7 @@ cd shroud
 npm install
 ```
 
-make sure to copy .env.example → .env, set INDEXER_BASE_URL in `.env`, then reset metro cache with `npx expo start --clear`.
+make sure to copy .env.example → .env and set EXPO_PUBLIC_INDEXER_BASE_URL in `.env` (restart Metro with `npx expo start --clear` after changing it). EAS builds and updates read these variables from the EAS environment instead.
 
 Please make sure that your console is running the most stable versions of npm and node (even-numbered versions).
 

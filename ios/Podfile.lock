@@ -24,6 +24,8 @@ PODS:
   - BVLinearGradient (2.8.3):
     - React-Core
   - CocoaAsyncSocket (7.6.5)
+  - EASClient (57.0.4):
+    - ExpoModulesCore
   - EXConstants (57.0.19):
     - ExpoModulesCore
   - EXJSONUtils (57.0.2)
@@ -250,6 +252,35 @@ PODS:
     - ExpoModulesJSI
     - ExpoModulesWorklets
     - RNWorklets
+  - EXStructuredHeaders (57.0.1)
+  - EXUpdates (57.0.23):
+    - EASClient
+    - EXManifests
+    - ExpoModulesCore
+    - EXStructuredHeaders
+    - EXUpdatesInterface
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - ReachabilitySwift
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - EXUpdatesInterface (57.0.2):
     - ExpoModulesCore
   - FBLazyVector (0.86.3)
@@ -289,6 +320,7 @@ PODS:
     - FBLazyVector (= 0.86.3)
     - RCTRequired (= 0.86.3)
     - React-Core (= 0.86.3)
+  - ReachabilitySwift (5.2.4)
   - React (0.86.3):
     - React-Core (= 0.86.3)
     - React-Core/DevSupport (= 0.86.3)
@@ -2874,6 +2906,7 @@ PODS:
 DEPENDENCIES:
   - "BugsnagReactNative (from `../node_modules/@bugsnag/react-native`)"
   - BVLinearGradient (from `../node_modules/react-native-linear-gradient`)
+  - EASClient (from `../node_modules/expo-eas-client/ios`)
   - EXConstants (from `../node_modules/expo-constants/ios`)
   - EXJSONUtils (from `../node_modules/expo-json-utils/ios`)
   - EXManifests (from `../node_modules/expo-manifests/ios`)
@@ -2892,6 +2925,8 @@ DEPENDENCIES:
   - ExpoModulesJSI (from `../node_modules/expo-modules-jsi/apple`)
   - ExpoModulesWorklets (from `../node_modules/expo-modules-core/ExpoModulesWorklets.podspec`)
   - ExpoModulesWorkletsAdapter (from `../node_modules/expo-modules-core`)
+  - EXStructuredHeaders (from `../node_modules/expo-structured-headers/ios`)
+  - EXUpdates (from `../node_modules/expo-updates/ios`)
   - EXUpdatesInterface (from `../node_modules/expo-updates-interface/ios`)
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
@@ -3007,12 +3042,15 @@ SPEC REPOS:
   trunk:
     - CocoaAsyncSocket
     - lottie-ios
+    - ReachabilitySwift
 
 EXTERNAL SOURCES:
   BugsnagReactNative:
     :path: "../node_modules/@bugsnag/react-native"
   BVLinearGradient:
     :path: "../node_modules/react-native-linear-gradient"
+  EASClient:
+    :path: "../node_modules/expo-eas-client/ios"
   EXConstants:
     :path: "../node_modules/expo-constants/ios"
   EXJSONUtils:
@@ -3049,6 +3087,10 @@ EXTERNAL SOURCES:
     :podspec: "../node_modules/expo-modules-core/ExpoModulesWorklets.podspec"
   ExpoModulesWorkletsAdapter:
     :path: "../node_modules/expo-modules-core"
+  EXStructuredHeaders:
+    :path: "../node_modules/expo-structured-headers/ios"
+  EXUpdates:
+    :path: "../node_modules/expo-updates/ios"
   EXUpdatesInterface:
     :path: "../node_modules/expo-updates-interface/ios"
   FBLazyVector:
@@ -3273,6 +3315,7 @@ SPEC CHECKSUMS:
   BugsnagReactNative: 395f3b1b9471de3e0a32332c0e60049dd8413149
   BVLinearGradient: 880f91a7854faff2df62518f0281afb1c60d49a3
   CocoaAsyncSocket: 065fd1e645c7abab64f7a6a2007a48038fdc6a99
+  EASClient: 3110d43e7d7078ec0e7705de664207ce1b5c42af
   EXConstants: 9ae13e3b5d0f222a979eed6d14197339739b123d
   EXJSONUtils: a49e3ef80dff762108e5690c7b2f360675dcf7f6
   EXManifests: caa1868b88ae9877a4ab1c8c9b4732b7af342715
@@ -3291,6 +3334,8 @@ SPEC CHECKSUMS:
   ExpoModulesJSI: 143a07881a80bebb3578ca0797e5872802aa6487
   ExpoModulesWorklets: 39a0cf7b852debc8705b4985b4d3bebd824d2e52
   ExpoModulesWorkletsAdapter: 77c0994dfa53dceaffeaa9690388477c5f84f656
+  EXStructuredHeaders: 07c88ee9f7dfcbafeaaab0e78ea276dfe0eb332e
+  EXUpdates: 6f59bcf89e5bc20a5eaf4c879e0c8f4464652e5d
   EXUpdatesInterface: df1347977d494c409d1f0f0b002d79f202bd6f07
   FBLazyVector: 2138c6c2ab66c31bf5754dc18097fbc498a49c7f
   hermes-engine: 63c5db7d529c36335fada6582fd293ae2a105d77
@@ -3301,6 +3346,7 @@ SPEC CHECKSUMS:
   RCTSwiftUI: e818198d11928a78c2b2afe281d072171dab617f
   RCTSwiftUIWrapper: b2eec8b80cabf076f0129c1e3fc598cba1cf70a5
   RCTTypeSafety: efc19e6b92931abf0b68b064212323a258a5f019
+  ReachabilitySwift: 32793e867593cfc1177f5d16491e3a197d2fccda
   React: 52dce66f71097ed7a4968673d95eeb8095ded74e
   React-callinvoker: afa0525ab27f4ffbb4c377f855fe9368edb099bc
   React-Core: cf199e1dcc940a9b96d87e05e72e4b9b863a1eb8

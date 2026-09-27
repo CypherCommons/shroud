@@ -108,6 +108,15 @@
         </activity>
 
         <meta-data android:name="com.bugsnag.android.API_KEY" android:value="17ba9059f676f1cc4f45d98182388b01" />
+
+        <!-- expo-updates: mirrors the updates settings in app.json (expo-updates configuration:syncnative) -->
+        <meta-data android:name="expo.modules.updates.ENABLED" android:value="true" />
+        <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS" />
+        <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0" />
+        <meta-data android:name="expo.modules.updates.CODE_SIGNING_CERTIFICATE" android:value="-----BEGIN CERTIFICATE-----&#xD;&#xA;MIIC3TCCAcWgAwIBAgIJLL9VqNjFAkMdMA0GCSqGSIb3DQEBCwUAMBgxFjAUBgNV&#xD;&#xA;BAMTDVNocm91ZCBXYWxsZXQwHhcNMjYwOTI3MTAyMTU1WhcNMzYwOTI3MTAyMTU1&#xD;&#xA;WjAYMRYwFAYDVQQDEw1TaHJvdWQgV2FsbGV0MIIBIjANBgkqhkiG9w0BAQEFAAOC&#xD;&#xA;AQ8AMIIBCgKCAQEApykkpRYrs5grb/ZleEJuAnT5W7J68zadTGfGHutLb6TWBGsQ&#xD;&#xA;FBJJl5XKz0yoYeXlc3kUQpjaDOviOxDZpPvlvmaVf8Vi6RVyJ/A3rz/lxwhgy2ox&#xD;&#xA;8OHKsHarHewVjuWAn7Ay0lpeUSnFw3Vle6lEDIRvetx2kBS/cOemr7o4hHP3590I&#xD;&#xA;2EcX556q+uNNZv8Wt2QMntZQ3BFNTeacqeRKc4sbWGHf0cDamenYjvPMq3ITrmXq&#xD;&#xA;kdvGETsgXzcHJn4qztky5k7fdnWfJB1X0wyergUL4Mw0JxFhM1nTPxUrBTlJDqCF&#xD;&#xA;aJsz8xHCGHIMOtXb9eI6jtfWmZ/uFEALULrOrQIDAQABoyowKDAOBgNVHQ8BAf8E&#xD;&#xA;BAMCB4AwFgYDVR0lAQH/BAwwCgYIKwYBBQUHAwMwDQYJKoZIhvcNAQELBQADggEB&#xD;&#xA;AHVcSS/kpY2UBCH5EuyAAA1rUy27I2sGVWWhzQfmib5WpJjbrf0vKnS5C8eJNbtL&#xD;&#xA;41MnaRAL37VDq8Y6P50cW+j2B2QmX46K4n8pBBkqJEmNjoAzUD+j9ksK/hc4N/jc&#xD;&#xA;BErUQ2wTImYTPYgfPxzXVFFGkvEP0kg2LmxtMvM7WaxmLi5VdMPnAgOxzaGoaY3o&#xD;&#xA;ddsk7rRD/LPqIrmJDFmIsCh8mOiKkD6GXmJuErhgXHsEALI+2bOlYIZ4ogNCm5iU&#xD;&#xA;wV3dPGBO7JLc9pa4tLDbNHmCqhjkKUCNumXdr5vtG9mjyZPr6l13A34kZdW/hu+3&#xD;&#xA;d+19T23bSbSZi1dkL6dbOCc=&#xD;&#xA;-----END CERTIFICATE-----&#xD;&#xA;" />
+        <meta-data android:name="expo.modules.updates.CODE_SIGNING_METADATA" android:value="{&quot;keyid&quot;:&quot;main&quot;,&quot;alg&quot;:&quot;rsa-v1_5-sha256&quot;}" />
+        <meta-data android:name="expo.modules.updates.ENABLE_BSDIFF_PATCH_SUPPORT" android:value="true" />
+        <meta-data android:name="expo.modules.updates.EXPO_RUNTIME_VERSION" android:value="@string/expo_runtime_version" />
     </application>
 
     <queries>
