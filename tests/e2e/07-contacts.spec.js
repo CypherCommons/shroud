@@ -144,7 +144,9 @@ describe('Contacts', () => {
         .toBeVisible()
         .withTimeout(10_000);
 
-      await element(by.id(`PickContact-${ADDR_A}`)).atIndex(0).tap();
+      await element(by.id(`PickContact-${ADDR_A}`))
+        .atIndex(0)
+        .tap();
       await waitFor(element(by.id('AddressInput')))
         .toHaveText(ADDR_A)
         .withTimeout(10_000);
