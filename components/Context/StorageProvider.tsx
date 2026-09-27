@@ -11,6 +11,7 @@ import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/haptic
 import { startAndDecrypt } from '../../modules/start-and-decrypt';
 import { navigationRef } from '../../NavigationService';
 import { type ScanStateInfo, IDLE_SCAN_STATE, isScannable } from '../../helpers/silent-payments';
+import { clearPin } from '../../helpers/pinLock';
 
 const shroudApp = ShroudApp.getInstance();
 
@@ -31,6 +32,7 @@ interface StorageContextType {
   setWalletsInitialized: (initialized: boolean) => void;
   refreshAllWalletTransactions: (lastSnappedTo?: number, showUpdateStatusIndicator?: boolean) => Promise<void>;
   resetWallets: () => void;
+  wipeDevice: () => Promise<void>;
   walletTransactionUpdateStatus: WalletTransactionsStatus | string;
   setWalletTransactionUpdateStatus: (status: WalletTransactionsStatus | string) => void;
   getTransactions: typeof shroudApp.getTransactions;
@@ -274,6 +276,15 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     setWallets(shroudApp.getWallets());
   }, []);
 
+  // Forgot-PIN reset: wipes the wallet data and the PIN. txMetadata is cleared too, since saveToDisk()
+  // copies it back into the singleton on every save.
+  const wipeDevice = useCallback(async () => {
+    await shroudApp.wipeAllData();
+    await clearPin();
+    txMetadata.current = {};
+    setWallets([]);
+  }, []);
+
   // Initialize wallets
   useEffect(() => {
     if (walletsInitialized) {
@@ -451,6 +462,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       sleep: shroudApp.sleep,
       createFakeStorage: shroudApp.createFakeStorage,
       resetWallets,
+      wipeDevice,
       decryptStorage: shroudApp.decryptStorage,
       isPasswordInUse: shroudApp.isPasswordInUse,
       walletTransactionUpdateStatus,
@@ -470,6 +482,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       setWalletsInitialized,
       refreshAllWalletTransactions,
       resetWallets,
+      wipeDevice,
       walletTransactionUpdateStatus,
       handleWalletDeletion,
       scanState,

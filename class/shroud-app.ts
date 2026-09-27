@@ -201,6 +201,19 @@ export class ShroudApp {
    * Cleans up all current application data (wallets, tx metadata etc)
    * Encrypts the bucket and saves it storage
    */
+  /**
+   * Forgets everything this app stores about the wallet: in-memory state plus the keystore copy and the
+   * Realm key-value backup, including any encrypted and decoy buckets. Used by the forgot-PIN reset.
+   */
+  wipeAllData = async (): Promise<void> => {
+    usedBucketNum = false;
+    this.cachedPassword = undefined;
+    this.wallets = [];
+    this.tx_metadata = {};
+    this.contacts = {};
+    await this.saveToDisk();
+  };
+
   createFakeStorage = async (fakePassword: string): Promise<boolean> => {
     usedBucketNum = false; // resetting currently used bucket so we wont overwrite it
     this.wallets = [];

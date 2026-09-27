@@ -24,6 +24,10 @@ import ElectrumServerSettings from '../screen/settings/ElectrumServerSettings';
 import BlockExplorerSettings from '../screen/settings/BlockExplorerSettings';
 import TorSettings from '../screen/settings/TorSettings';
 import NetworkSettings from '../screen/settings/NetworkSettings';
+import Security from '../screen/settings/Security';
+import ChangePin from '../screen/settings/ChangePin';
+import ViewRecoveryPhrase from '../screen/settings/ViewRecoveryPhrase';
+import PlausibleDeniability from '../screen/PlausibleDeniability';
 
 import { useSizeClass, SizeClass } from '../modules/sizeClass';
 import { isDesktop } from '../modules/environment';
@@ -151,6 +155,22 @@ const DetailViewStackScreensStack = () => {
         name="NetworkSettings"
         component={NetworkSettings}
         options={navigationStyle({ title: loc.settings.network })(theme)}
+      />
+      <DetailViewStack.Screen
+        name="Security"
+        component={Security}
+        options={navigationStyle({ title: loc.settings.security_title })(theme)}
+      />
+      <DetailViewStack.Screen
+        name="ChangePin"
+        component={ChangePin}
+        options={navigationStyle({ title: loc.settings.security_change_your_pin })(theme)}
+      />
+      <DetailViewStack.Screen name="ViewRecoveryPhrase" component={ViewRecoveryPhrase} options={{ headerShown: false }} />
+      <DetailViewStack.Screen
+        name="PlausibleDeniability"
+        component={PlausibleDeniability}
+        options={navigationStyle({ title: loc.plausibledeniability.title })(theme)}
       />
       <DetailViewStack.Screen
         name="TrackPayment"
