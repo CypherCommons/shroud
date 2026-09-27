@@ -42,6 +42,7 @@ interface StorageContextType {
   isStorageEncrypted: typeof shroudApp.storageIsEncrypted;
   startAndDecrypt: typeof startAndDecrypt;
   encryptStorage: typeof shroudApp.encryptStorage;
+  exportEncryptedBackup: typeof shroudApp.exportEncryptedBackup;
   sleep: typeof shroudApp.sleep;
   createFakeStorage: typeof shroudApp.createFakeStorage;
   decryptStorage: typeof shroudApp.decryptStorage;
@@ -453,6 +454,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       fetchAndSaveWalletTransactions,
       isStorageEncrypted: shroudApp.storageIsEncrypted,
       encryptStorage: shroudApp.encryptStorage,
+      exportEncryptedBackup: shroudApp.exportEncryptedBackup,
       startAndDecrypt,
       cachedPassword: shroudApp.cachedPassword,
       getBalance: shroudApp.getBalance,
