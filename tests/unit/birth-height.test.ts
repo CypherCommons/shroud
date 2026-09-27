@@ -94,7 +94,11 @@ describe('deferred birth height (indexer down at creation/import)', () => {
 });
 
 describe('scanBlocks range handling', () => {
-  const indexer = () => new SilentPaymentIndexer({ baseUrl: 'http://indexer.test' });
+  const indexer = () => {
+    const sp = new SilentPaymentIndexer({ baseUrl: 'http://indexer.test' });
+    jest.spyOn(sp, 'getSpentIndexByRange').mockResolvedValue({ blocks: [] });
+    return sp;
+  };
 
   it('aborts the scan when a range fetch fails, instead of skipping the range', async () => {
     const sp = indexer();
