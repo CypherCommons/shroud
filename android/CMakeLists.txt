@@ -1,10 +1,12 @@
 cmake_minimum_required(VERSION 3.13)
-project(rust-jsi-bridge)
 
-set(CMAKE_VERBOSE_MAKEFILE ON)
-set(CMAKE_CXX_STANDARD 17)
+# The New Architecture loads libappmodules.so for autolinked C++ modules, Fabric components and
+# this app's codegen (ShroudSpecs). React Native only builds it itself when the app has no
+# CMakeLists of its own, so it is built here next to the Rust JSI bridge.
+project(appmodules)
+include(${REACT_ANDROID_DIR}/cmake-utils/ReactNative-application.cmake)
 
-# Source files
+# Rust JSI bridge, loaded by RustJsiBridgeModule.kt
 add_library(
     rust-jsi-bridge
     SHARED
@@ -12,16 +14,14 @@ add_library(
     app/src/main/cpp/rust-jsi-bridge-jni.cpp
 )
 
-# Include directories
 target_include_directories(
     rust-jsi-bridge
     PRIVATE
     app/src/main/cpp
 )
 
-# Find React Native packages (prefab)
-find_package(ReactAndroid REQUIRED CONFIG)
-find_package(fbjni REQUIRED CONFIG)
+target_compile_features(rust-jsi-bridge PRIVATE cxx_std_20)
+target_compile_options(rust-jsi-bridge PRIVATE -O2 -frtti -fexceptions -Wall -fstack-protector-all)
 
 # Import Rust static library
 add_library(rust_jsi_bridge_static STATIC IMPORTED)
@@ -31,14 +31,13 @@ set_target_properties(
     ${CMAKE_SOURCE_DIR}/app/src/main/jniLibs/${ANDROID_ABI}/librust_jsi_bridge.a
 )
 
-# Link libraries
-# Note: React Native 0.76+ uses ReactAndroid::reactnative (consolidated target)
-# instead of the old ReactAndroid::react_nativejni
+# jsi, reactnative, fbjni and common_flags are defined by ReactNative-application.cmake
 target_link_libraries(
     rust-jsi-bridge
-    ReactAndroid::jsi
-    ReactAndroid::reactnative
-    fbjni::fbjni
+    common_flags
+    jsi
+    reactnative
+    fbjni
     rust_jsi_bridge_static
     android
     log

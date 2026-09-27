@@ -1,20 +1,19 @@
 import React, { forwardRef, useImperativeHandle, useRef, ReactElement, ComponentType } from 'react';
-import { SheetSize, SizeChangeEvent, TrueSheet, TrueSheetProps } from '@lodev09/react-native-true-sheet';
+import { TrueSheet, TrueSheetProps } from '@lodev09/react-native-true-sheet';
 import { Keyboard, Image, StyleSheet, View, Pressable, Platform, GestureResponderEvent, Text, StyleProp, ViewStyle } from 'react-native';
 import SaveFileButton from './SaveFileButton';
 import { useTheme } from './themes';
 import { Icon } from '@rneui/base';
 
-interface BottomModalProps extends TrueSheetProps {
+// BottomModal renders its own header and footer, so TrueSheet's props of the same name are replaced.
+interface BottomModalProps extends Omit<TrueSheetProps, 'header' | 'footer'> {
   children?: React.ReactNode;
   onClose?: () => void;
   onCloseModalPressed?: () => Promise<void>;
   isGrabberVisible?: boolean;
-  sizes?: SheetSize[] | undefined;
   footer?: ReactElement | ComponentType<any> | null;
   footerDefaultMargins?: boolean | number;
   onPresent?: () => void;
-  onSizeChange?: (event: SizeChangeEvent) => void;
   showCloseButton?: boolean;
   shareContent?: BottomModalShareContent;
   shareButtonOnPress?: (event: GestureResponderEvent) => void;
@@ -41,12 +40,11 @@ const BottomModal = forwardRef<BottomModalHandle, BottomModalProps>(
       onClose,
       onCloseModalPressed,
       onPresent,
-      onSizeChange,
       showCloseButton = true,
       isGrabberVisible = true,
       shareContent,
       shareButtonOnPress,
-      sizes = ['auto'],
+      detents = ['auto'],
       footer,
       footerDefaultMargins,
       header,
@@ -188,12 +186,11 @@ const BottomModal = forwardRef<BottomModalHandle, BottomModalProps>(
     return (
       <TrueSheet
         ref={trueSheetRef}
-        sizes={sizes}
-        onDismiss={onClose}
-        onPresent={onPresent}
-        onSizeChange={onSizeChange}
+        detents={detents}
+        onDidDismiss={onClose}
+        onDidPresent={onPresent}
         grabber={isGrabberVisible}
-        FooterComponent={FooterComponent as ReactElement}
+        footer={FooterComponent}
         {...props}
       >
         <View style={[styles.childrenContainer, contentStyle]}>{children}</View>

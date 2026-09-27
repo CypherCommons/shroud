@@ -1,13 +1,18 @@
 import UIKit
+internal import Expo
 import React
-import React_RCTAppDelegate
 import ReactAppDependencyProvider
 import UserNotifications
 import Bugsnag
 
 
 @main
-class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
+class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate {
+
+    var window: UIWindow?
+
+    var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
+    var reactNativeFactory: RCTReactNativeFactory?
 
     private var userDefaultsGroup: UserDefaults?
 
@@ -44,10 +49,6 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
       #endif
         }
 
-        self.moduleName = "Shroud"
-        self.dependencyProvider = RCTAppDependencyProvider()
-        self.initialProps = [:]
-
         RCTI18nUtil.sharedInstance().allowRTL(false)
         RCTI18nUtil.sharedInstance().forceRTL(false)
 
@@ -56,24 +57,21 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
 
         setupUserDefaultsListener()
         registerNotificationCategories()
-        
-        // Access the singleton via the class method
-        _ = MenuElementsEmitter.sharedInstance()
-        NSLog("[MenuElements] AppDelegate: Initialized emitter singleton")
+
+        let delegate = ReactNativeDelegate()
+        let factory = ExpoReactNativeFactory(delegate: delegate)
+        delegate.dependencyProvider = RCTAppDependencyProvider()
+
+        reactNativeDelegate = delegate
+        reactNativeFactory = factory
+
+        window = UIWindow(frame: UIScreen.main.bounds)
+        factory.startReactNative(
+            withModuleName: "Shroud",
+            in: window,
+            launchOptions: launchOptions)
 
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-    }
-
-    override func sourceURL(for bridge: RCTBridge) -> URL? {
-        return bundleURL()
-    }
-
-    override func bundleURL() -> URL? {
-        #if DEBUG
-        return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
-        #else
-        return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
-        #endif
     }
 
     private func registerNotificationCategories() {
@@ -218,7 +216,7 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
                     preferredStyle: .alert
                 )
                 alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-              self.window.rootViewController?.present(alert, animated: true, completion: nil)
+              self.window?.rootViewController?.present(alert, animated: true, completion: nil)
             }
         }
     }
@@ -306,25 +304,26 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
         userDefaultsGroup?.setValue(userActivityData, forKey: "onUserActivityOpen")
 
         if ["org.bitshala.shroud.receiveonchain", "org.bitshala.shroud.xpub", "org.bitshala.shroud.blockexplorer"].contains(activityType) {
-          EventEmitter.shared().sendUserActivity(userActivityData)
             return true
         }
 
         if activityType == NSUserActivityTypeBrowsingWeb {
-            return RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
+            let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
+            return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
         }
 
         print("[Handoff] Unhandled user activity type: \(activityType)")
-        return false
+        return super.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
     override func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        return RCTLinkingManager.application(app, open: url, options: options)
+        return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
     }
 
     override func applicationWillTerminate(_ application: UIApplication) {
+        super.applicationWillTerminate(application)
         userDefaultsGroup?.removeObject(forKey: "onUserActivityOpen")
-        
+
         UserDefaults.standard.removeObserver(self, forKeyPath: "deviceUID")
     }
 
@@ -351,7 +350,7 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
         completionHandler()
     }
     
-    // MARK: - Menu Building (macOS Catalyst)
+    // MARK: - Menu Building (iPad menu bar)
     
     override func buildMenu(with builder: UIMenuBuilder) {
         super.buildMenu(with: builder)
@@ -360,101 +359,6 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
         builder.remove(menu: .services)
         builder.remove(menu: .format)
         builder.remove(menu: .toolbar)
-        
-        // Remove the original Settings menu item
-        builder.remove(menu: .preferences)
-        
-        // File -> Add Wallet (Command + Shift + A)
-        let addWalletCommand = UIKeyCommand(
-            title: "Add Wallet",
-            action: #selector(addWalletAction),
-            input: "A",
-            modifierFlags: [.command, .shift]
-        )
-        
-        // All menu items enabled by default
-        
-        // File -> Import Wallet (Command + I)
-        let importWalletCommand = UIKeyCommand(
-            title: "Import Wallet",
-            action: #selector(importWalletAction),
-            input: "I",
-            modifierFlags: .command
-        )
-        
-        // Group Add Wallet and Import Wallet in a displayInline menu
-        let walletOperationsMenu = UIMenu(
-            title: "",
-            image: nil,
-            identifier: nil,
-            options: .displayInline,
-            children: [addWalletCommand, importWalletCommand]
-        )
-        
-        // Modify the existing File menu to include Wallet Operations
-        if let fileMenu = builder.menu(for: .file) {
-            // Add "Reload Transactions" (Command + R)
-            let reloadTransactionsCommand = UIKeyCommand(
-                title: "Reload Transactions",
-                action: #selector(reloadTransactionsAction),
-                input: "R",
-                modifierFlags: .command
-            )
-            
-            // Combine wallet operations and Reload Transactions into the new File menu
-            let newFileMenu = UIMenu(
-                title: fileMenu.title,
-                image: fileMenu.image,
-                identifier: fileMenu.identifier,
-                options: fileMenu.options,
-                children: [walletOperationsMenu, reloadTransactionsCommand]
-            )
-            
-            builder.replace(menu: .file, with: newFileMenu)
-        }
-        
-        // Shroud -> Settings (Command + ,)
-        let settingsCommand = UIKeyCommand(
-            title: "Settings...",
-            action: #selector(openSettings),
-            input: ",",
-            modifierFlags: .command
-        )
-        
-        let settingsMenu = UIMenu(
-            title: "",
-            image: nil,
-            identifier: nil,
-            options: .displayInline,
-            children: [settingsCommand]
-        )
-        
-        // Insert the new Settings menu after the About menu
-        builder.insertSibling(settingsMenu, afterMenu: .about)
-    }
-    
-    @objc func openSettings(_ keyCommand: UIKeyCommand) {
-        DispatchQueue.main.async {
-            MenuElementsEmitter.sharedInstance().openSettings()
-        }
-    }
-    
-    @objc func addWalletAction(_ keyCommand: UIKeyCommand) {
-        DispatchQueue.main.async {
-            MenuElementsEmitter.sharedInstance().addWalletMenuAction()
-        }
-    }
-    
-    @objc func importWalletAction(_ keyCommand: UIKeyCommand) {
-        DispatchQueue.main.async {
-            MenuElementsEmitter.sharedInstance().importWalletMenuAction()
-        }
-    }
-    
-    @objc func reloadTransactionsAction(_ keyCommand: UIKeyCommand) {
-        DispatchQueue.main.async {
-            MenuElementsEmitter.sharedInstance().reloadTransactionsMenuAction()
-        }
     }
     
     @objc func showHelp(_ sender: Any) {
@@ -469,5 +373,20 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
         } else {
             return super.canPerformAction(action, withSender: sender)
         }
+    }
+}
+
+class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
+    override func sourceURL(for bridge: RCTBridge) -> URL? {
+        // needed to return the correct URL for expo-dev-client.
+        bridge.bundleURL ?? bundleURL()
+    }
+
+    override func bundleURL() -> URL? {
+        #if DEBUG
+        return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: ".expo/.virtual-metro-entry")
+        #else
+        return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
+        #endif
     }
 }

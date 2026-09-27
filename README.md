@@ -15,10 +15,11 @@ This wallet is built using the following sister repositories:
 ## Getting Started
 
 ### Prerequisites
-- Node.js >= 20
+- Node.js >= 22.13 (Expo SDK 57)
 - npm
-- Android Studio (for Android development)
-- Xcode (for iOS development)
+- Rust via [rustup](https://rustup.rs) (for the silent-payments JSI bridge)
+- Android Studio with NDK 27.1 (for Android development)
+- Xcode 26.4+ (for iOS development)
 
 ## BUILD & RUN IT
 
@@ -38,7 +39,7 @@ cd shroud
 npm install
 ```
 
-make sure to copy .env.example → .env, set INDEXER_BASE_URL in `.env`, then reset metro cache with `npx react-native start --reset-cache`.
+make sure to copy .env.example → .env, set INDEXER_BASE_URL in `.env`, then reset metro cache with `npx expo start --clear`.
 
 Please make sure that your console is running the most stable versions of npm and node (even-numbered versions).
 
@@ -57,7 +58,8 @@ You will now need to either connect an Android device to your computer or run an
 Once you connected an Android device or launched an emulator, run this:
 
 ```
-npx react-native run-android
+npm run rust:build
+npm run android
 ```
 
 The above command will build the app and install it. Once you launch the app it will take some time for all of the dependencies to load. Once everything loads up, you should have the built app running.
@@ -74,19 +76,12 @@ npm start
 
 In another terminal window within the Shroud folder:
 ```
-npx react-native run-ios
-```
-**To debug Shroud on the iOS Simulator, you must choose a Rosetta-compatible iOS Simulator. This can be done by navigating to the Product menu in Xcode, selecting Destination Architectures, and then opting for "Show Both." This action will reveal the simulators that support Rosetta.
-**
-
-* To run on macOS using Mac Catalyst:
-
-```
-npx pod-install
-npm start
+npm run ios
 ```
 
-Open ios/Shroud.xcworkspace. Once the project loads, select the scheme/target Shroud. Click Run.
+`npm run android` and `npm run ios` build a development build with [expo-dev-client](https://docs.expo.dev/develop/development-builds/introduction/) and connect it to the Metro server started by `npm start`.
+
+Mac Catalyst builds are not supported since the move to Expo SDK 57, which ships React Native core prebuilt for iOS.
 
 * To generate the debug APK:
 

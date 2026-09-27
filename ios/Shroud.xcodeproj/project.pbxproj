@@ -8,8 +8,12 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		160057B4AB3F41E39C58595A /* ClashGrotesk-Semibold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 9DA70EDC52614D7BB6F20400 /* ClashGrotesk-Semibold.otf */; };
 		17CDA0718F42DB2CE856C872 /* libPods-Shroud.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 040819EDF8BD9C50A9C83E24 /* libPods-Shroud.a */; };
+		2FB6218D924B4EF987328D6D /* ClashGrotesk-Medium.otf in Resources */ = {isa = PBXBuildFile; fileRef = D4B314AF18DE41C48E7612CF /* ClashGrotesk-Medium.otf */; };
 		32B5A32A2334450100F8D608 /* Bridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32B5A3292334450100F8D608 /* Bridge.swift */; };
+		48A5AAED0720C9FEFBA2E2B5 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA05C80877C1EA82A81288AD /* ExpoModulesProvider.swift */; };
+		497FDCE44A824A04AF34EBB0 /* ClashGrotesk-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = BFFD5A5519584B018B1D07F6 /* ClashGrotesk-Regular.otf */; };
 		6DD4109D266CADF10087DE03 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6D333B3A252FE1A3004D72DF /* WidgetKit.framework */; };
 		6DD4109E266CADF10087DE03 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6D333B3C252FE1A3004D72DF /* SwiftUI.framework */; };
 		6DD410A1266CADF10087DE03 /* Widgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD410A0266CADF10087DE03 /* Widgets.swift */; };
@@ -34,7 +38,8 @@
 		764B49B1420D4AEB8109BF62 /* libsqlite3.0.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B468CC34D5B41F3950078EF /* libsqlite3.0.tbd */; };
 		782F075B5DD048449E2DECE9 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = B9D9B3A7B2CB4255876B67AF /* libz.tbd */; };
 		84E05A842721191B001A0D3A /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 84E05A832721191B001A0D3A /* Settings.bundle */; };
-		B409AB062D71E07500BA06F8 /* MenuElementsEmitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B409AB052D71E07500BA06F8 /* MenuElementsEmitter.swift */; };
+		8A5451C5D4574A908E1375C0 /* ClashGrotesk-Bold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 037FC3889C64461890790291 /* ClashGrotesk-Bold.otf */; };
+		9E75EB9CF9B34BAAB06DF721 /* ClashGrotesk-Bold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 037FC3889C64461890790291 /* ClashGrotesk-Bold.otf */; };
 		B40FC3FA29CCD1D00007EBAC /* SwiftTCPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40FC3F829CCD1AC0007EBAC /* SwiftTCPClient.swift */; };
 		B41C2E562BB3DCB8000FE097 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B41C2E552BB3DCB8000FE097 /* PrivacyInfo.xcprivacy */; };
 		B41C2E582BB3DCB8000FE097 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B41C2E552BB3DCB8000FE097 /* PrivacyInfo.xcprivacy */; };
@@ -94,32 +99,16 @@
 		B49A28BE2CD189B0006B08E4 /* FiatUnitEnum.swift in Sources */ = {isa = PBXBuildFile; fileRef = B49A28BD2CD189B0006B08E4 /* FiatUnitEnum.swift */; };
 		B49A28BF2CD18A9A006B08E4 /* FiatUnitEnum.swift in Sources */ = {isa = PBXBuildFile; fileRef = B49A28BD2CD189B0006B08E4 /* FiatUnitEnum.swift */; };
 		B49A28C52CD1A894006B08E4 /* MarketData.swift in Sources */ = {isa = PBXBuildFile; fileRef = B44033E82BCC371A00162242 /* MarketData.swift */; };
-		B4AA75242DAA339E00CF5CBE /* MenuElementsEmitter.m in Sources */ = {isa = PBXBuildFile; fileRef = B4AA75232DAA339E00CF5CBE /* MenuElementsEmitter.m */; };
 		B4AB225E2B02AD12001F4328 /* XMLParserDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4AB225C2B02AD12001F4328 /* XMLParserDelegate.swift */; };
 		B4B1A4622BFA73110072E3BB /* WidgetHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B1A4612BFA73110072E3BB /* WidgetHelper.swift */; };
 		B4B1A4642BFA73110072E3BB /* WidgetHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B1A4612BFA73110072E3BB /* WidgetHelper.swift */; };
-		B4B3EC222D69FF6C00327F3D /* CustomSegmentedControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B3EC202D69FF6C00327F3D /* CustomSegmentedControl.swift */; };
-		B4B3EC252D69FF8700327F3D /* EventEmitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B3EC232D69FF8700327F3D /* EventEmitter.swift */; };
-		B4D899942DCAE67700B959AA /* CustomSegmentedControl.m in Sources */ = {isa = PBXBuildFile; fileRef = B4D899932DCAE67700B959AA /* CustomSegmentedControl.m */; };
-		C978A716948AB7DEC5B6F677 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
-		F5A8F85B634146F9A6F34304 /* ClashGrotesk-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = BFFD5A5519584B018B1D07F6 /* ClashGrotesk-Regular.otf */; };
-		497FDCE44A824A04AF34EBB0 /* ClashGrotesk-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = BFFD5A5519584B018B1D07F6 /* ClashGrotesk-Regular.otf */; };
 		C67420346483400597617B6D /* ClashGrotesk-Medium.otf in Resources */ = {isa = PBXBuildFile; fileRef = D4B314AF18DE41C48E7612CF /* ClashGrotesk-Medium.otf */; };
-		2FB6218D924B4EF987328D6D /* ClashGrotesk-Medium.otf in Resources */ = {isa = PBXBuildFile; fileRef = D4B314AF18DE41C48E7612CF /* ClashGrotesk-Medium.otf */; };
-		9E75EB9CF9B34BAAB06DF721 /* ClashGrotesk-Bold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 037FC3889C64461890790291 /* ClashGrotesk-Bold.otf */; };
-		8A5451C5D4574A908E1375C0 /* ClashGrotesk-Bold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 037FC3889C64461890790291 /* ClashGrotesk-Bold.otf */; };
+		C978A716948AB7DEC5B6F677 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
 		EE119CAA96DD4C83BD27606E /* ClashGrotesk-Semibold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 9DA70EDC52614D7BB6F20400 /* ClashGrotesk-Semibold.otf */; };
-		160057B4AB3F41E39C58595A /* ClashGrotesk-Semibold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 9DA70EDC52614D7BB6F20400 /* ClashGrotesk-Semibold.otf */; };
+		F5A8F85B634146F9A6F34304 /* ClashGrotesk-Regular.otf in Resources */ = {isa = PBXBuildFile; fileRef = BFFD5A5519584B018B1D07F6 /* ClashGrotesk-Regular.otf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		6D9946672555A661000E52E8 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 6D99465D2555A660000E52E8;
-			remoteInfo = MarketWidgetExtension;
-		};
 		6DD410A5266CADF40087DE03 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
@@ -155,6 +144,7 @@
 
 /* Begin PBXFileReference section */
 		00E356F11AD99517003FC87E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		037FC3889C64461890790291 /* ClashGrotesk-Bold.otf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "ClashGrotesk-Bold.otf"; path = "../assets/fonts/ClashGrotesk-Bold.otf"; sourceTree = "<group>"; };
 		040819EDF8BD9C50A9C83E24 /* libPods-Shroud.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Shroud.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07F961A680F5B00A75B9A /* Shroud.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shroud.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Shroud/Images.xcassets; sourceTree = "<group>"; };
@@ -209,11 +199,11 @@
 		93D74F9C8EE7B4443A49594C /* Pods-Shroud.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Shroud.release.xcconfig"; path = "Target Support Files/Pods-Shroud/Pods-Shroud.release.xcconfig"; sourceTree = "<group>"; };
 		94565BFC6A0C4235B3EC7B01 /* libRNSVG.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRNSVG.a; sourceTree = "<group>"; };
 		95208B2A05884A76B5BB99C0 /* libRCTGoogleAnalyticsBridge.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRCTGoogleAnalyticsBridge.a; sourceTree = "<group>"; };
+		9DA70EDC52614D7BB6F20400 /* ClashGrotesk-Semibold.otf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "ClashGrotesk-Semibold.otf"; path = "../assets/fonts/ClashGrotesk-Semibold.otf"; sourceTree = "<group>"; };
 		9DF4E6C040764E4BA1ACC1EB /* libTcpSockets.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libTcpSockets.a; sourceTree = "<group>"; };
 		9F1F51A83D044F3BB26A35FC /* libRNSVG-tvOS.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = "libRNSVG-tvOS.a"; sourceTree = "<group>"; };
 		A7C4B1FDAD264618BAF8C335 /* libRNCWebView.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRNCWebView.a; sourceTree = "<group>"; };
 		AB2325650CE04F018697ACFE /* libRNReactNativeHapticFeedback.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRNReactNativeHapticFeedback.a; sourceTree = "<group>"; };
-		B409AB052D71E07500BA06F8 /* MenuElementsEmitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MenuElementsEmitter.swift; path = MenuElementsEmitter/MenuElementsEmitter.swift; sourceTree = SOURCE_ROOT; };
 		B40FC3F829CCD1AC0007EBAC /* SwiftTCPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftTCPClient.swift; sourceTree = "<group>"; };
 		B41C2E552BB3DCB8000FE097 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B43B69BA225C46D800925B1E /* libRCTLinking.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; path = libRCTLinking.a; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -244,32 +234,27 @@
 		B49038D82B8FBAD300A8164A /* ShroudUITest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShroudUITest.swift; sourceTree = "<group>"; };
 		B49A28BA2CD18999006B08E4 /* CompactPriceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactPriceView.swift; sourceTree = "<group>"; };
 		B49A28BD2CD189B0006B08E4 /* FiatUnitEnum.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FiatUnitEnum.swift; sourceTree = "<group>"; };
-		B4AA75232DAA339E00CF5CBE /* MenuElementsEmitter.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MenuElementsEmitter.m; sourceTree = "<group>"; };
 		B4AB225C2B02AD12001F4328 /* XMLParserDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = XMLParserDelegate.swift; sourceTree = "<group>"; };
 		B4B1A4612BFA73110072E3BB /* WidgetHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetHelper.swift; sourceTree = "<group>"; };
-		B4B3EC202D69FF6C00327F3D /* CustomSegmentedControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CustomSegmentedControl.swift; path = SegmentedControl/CustomSegmentedControl.swift; sourceTree = "<group>"; };
-		B4B3EC232D69FF8700327F3D /* EventEmitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventEmitter.swift; sourceTree = "<group>"; };
 		B4D3235A177F4580BA52F2F9 /* libRNCSlider.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRNCSlider.a; sourceTree = "<group>"; };
-		B4D899932DCAE67700B959AA /* CustomSegmentedControl.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CustomSegmentedControl.m; sourceTree = "<group>"; };
 		B4EFF73A2C3F6C5E0095D655 /* MockData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockData.swift; sourceTree = "<group>"; };
 		B642AFB13483418CAB6FF25E /* libRCTQRCodeLocalImage.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRCTQRCodeLocalImage.a; sourceTree = "<group>"; };
 		B9D9B3A7B2CB4255876B67AF /* libz.tbd */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libz.tbd; path = usr/lib/libz.tbd; sourceTree = SDKROOT; };
 		BBA99996E6FA4B49ACE0BEFA /* libRNRate.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRNRate.a; sourceTree = "<group>"; };
+		BFFD5A5519584B018B1D07F6 /* ClashGrotesk-Regular.otf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "ClashGrotesk-Regular.otf"; path = "../assets/fonts/ClashGrotesk-Regular.otf"; sourceTree = "<group>"; };
 		CA741BA794714D3F80251AC9 /* Ionicons.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = Ionicons.ttf; path = "../node_modules/react-native-vector-icons/Fonts/Ionicons.ttf"; sourceTree = "<group>"; };
 		CD746B955C55410793BB72C0 /* libRNGestureHandler.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRNGestureHandler.a; sourceTree = "<group>"; };
 		CF4A4D7AAD974D67A2D62B3E /* MaterialIcons.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = MaterialIcons.ttf; path = "../node_modules/react-native-vector-icons/Fonts/MaterialIcons.ttf"; sourceTree = "<group>"; };
+		D4B314AF18DE41C48E7612CF /* ClashGrotesk-Medium.otf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "ClashGrotesk-Medium.otf"; path = "../assets/fonts/ClashGrotesk-Medium.otf"; sourceTree = "<group>"; };
 		E6B44173A8854B6D85D7F933 /* libRNVectorIcons-tvOS.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = "libRNVectorIcons-tvOS.a"; sourceTree = "<group>"; };
 		E8E8CE89B3D142C6A8A56C34 /* Octicons.ttf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = Octicons.ttf; path = "../node_modules/react-native-vector-icons/Fonts/Octicons.ttf"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		ED2971642150620600B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS12.0.sdk/System/Library/Frameworks/JavaScriptCore.framework; sourceTree = DEVELOPER_DIR; };
 		F6F53AFC25FB422485CB22D6 /* SystemConfiguration.framework */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
+		FA05C80877C1EA82A81288AD /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Shroud/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		FC63C7054F1C4FDFB7A830E5 /* libRCTPrivacySnapshot.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRCTPrivacySnapshot.a; sourceTree = "<group>"; };
 		FC98DC24A81A463AB8B2E6B1 /* libRNImagePicker.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRNImagePicker.a; sourceTree = "<group>"; };
 		FD7977067E1A496F94D8B1B7 /* libRNDeviceInfo.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRNDeviceInfo.a; sourceTree = "<group>"; };
-		BFFD5A5519584B018B1D07F6 /* ClashGrotesk-Regular.otf */ = {isa = PBXFileReference; name = "ClashGrotesk-Regular.otf"; path = "../assets/fonts/ClashGrotesk-Regular.otf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
-		D4B314AF18DE41C48E7612CF /* ClashGrotesk-Medium.otf */ = {isa = PBXFileReference; name = "ClashGrotesk-Medium.otf"; path = "../assets/fonts/ClashGrotesk-Medium.otf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
-		037FC3889C64461890790291 /* ClashGrotesk-Bold.otf */ = {isa = PBXFileReference; name = "ClashGrotesk-Bold.otf"; path = "../assets/fonts/ClashGrotesk-Bold.otf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
-		9DA70EDC52614D7BB6F20400 /* ClashGrotesk-Semibold.otf */ = {isa = PBXFileReference; name = "ClashGrotesk-Semibold.otf"; path = "../assets/fonts/ClashGrotesk-Semibold.otf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -348,6 +333,14 @@
 				040819EDF8BD9C50A9C83E24 /* libPods-Shroud.a */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		49F9E6DF57EE09E880D59946 /* Shroud */ = {
+			isa = PBXGroup;
+			children = (
+				FA05C80877C1EA82A81288AD /* ExpoModulesProvider.swift */,
+			);
+			name = Shroud;
 			sourceTree = "<group>";
 		};
 		4B0CACE36C3348E1BCEA92C8 /* Resources */ = {
@@ -471,6 +464,7 @@
 				B40FE50A21FAD228005D5578 /* Recovered References */,
 				4B0CACE36C3348E1BCEA92C8 /* Resources */,
 				FAA856B639C61E61D2CF90A8 /* Pods */,
+				C60F30D769AC8D9F550DB3F8 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -556,11 +550,6 @@
 		B45010A12C1504E900619044 /* Components */ = {
 			isa = PBXGroup;
 			children = (
-				B4D899932DCAE67700B959AA /* CustomSegmentedControl.m */,
-				B4AA75232DAA339E00CF5CBE /* MenuElementsEmitter.m */,
-				B4B3EC232D69FF8700327F3D /* EventEmitter.swift */,
-				B409AB052D71E07500BA06F8 /* MenuElementsEmitter.swift */,
-				B4B3EC202D69FF6C00327F3D /* CustomSegmentedControl.swift */,
 				B4B1A4612BFA73110072E3BB /* WidgetHelper.swift */,
 			);
 			path = Components;
@@ -581,6 +570,14 @@
 			path = ShroudUITests;
 			sourceTree = "<group>";
 		};
+		C60F30D769AC8D9F550DB3F8 /* ExpoModulesProviders */ = {
+			isa = PBXGroup;
+			children = (
+				49F9E6DF57EE09E880D59946 /* Shroud */,
+			);
+			name = ExpoModulesProviders;
+			sourceTree = "<group>";
+		};
 		FAA856B639C61E61D2CF90A8 /* Pods */ = {
 			isa = PBXGroup;
 			children = (
@@ -598,6 +595,7 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "Shroud" */;
 			buildPhases = (
 				3B467A525D105B531AB91B81 /* [CP] Check Pods Manifest.lock */,
+				A187657426E1CB43D6217E48 /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
@@ -612,7 +610,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				6D9946682555A661000E52E8 /* PBXTargetDependency */,
 				6DD410A6266CADF40087DE03 /* PBXTargetDependency */,
 			);
 			name = Shroud;
@@ -765,7 +762,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "export EXTRA_PACKAGER_ARGS=\"--sourcemap-output $TMPDIR/$(md5 -qs \"$CONFIGURATION_BUILD_DIR\")-main.jsbundle.map\"\nexport NODE_BINARY=$(which node)\n../node_modules/react-native/scripts/react-native-xcode.sh\n\n";
+			shellScript = "if [[ -f \"$PODS_ROOT/../.xcode.env\" ]]; then\n  source \"$PODS_ROOT/../.xcode.env\"\nfi\nif [[ -f \"$PODS_ROOT/../.xcode.env.local\" ]]; then\n  source \"$PODS_ROOT/../.xcode.env.local\"\nfi\n\n# The project root by default is one level up from the ios directory\nexport PROJECT_ROOT=\"$PROJECT_DIR\"/..\n\nif [[ \"$CONFIGURATION\" = *Debug* ]]; then\n  export SKIP_BUNDLING=1\nfi\nif [[ -z \"$ENTRY_FILE\" ]]; then\n  # Set the entry JS file using the bundler's entry resolution.\n  export ENTRY_FILE=\"$(\"$NODE_BINARY\" -e \"require('expo/scripts/resolveAppEntry')\" \"$PROJECT_ROOT\" ios absolute | tail -n 1)\"\nfi\n\nif [[ -z \"$CLI_PATH\" ]]; then\n  # Use Expo CLI\n  export CLI_PATH=\"$(\"$NODE_BINARY\" --print \"require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })\")\"\nfi\nif [[ -z \"$BUNDLE_COMMAND\" ]]; then\n  # Default Expo CLI command for bundling\n  export BUNDLE_COMMAND=\"export:embed\"\nfi\n\n# Source map for the \"Upload source maps to Bugsnag\" phase\nexport EXTRA_PACKAGER_ARGS=\"--sourcemap-output $TMPDIR/$(md5 -qs \"$CONFIGURATION_BUILD_DIR\")-main.jsbundle.map\"\n\n# Source .xcode.env.updates if it exists to allow\n# SKIP_BUNDLING to be unset if needed\nif [[ -f \"$PODS_ROOT/../.xcode.env.updates\" ]]; then\n  source \"$PODS_ROOT/../.xcode.env.updates\"\nfi\n# Source local changes to allow overrides\n# if needed\nif [[ -f \"$PODS_ROOT/../.xcode.env.local\" ]]; then\n  source \"$PODS_ROOT/../.xcode.env.local\"\nfi\n\n`\"$NODE_BINARY\" --print \"require('path').dirname(require.resolve('react-native/package.json')) + '/scripts/react-native-xcode.sh'\"`\n";
 		};
 		3B467A525D105B531AB91B81 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -809,6 +806,30 @@
 			shellPath = "/usr/bin/env ruby";
 			shellScript = "api_key = nil # Insert your key here to use it directly from this script\n\n# Attempt to get the API key from an environment variable\nunless api_key\n  api_key = ENV[\"BUGSNAG_API_KEY\"]\n\n  # If not present, attempt to lookup the value from the Info.plist\n  unless api_key\n    info_plist_path = \"#{ENV[\"BUILT_PRODUCTS_DIR\"]}/#{ENV[\"INFOPLIST_PATH\"]}\"\n    plist_buddy_response = `/usr/libexec/PlistBuddy -c \"print :bugsnag:apiKey\" \"#{info_plist_path}\"`\n    plist_buddy_response = `/usr/libexec/PlistBuddy -c \"print :BugsnagAPIKey\" \"#{info_plist_path}\"` if !$?.success?\n    api_key = plist_buddy_response if $?.success?\n  end\nend\n\nfail(\"No Bugsnag API key detected - add your key to your Info.plist, BUGSNAG_API_KEY environment variable or this Run Script phase\") unless api_key\n\nfork do\n  Process.setsid\n  STDIN.reopen(\"/dev/null\")\n  STDOUT.reopen(\"/dev/null\", \"a\")\n  STDERR.reopen(\"/dev/null\", \"a\")\n\n  require 'shellwords'\n\n  Dir[\"#{ENV[\"DWARF_DSYM_FOLDER_PATH\"]}/*/Contents/Resources/DWARF/*\"].each do |dsym|\n    curl_command = \"curl --http1.1 -F dsym=@#{Shellwords.escape(dsym)} -F projectRoot=#{Shellwords.escape(ENV[\"PROJECT_DIR\"])} \"\n    curl_command += \"-F apiKey=#{Shellwords.escape(api_key)} \"\n    curl_command += \"https://upload.bugsnag.com/\"\n    system(curl_command)\n  end\nend\n\n";
 			showEnvVarsInLog = 0;
+		};
+		A187657426E1CB43D6217E48 /* [Expo] Configure project */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/.xcode.env",
+				"$(SRCROOT)/.xcode.env.local",
+				"$(SRCROOT)/Shroud/Shroud.entitlements",
+				"$(SRCROOT)/Pods/Target Support Files/Pods-Shroud/expo-configure-project.sh",
+			);
+			name = "[Expo] Configure project";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Pods/Target Support Files/Pods-Shroud/ExpoModulesProvider.swift",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-Shroud/expo-configure-project.sh\"\n";
 		};
 		A8D9893AE3CD454A9094B651 /* Upload source maps to Bugsnag */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -898,23 +919,18 @@
 				B450109C2C0FCD8A00619044 /* Utilities.swift in Sources */,
 				B48630E52CCEE8B800A8425C /* PriceView.swift in Sources */,
 				B48630E72CCEE91900A8425C /* PriceWidgetProvider.swift in Sources */,
-				B4B3EC252D69FF8700327F3D /* EventEmitter.swift in Sources */,
 				B48630ED2CCEEEB000A8425C /* WalletAppShortcuts.swift in Sources */,
-				B409AB062D71E07500BA06F8 /* MenuElementsEmitter.swift in Sources */,
 				B44033CE2BCC352900162242 /* UserDefaultsGroup.swift in Sources */,
 				B461B852299599F800E431AA /* AppDelegate.swift in Sources */,
 				B44033F42BCC377F00162242 /* WidgetData.swift in Sources */,
 				B49A28C52CD1A894006B08E4 /* MarketData.swift in Sources */,
-				B4AA75242DAA339E00CF5CBE /* MenuElementsEmitter.m in Sources */,
 				B49A28BF2CD18A9A006B08E4 /* FiatUnitEnum.swift in Sources */,
 				B44033C42BCC332400162242 /* Balance.swift in Sources */,
 				B48630EE2CCEEEE900A8425C /* PriceIntent.swift in Sources */,
 				B44034072BCC38A000162242 /* FiatUnit.swift in Sources */,
 				B44034002BCC37F800162242 /* Bundle+decode.swift in Sources */,
-				B4D899942DCAE67700B959AA /* CustomSegmentedControl.m in Sources */,
 				B44033E22BCC36CB00162242 /* Placeholders.swift in Sources */,
 				B4793DBB2CEDACBD00C92C2E /* Chain.swift in Sources */,
-				B4B3EC222D69FF6C00327F3D /* CustomSegmentedControl.swift in Sources */,
 				B4B1A4622BFA73110072E3BB /* WidgetHelper.swift in Sources */,
 				B48630E12CCEE7C800A8425C /* PriceWidgetEntryView.swift in Sources */,
 				B44033DA2BCC369A00162242 /* Colors.swift in Sources */,
@@ -928,6 +944,7 @@
 				B44034052BCC389200162242 /* XMLParserDelegate.swift in Sources */,
 				B48630DD2CCEE7AC00A8425C /* PriceWidgetEntry.swift in Sources */,
 				B44033F92BCC379200162242 /* WidgetDataStore.swift in Sources */,
+				48A5AAED0720C9FEFBA2E2B5 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -981,10 +998,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		6D9946682555A661000E52E8 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			targetProxy = 6D9946672555A661000E52E8 /* PBXContainerItemProxy */;
-		};
 		6DD410A6266CADF40087DE03 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 6DD4109B266CADF10087DE03 /* WidgetsExtension */;
@@ -1021,7 +1034,7 @@
 				INFOPLIST_KEY_CLKComplicationPrincipalClass = "$(PRODUCT_BUNDLE_IDENTIFIER).ComplicationController";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = org.bitshala.shroud;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1037,6 +1050,7 @@
 					"-ObjC",
 					"-lc++",
 				);
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
 				PRESERVE_DEAD_CODE_INITS_AND_TERMS = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.bitshala.shroud;
 				PRODUCT_NAME = Shroud;
@@ -1078,7 +1092,7 @@
 				INFOPLIST_KEY_CLKComplicationPrincipalClass = "$(PRODUCT_BUNDLE_IDENTIFIER).ComplicationController";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = org.bitshala.shroud;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1094,6 +1108,7 @@
 					"-ObjC",
 					"-lc++",
 				);
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
 				PRESERVE_DEAD_CODE_INITS_AND_TERMS = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.bitshala.shroud;
 				PRODUCT_NAME = Shroud;
@@ -1149,6 +1164,7 @@
 				MARKETING_VERSION = 7.2.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
 				PRESERVE_DEAD_CODE_INITS_AND_TERMS = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.bitshala.shroud.MarketWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1206,6 +1222,7 @@
 				);
 				MARKETING_VERSION = 7.2.1;
 				MTL_FAST_MATH = YES;
+				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
 				PRESERVE_DEAD_CODE_INITS_AND_TERMS = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = org.bitshala.shroud.MarketWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1275,19 +1292,27 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				LD = "";
 				LDPLUSPLUS = "";
 				LIBRARY_SEARCH_PATHS = "$(SDKROOT)/usr/lib/swift\"$(inherited)\"";
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				OTHER_CFLAGS = "$(inherited)";
-				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-DRCT_REMOVE_LEGACY_ARCH=1",
+				);
+				OTHER_CPLUSPLUSFLAGS = (
+					"$(inherited)",
+					"-DRCT_REMOVE_LEGACY_ARCH=1",
+				);
 				OTHER_LDFLAGS = "$(inherited)";
+				PODFILE_DIR = "$(SRCROOT)";
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				SWIFT_VERSION = 5.0;
 				USE_HERMES = true;
 				WATCHOS_DEPLOYMENT_TARGET = 7.0;
@@ -1341,18 +1366,26 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.4;
 				LD = "";
 				LDPLUSPLUS = "";
 				LIBRARY_SEARCH_PATHS = "$(SDKROOT)/usr/lib/swift\"$(inherited)\"";
 				MTL_ENABLE_DEBUG_INFO = NO;
-				OTHER_CFLAGS = "$(inherited)";
-				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-DRCT_REMOVE_LEGACY_ARCH=1",
+				);
+				OTHER_CPLUSPLUSFLAGS = (
+					"$(inherited)",
+					"-DRCT_REMOVE_LEGACY_ARCH=1",
+				);
 				OTHER_LDFLAGS = "$(inherited)";
+				PODFILE_DIR = "$(SRCROOT)";
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				SWIFT_VERSION = 5.0;
 				USE_HERMES = true;
 				VALIDATE_PRODUCT = YES;

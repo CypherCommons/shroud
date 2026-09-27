@@ -20,7 +20,6 @@ const ContactPickerSheet = forwardRef<BottomModalHandle, ContactPickerSheetProps
   const { colors } = useTheme();
   const { contactList } = useContacts();
   const sheetRef = useRef<BottomModalHandle>(null);
-  const scrollRef = useRef<ScrollView>(null);
   // TrueSheet renders its children whether or not the sheet is up, so without this every contact
   // row is rebuilt on each SendDetails keystroke for a sheet nobody can see.
   const [isOpen, setIsOpen] = useState(false);
@@ -45,7 +44,7 @@ const ContactPickerSheet = forwardRef<BottomModalHandle, ContactPickerSheetProps
   return (
     <BottomModal
       ref={sheetRef}
-      sizes={['auto']}
+      detents={['auto']}
       // Rounds the top corners only; the native sheet squares off the bottom two.
       cornerRadius={16}
       backgroundColor={colors.background}
@@ -53,7 +52,6 @@ const ContactPickerSheet = forwardRef<BottomModalHandle, ContactPickerSheetProps
       isGrabberVisible={false}
       showCloseButton={false}
       contentStyle={styles.sheet}
-      scrollRef={scrollRef as React.RefObject<React.Component<unknown>>}
       onClose={() => setIsOpen(false)}
     >
       <View style={styles.header}>
@@ -68,7 +66,6 @@ const ContactPickerSheet = forwardRef<BottomModalHandle, ContactPickerSheetProps
       </View>
 
       <ScrollView
-        ref={scrollRef}
         style={styles.list}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}

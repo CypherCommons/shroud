@@ -9,7 +9,7 @@ describe('unit - getEffectiveTheme', () => {
   });
 
   it('falls back to the default theme when preference is system and the OS scheme is unknown', () => {
-    assert.strictEqual(getEffectiveTheme('system', null), ShroudDefaultTheme);
+    assert.strictEqual(getEffectiveTheme('system', 'unspecified'), ShroudDefaultTheme);
   });
 
   it('forces the light theme regardless of a dark OS color scheme', () => {
