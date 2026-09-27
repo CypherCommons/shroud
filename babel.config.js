@@ -1,5 +1,6 @@
 module.exports = {
-  presets: ['module:@react-native/babel-preset'],
+  // babel-preset-expo also adds the react-native-worklets plugin that Reanimated 4 needs.
+  presets: ['babel-preset-expo'],
   plugins: [
     [
       'module:react-native-dotenv',
@@ -8,6 +9,5 @@ module.exports = {
         path: '.env',
       },
     ],
-    'react-native-reanimated/plugin', // required by react-native-reanimated v2 https://docs.swmansion.com/react-native-reanimated/docs/installation/
   ],
 };

@@ -7,7 +7,6 @@ import {
   Keyboard,
   LayoutAnimation,
   PixelRatio,
-  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -514,7 +513,6 @@ const CoinControl: React.FC = () => {
           setOutput(undefined);
         }}
         backgroundColor={colors.background}
-        contentContainerStyle={styles.modalMinHeight}
         footer={
           <View style={mStyles.buttonContainer}>
             {!isVisible && (
@@ -571,7 +569,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalMinHeight: Platform.OS === 'android' ? { minHeight: 530 } : {},
   empty: {
     flex: 1,
     justifyContent: 'center',

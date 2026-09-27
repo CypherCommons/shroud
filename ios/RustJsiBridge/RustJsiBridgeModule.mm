@@ -1,33 +1,34 @@
 #import "RustJsiBridgeModule.h"
-#import "RustJsiBridge.h"
-#import <React/RCTBridge+Private.h>
-#import <jsi/jsi.h>
 
-using namespace facebook::jsi;
+#import <ReactCommon/RCTTurboModuleWithJSIBindings.h>
+#import <ShroudSpecs/ShroudSpecs.h>
+
+#import "RustJsiBridge.h"
+
+@interface RustJsiBridgeModule () <NativeRustJsiBridgeSpec, RCTTurboModuleWithJSIBindings>
+@end
 
 @implementation RustJsiBridgeModule
 
 RCT_EXPORT_MODULE(RustJsiBridge)
 
-// Ensure JSI functions installed on main thread
-+ (BOOL)requiresMainQueueSetup {
-    return YES;
+// React Native calls this on the JS thread when it creates the module, before JS can use it.
+- (void)installJSIBindingsWithRuntime:(facebook::jsi::Runtime &)runtime
+                          callInvoker:(const std::shared_ptr<facebook::react::CallInvoker> &)callInvoker
+{
+  rustjsibridge::installJSIBindings(runtime);
 }
 
-// Synchronous installation of JSI functions
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
-    RCTBridge* bridge = [RCTBridge currentBridge];
-    RCTCxxBridge* cxxBridge = (RCTCxxBridge*)bridge;
-    
-    if (!cxxBridge.runtime) {
-        return @false;
-    }
-    
-    Runtime *jsiRuntime = (Runtime *)cxxBridge.runtime;
-    
-    rustjsibridge::installJSIBindings(*jsiRuntime);
-    
-    return @true;
+// The bindings are installed when the module is created, so there is nothing left to do here.
+- (NSNumber *)install
+{
+  return @YES;
+}
+
+- (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
+    (const facebook::react::ObjCTurboModule::InitParams &)params
+{
+  return std::make_shared<facebook::react::NativeRustJsiBridgeSpecJSI>(params);
 }
 
 @end
