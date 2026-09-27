@@ -6,7 +6,7 @@
     "isolatedModules": true,
     "lib": ["es2020"],
     "strict": true,
-    "types": ["react-native", "jest"]
+    "types": ["react-native", "jest", "expo/types/metro-require"]
   },
   "exclude": [
     "node_modules",

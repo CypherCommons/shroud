@@ -39,6 +39,7 @@
 		782F075B5DD048449E2DECE9 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = B9D9B3A7B2CB4255876B67AF /* libz.tbd */; };
 		84E05A842721191B001A0D3A /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 84E05A832721191B001A0D3A /* Settings.bundle */; };
 		8A5451C5D4574A908E1375C0 /* ClashGrotesk-Bold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 037FC3889C64461890790291 /* ClashGrotesk-Bold.otf */; };
+		8E83D8770CDA1F5302FC33BF /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0FC472CD905D3040C343A3F8 /* Expo.plist */; };
 		9E75EB9CF9B34BAAB06DF721 /* ClashGrotesk-Bold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 037FC3889C64461890790291 /* ClashGrotesk-Bold.otf */; };
 		B40FC3FA29CCD1D00007EBAC /* SwiftTCPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40FC3F829CCD1AC0007EBAC /* SwiftTCPClient.swift */; };
 		B41C2E562BB3DCB8000FE097 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B41C2E552BB3DCB8000FE097 /* PrivacyInfo.xcprivacy */; };
@@ -146,6 +147,7 @@
 		00E356F11AD99517003FC87E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		037FC3889C64461890790291 /* ClashGrotesk-Bold.otf */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = undefined; includeInIndex = 0; lastKnownFileType = unknown; name = "ClashGrotesk-Bold.otf"; path = "../assets/fonts/ClashGrotesk-Bold.otf"; sourceTree = "<group>"; };
 		040819EDF8BD9C50A9C83E24 /* libPods-Shroud.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Shroud.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		0FC472CD905D3040C343A3F8 /* Expo.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = Expo.plist; path = Shroud/Supporting/Expo.plist; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* Shroud.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shroud.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Shroud/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Shroud/Info.plist; sourceTree = "<group>"; };
@@ -312,6 +314,7 @@
 				84E05A832721191B001A0D3A /* Settings.bundle */,
 				B4742E962CCDBE8300380EEE /* Localizable.xcstrings */,
 				B48283572DA0DE02007EEC62 /* Shroud-Bridging-Header.h */,
+				0FC472CD905D3040C343A3F8 /* Expo.plist */,
 			);
 			name = Shroud;
 			sourceTree = "<group>";
@@ -725,6 +728,7 @@
 				C67420346483400597617B6D /* ClashGrotesk-Medium.otf in Resources */,
 				9E75EB9CF9B34BAAB06DF721 /* ClashGrotesk-Bold.otf in Resources */,
 				EE119CAA96DD4C83BD27606E /* ClashGrotesk-Semibold.otf in Resources */,
+				8E83D8770CDA1F5302FC33BF /* Expo.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

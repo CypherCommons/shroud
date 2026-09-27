@@ -1,0 +1,25 @@
+# Paths inside android/ and ios/ that are generated or machine-local (all gitignored). They must not
+# affect the runtime version fingerprint, or a build and an `eas update` run on different machines
+# would compute different runtime versions. Build outputs, Pods and Gradle caches are ignored by
+# default; see fingerprint.config.js for what is added.
+
+# Rust JSI bridge static libraries, built by rust-native-setup.sh
+android/app/src/main/jniLibs/**/*
+ios/RustJsiBridge.xcframework/**/*
+
+# Copied or generated during Android builds
+android/app/src/main/assets/fiatUnits.json
+android/app/src/main/assets/index.android.bundle
+
+# Machine-local files and IDE state
+android/local.properties
+android/.kotlin/**/*
+**/*.hprof
+**/.idea/**/*
+**/*.iml
+android/.project
+android/.settings/**/*
+android/app/.project
+android/app/.classpath
+**/xcuserdata/**/*
+**/*.xcuserstate

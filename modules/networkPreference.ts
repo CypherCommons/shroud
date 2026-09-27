@@ -69,7 +69,7 @@ export function assertNetworkEnabled(id: NetworkId): void {
 export function assertIndexerConfigured(id: NetworkId): void {
   const network = getNetwork(id);
   if (!network.indexerBaseUrl) {
-    throw new Error(`No silent payment indexer is configured for ${network.displayName}. Set INDEXER_BASE_URL_* in .env`);
+    throw new Error(`No silent payment indexer is configured for ${network.displayName}. Set EXPO_PUBLIC_INDEXER_BASE_URL_* in .env`);
   }
 }
 

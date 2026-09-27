@@ -20,7 +20,7 @@ import { BIP352_ACTIVATION_HEIGHT } from './constants';
  * and signet, and anything that needs to keep the two apart — stored wallets, transaction
  * history, wallet IDs — must key on `NetworkId`, never on `bitcoinjs` or the derivation path.
  *
- * This module is intentionally a leaf: no react-native imports, no `@env`, no storage access.
+ * This module is intentionally a leaf: no react-native imports, no environment reads, no storage access.
  * Wallet classes call `getActiveNetwork()` from synchronous code paths, and unit tests import
  * those classes without any mocking. Persistence lives in the settings layer. Each network ships
  * its own indexer addresses; `configureIndexerEndpoints` lets `.env` override them at startup.
@@ -193,8 +193,8 @@ export function setActiveNetwork(id: NetworkId): void {
 /**
  * Override the shipped indexer addresses from the environment. A missing or empty value keeps the
  * default, so a blank `.env` entry is harmless. Called once from App startup, which is the only
- * place that reads `@env` — keeping this module importable from tests without a babel transform
- * for the virtual `@env` module.
+ * place that reads the `EXPO_PUBLIC_INDEXER_*` variables — keeping this module importable from
+ * tests without the build-time inlining those reads depend on.
  */
 export function configureIndexerEndpoints(
   urls: Partial<Record<NetworkId, string | undefined>>,
