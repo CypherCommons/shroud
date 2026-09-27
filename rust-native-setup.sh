@@ -8,6 +8,9 @@ LIB_NAME="librust_jsi_bridge.a"
 IOS_DEST="../ios"
 ANDROID_DEST_BASE="../android/app/src/main/jniLibs"
 API_LEVEL=21 # Minimum API level for Android builds (Android 5.0+, Lollipop)
+# Minimum iOS version for iOS builds; keep in sync with ios/Podfile.properties.json (ios.deploymentTarget).
+# rustc and the cc crate (secp256k1's C code) default to the SDK version when this is unset.
+IOS_DEPLOYMENT_TARGET="16.4"
 
 detect_ndk_home() {
     if [ -n "${ANDROID_NDK_HOME:-}" ]; then
@@ -73,6 +76,7 @@ ANDROID_TARGETS=(
 IOS_TARGETS=(
     "aarch64-apple-ios|iOS Device (ARM64)"
     "aarch64-apple-ios-sim|iOS Simulator (ARM64)"
+    "x86_64-apple-ios|iOS Simulator (x86_64)"
 )
 
 
@@ -142,8 +146,8 @@ build_and_copy_android() {
 build_ios_target() {
     IFS='|' read -r target name <<< "$1"
     log "Building $name ($target)..."
-    
-    if cargo build --release --target "$target"; then
+
+    if IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" cargo build --release --target "$target"; then
         success "$name built successfully"
         return 0
     else
@@ -158,11 +162,21 @@ create_ios_xcframework() {
     mkdir -p "$IOS_DEST"
 
     local device_lib="target/aarch64-apple-ios/release/$LIB_NAME"
-    local sim_lib="target/aarch64-apple-ios-sim/release/$LIB_NAME"
+    local sim_arm_lib="target/aarch64-apple-ios-sim/release/$LIB_NAME"
+    local sim_x86_lib="target/x86_64-apple-ios/release/$LIB_NAME"
 
-    if [ ! -f "$device_lib" ] || [ ! -f "$sim_lib" ]; then
+    if [ ! -f "$device_lib" ] || [ ! -f "$sim_arm_lib" ]; then
         warn "Missing iOS .a files; skipping XCFramework creation"
         return
+    fi
+
+    # Merge simulator slices so one .a covers both sim archs (x86_64 slice optional)
+    local sim_lib="target/universal-ios-simulator/$LIB_NAME"
+    mkdir -p "$(dirname "$sim_lib")"
+    if [ -f "$sim_x86_lib" ]; then
+        lipo -create "$sim_arm_lib" "$sim_x86_lib" -output "$sim_lib"
+    else
+        cp "$sim_arm_lib" "$sim_lib"
     fi
 
     rm -rf "$IOS_DEST/RustJsiBridge.xcframework"
@@ -187,6 +201,22 @@ main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     if is_macos; then
+        if [[ "${IOS_ONLY:-0}" == "1" ]]; then
+            # Skip Android when only the iOS xcframework is needed (e.g. EAS iOS builds without NDK)
+            log "IOS_ONLY=1 — building iOS targets only."
+            ensure_rust_targets "ios"
+
+            echo -e "\n📱 iOS Targets:"
+            for item in "${IOS_TARGETS[@]}"; do
+                build_ios_target "$item"
+            done
+
+            echo
+            create_ios_xcframework
+            echo -e "\n✅ iOS-only Build Complete!"
+            return 0
+        fi
+
         log "Detected macOS host. Building iOS + Android targets."
         ensure_rust_targets "ios"
         configure_android_toolchain
