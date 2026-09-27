@@ -121,10 +121,7 @@ export const useExtendedNavigation = <T extends NavigationProp<ParamListBase>>()
               await saveToDisk();
               proceedWithNavigation();
             } catch (error) {
-              originalNavigation.navigate('WalletExportRoot', {
-                screen: 'WalletExport',
-                params: { walletID },
-              });
+              originalNavigation.navigate('ViewRecoveryPhrase');
             }
             return;
           }

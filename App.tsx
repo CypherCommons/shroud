@@ -7,6 +7,7 @@ import { SettingsProvider } from './components/Context/SettingsProvider';
 import { getEffectiveTheme } from './components/themes';
 import { ContactsProvider } from './components/Context/ContactsProvider';
 import MasterView from './navigation/MasterView';
+import AppLock from './components/AppLock';
 import { markNavigationReady, navigationRef } from './NavigationService';
 import { useLogger } from '@react-navigation/devtools';
 import { StorageProvider } from './components/Context/StorageProvider';
@@ -39,6 +40,7 @@ const ThemedNavigationContainer = () => {
   return (
     <NavigationContainer ref={navigationRef} onReady={markNavigationReady} theme={getEffectiveTheme(themePreference, colorScheme)}>
       <MasterView />
+      <AppLock />
     </NavigationContainer>
   );
 };

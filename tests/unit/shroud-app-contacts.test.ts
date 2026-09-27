@@ -65,4 +65,22 @@ describe('ShroudApp persistence', () => {
     assert.strictEqual(await decoy.loadFromDisk('duress-password'), true);
     assert.deepStrictEqual(decoy.contacts, {});
   });
+
+  it('wipeAllData leaves no readable or encrypted data behind, decoy buckets included', async () => {
+    const app = new ShroudApp();
+    app.contacts = { [ADDR_A]: { name: 'Anmol Sharma', createdAt: 1000, colorIndex: 2 } };
+    app.tx_metadata = { abc: { memo: 'x' } };
+    await app.encryptStorage('real-password');
+    await app.createFakeStorage('duress-password');
+
+    await app.wipeAllData();
+
+    const reloaded = new ShroudApp();
+    assert.strictEqual(await reloaded.storageIsEncrypted(), false);
+    assert.strictEqual(await reloaded.loadFromDisk(), true);
+    assert.deepStrictEqual(reloaded.contacts, {});
+    assert.deepStrictEqual(reloaded.tx_metadata, {});
+    assert.strictEqual(await reloaded.isPasswordInUse('real-password'), false);
+    assert.strictEqual(await reloaded.isPasswordInUse('duress-password'), false);
+  });
 });
