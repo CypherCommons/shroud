@@ -1,14 +1,18 @@
 import React, { useMemo, forwardRef } from 'react';
-import { StyleSheet, ScrollView, ScrollViewProps } from 'react-native';
+import { StyleSheet, ScrollViewProps } from 'react-native';
+import { KeyboardAwareScrollView, KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from './themes';
+
+// Space kept between the focused input and the keyboard.
+export const KEYBOARD_BOTTOM_OFFSET = 24;
 
 interface SafeAreaScrollViewProps extends ScrollViewProps {
   floatingButtonHeight?: number;
 }
 
-const SafeAreaScrollView = forwardRef<ScrollView, SafeAreaScrollViewProps>((props, ref) => {
+const SafeAreaScrollView = forwardRef<KeyboardAwareScrollViewRef, SafeAreaScrollViewProps>((props, ref) => {
   const { style, contentContainerStyle, floatingButtonHeight = 0, ...otherProps } = props;
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -43,11 +47,12 @@ const SafeAreaScrollView = forwardRef<ScrollView, SafeAreaScrollViewProps>((prop
   }, [insets, contentContainerStyle, floatingButtonHeight]);
 
   return (
-    <ScrollView
+    // Scrolls the focused input above the keyboard on both platforms.
+    <KeyboardAwareScrollView
       ref={ref}
       style={componentStyle}
+      bottomOffset={KEYBOARD_BOTTOM_OFFSET}
       contentInsetAdjustmentBehavior="automatic"
-      automaticallyAdjustKeyboardInsets
       automaticallyAdjustsScrollIndicatorInsets
       contentContainerStyle={contentStyle}
       {...otherProps}
