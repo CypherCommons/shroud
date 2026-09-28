@@ -6,7 +6,8 @@ import BigNumber from 'bignumber.js';
 import { TOptions } from 'bip21';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, LayoutAnimation, StyleSheet, Text, Pressable, View } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SilentPayment } from 'silent-payments';
 import { btcToSatoshi, satoshiToBTC, satoshiToLocalCurrency } from '../../modules/currency';
 import triggerHapticFeedback, { HapticFeedbackTypes, triggerSelectionHapticFeedback } from '../../modules/hapticFeedback';
@@ -76,10 +77,13 @@ const SendDetails = () => {
   const isTransactionReplaceable = route.params?.isTransactionReplaceable;
   const routeParams = route.params;
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { contactList, getContact } = useContacts();
 
   // state
   const [isLoading, setIsLoading] = useState(false);
+  // The Next bar rides the keyboard, so a focused input has to clear the bar as well.
+  const [nextBarHeight, setNextBarHeight] = useState(0);
   const contactSheetRef = useRef<BottomModalHandle>(null);
   const [wallet, setWallet] = useState<TWallet | null>(null);
   const { isVisible } = useKeyboard();
@@ -840,6 +844,8 @@ const SendDetails = () => {
     root: {
       backgroundColor: colors.background,
     },
+    // Opaque, since the bar covers the scroll view while it rides the keyboard.
+    bottom: { backgroundColor: colors.background },
     scanBtn: { backgroundColor: colors.background },
     feeSummary: { borderColor: colors.accentSubtle, backgroundColor: colors.surfaceSubtle },
     feeSummaryDisabled: { borderColor: colors.borderDefault, backgroundColor: colors.surfaceBrandSubtle },
@@ -871,7 +877,7 @@ const SendDetails = () => {
         testID="SendDetailsScrollView"
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
-        bottomOffset={KEYBOARD_BOTTOM_OFFSET}
+        bottomOffset={KEYBOARD_BOTTOM_OFFSET + nextBarHeight}
         keyboardShouldPersistTaps="handled"
       >
         <AmountHero
@@ -982,17 +988,21 @@ const SendDetails = () => {
 
       {renderCoinsSelected()}
 
-      <View style={styles.bottom}>
-        <Button
-          testID="sendNextButton"
-          title={loc.send.details_next}
-          disabled={!isFormValid || isLoading}
-          onPress={createTransaction}
-          borderRadius={16}
-          style={styles.nextButton}
-          textStyle={styles.nextButtonText}
-        />
-      </View>
+      {/* Rides on top of the keyboard. The keyboard covers SafeArea's bottom padding, so the open
+          offset hands that back. */}
+      <KeyboardStickyView offset={{ opened: insets.bottom }}>
+        <View style={[styles.bottom, stylesHook.bottom]} onLayout={e => setNextBarHeight(e.nativeEvent.layout.height)}>
+          <Button
+            testID="sendNextButton"
+            title={loc.send.details_next}
+            disabled={!isFormValid || isLoading}
+            onPress={createTransaction}
+            borderRadius={16}
+            style={styles.nextButton}
+            textStyle={styles.nextButtonText}
+          />
+        </View>
+      </KeyboardStickyView>
 
       <ContactPickerSheet ref={contactSheetRef} onPick={onContactPicked} />
     </SafeArea>
