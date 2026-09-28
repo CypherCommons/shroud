@@ -8,6 +8,7 @@
     },
     "updates": {
       "enabled": true,
+      "url": "https://u.expo.dev/eb7a9abe-b873-46b5-961c-88b36cc4d8a0",
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0,
       "codeSigningCertificate": "./certs/certificate.pem",
@@ -15,6 +16,12 @@
         "keyid": "main",
         "alg": "rsa-v1_5-sha256"
       }
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "eb7a9abe-b873-46b5-961c-88b36cc4d8a0"
+      }
+    },
+    "owner": "shroudwallet"
   }
 }
