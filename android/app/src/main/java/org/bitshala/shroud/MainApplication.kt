@@ -3,59 +3,55 @@ package org.bitshala.shroud
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import com.bugsnag.android.Bugsnag
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
-import com.facebook.react.ReactNativeHost
-import com.facebook.react.ReactPackage
-import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.load
-import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
-import com.facebook.react.defaults.DefaultReactNativeHost
-import com.facebook.react.soloader.OpenSourceMergedSoMapping
-import com.facebook.soloader.SoLoader
+import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
+import com.facebook.react.common.ReleaseLevel
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
 import com.facebook.react.modules.i18nmanager.I18nUtil
-import org.bitshala.shroud.components.segmentedcontrol.CustomSegmentedControlPackage
+import expo.modules.ApplicationLifecycleDispatcher
+import expo.modules.ExpoReactHostFactory
 
 class MainApplication : Application(), ReactApplication {
 
     private lateinit var sharedPref: SharedPreferences
 
-    override val reactNativeHost: ReactNativeHost =
-        object : DefaultReactNativeHost(this) {
-            override fun getPackages(): List<ReactPackage> =
+    override val reactHost: ReactHost by lazy {
+        ExpoReactHostFactory.getDefaultReactHost(
+            context = applicationContext,
+            packageList =
                 PackageList(this).packages.apply {
-                    // Packages that cannot be autolinked yet can be added manually here, for example:
-                    // add(MyReactNativePackage())
-                    add(CustomSegmentedControlPackage())
+                    // Packages that cannot be autolinked yet can be added manually here
                     add(RustJsiBridgePackage())
                 }
-
-            override fun getJSMainModuleName(): String = "index"
-
-            override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
-
-            override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-            override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
-        }
-
-    override val reactHost: ReactHost
-        get() = getDefaultReactHost(applicationContext, reactNativeHost)
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
         sharedPref = getSharedPreferences("group.org.bitshala.shroud", Context.MODE_PRIVATE)
 
-        val sharedI18nUtilInstance = I18nUtil.getInstance()
+        val sharedI18nUtilInstance = I18nUtil.instance
         sharedI18nUtilInstance.allowRTL(applicationContext, false)
         sharedI18nUtilInstance.forceRTL(applicationContext, false)
-        SoLoader.init(this, OpenSourceMergedSoMapping)
-        if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-            // If you opted-in for the New Architecture, we load the native entry point for this app.
-            load()
+
+        DefaultNewArchitectureEntryPoint.releaseLevel = try {
+            ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())
+        } catch (e: IllegalArgumentException) {
+            ReleaseLevel.STABLE
         }
+        loadReactNative(this)
+        ApplicationLifecycleDispatcher.onApplicationCreate(this)
 
         initializeBugsnag()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)
     }
 
     private fun initializeBugsnag() {

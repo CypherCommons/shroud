@@ -1,83 +1,73 @@
-def node_require(script)
-  # Resolve script with node to allow for hoisting
-  require Pod::Executable.execute_command('node', ['-p',
-    "require.resolve(
-      '#{script}',
-      {paths: [process.argv[1]]},
-    )", __dir__]).strip
-end
-ENV['RCT_NEW_ARCH_ENABLED'] = '0'
-min_ios_version_supported = '15.1'
-node_require('react-native/scripts/react_native_pods.rb')
-node_require('react-native-permissions/scripts/setup.rb')
+require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
+require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
+require File.join(File.dirname(`node --print "require.resolve('react-native-permissions/package.json')"`), "scripts/setup")
 
-# Resolve react_native_pods.rb with node to allow for hoisting
-require Pod::Executable.execute_command('node', ['-p',
-  'require.resolve(
-    "react-native/scripts/react_native_pods.rb",
-    {paths: [process.argv[1]]},
-  )', __dir__]).strip
+require 'json'
+podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
+
+def ccache_enabled?(podfile_properties)
+  # Environment variable takes precedence
+  return ENV['USE_CCACHE'] == '1' if ENV['USE_CCACHE']
+
+  # Fall back to Podfile properties
+  podfile_properties['apple.ccacheEnabled'] == 'true'
+end
+
+ENV['EX_DEV_CLIENT_NETWORK_INSPECTOR'] ||= podfile_properties['EX_DEV_CLIENT_NETWORK_INSPECTOR']
+ENV['RCT_USE_RN_DEP'] ||= podfile_properties['ios.buildReactNativeFromSource'] == 'true' ? '0' : '1'
+ENV['RCT_USE_PREBUILT_RNCORE'] ||= podfile_properties['ios.buildReactNativeFromSource'] == 'true' ? '0' : '1'
+ENV['RCT_HERMES_V1_ENABLED'] ||= '0' if podfile_properties['expo.useHermesV1'] == 'false'
+# An explicit `ios.usePrecompiledModules: false` must win even when the env var is already set
+# (e.g. EXPO_USE_PRECOMPILED_MODULES exported by EAS Build), so force-disable here before the default.
+ENV['EXPO_USE_PRECOMPILED_MODULES'] = '0' if podfile_properties['EXPO_USE_PRECOMPILED_MODULES'] == 'false'
+ENV['EXPO_USE_PRECOMPILED_MODULES'] ||= '1'
+platform :ios, podfile_properties['ios.deploymentTarget'] || '16.4'
 
 workspace 'Shroud'
-platform :ios, min_ios_version_supported
 prepare_react_native_project!
 setup_permissions(['Camera', 'Notifications'])
-linkage = ENV['USE_FRAMEWORKS']
-if linkage != nil
-  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
-  use_frameworks! :linkage => linkage.to_sym
-end
-
-# Define a common function to configure shared settings for targets
-def configure_target()
-  config = use_native_modules!
-
-  use_react_native!(
-    # Specify the path directly if use_native_modules! does not provide it
-    :path => config[:reactNativePath],
-    :app_path => "#{Pod::Config.instance.installation_root}/.."
-
-  )
-  pod 'RustJsiBridge', :path => '.'
-end
-
 
 target 'Shroud' do
-  configure_target()
-end
+  use_expo_modules!
 
-post_install do |installer|
-  react_native_post_install(
-    installer,
-    :mac_catalyst_enabled => true,
-    # :ccache_enabled => true
-  )
-
-  # Workaround for fmt 11.0.2 + Xcode 26 clang rejecting consteval evaluation of
-  # basic_format_string. fmt's base.h redefines FMT_USE_CONSTEVAL=1 without an
-  # #ifndef guard, so a -D preprocessor flag is clobbered. Patch the header to
-  # force the macro to 0, moving format-string validation to runtime. fmt sits
-  # only on RN's Folly logging path, not app code.
-  fmt_base = File.join(installer.sandbox.root, 'fmt', 'include', 'fmt', 'base.h')
-  if File.exist?(fmt_base)
-    contents = File.read(fmt_base)
-    patched = contents.gsub(/^#  define FMT_USE_CONSTEVAL 1$/, '#  define FMT_USE_CONSTEVAL 0')
-    if patched != contents
-      File.chmod(0644, fmt_base)
-      File.write(fmt_base, patched)
-      Pod::UI.puts "Patched fmt/base.h to disable FMT_USE_CONSTEVAL".green
-    end
+  if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
+    config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
+  else
+    config_command = [
+      'node',
+      '--no-warnings',
+      '--eval',
+      'require(\'expo/bin/autolinking\')',
+      'expo-modules-autolinking',
+      'react-native-config',
+      '--json',
+      '--platform',
+      'ios'
+    ]
   end
 
-  installer.pods_project.targets.each do |target|
-    target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+  config = use_native_modules!(config_command)
 
-      if ['React-Core-AccessibilityResources'].include? target.name
-        config.build_settings['CODE_SIGN_STYLE'] = "Manual"
-        config.build_settings['CODE_SIGN_IDENTITY'] = "Apple Distribution: Bluewallet Services, S. R. L. (A7W54YZ4WU)"
-        config.build_settings['DEVELOPMENT_TEAM'] = "A7W54YZ4WU"
-      end
-    end
+  use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
+  use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    :hermes_enabled => podfile_properties['expo.jsEngine'] == nil || podfile_properties['expo.jsEngine'] == 'hermes',
+    # An absolute path to your application root.
+    :app_path => "#{Pod::Config.instance.installation_root}/..",
+    :privacy_file_aggregation_enabled => podfile_properties['apple.privacyManifestAggregationEnabled'] != 'false',
+  )
+
+  # Rust JSI bridge TurboModule (see RustJsiBridge.podspec)
+  pod 'RustJsiBridge', :path => '.'
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+      :ccache_enabled => ccache_enabled?(podfile_properties),
+    )
   end
 end

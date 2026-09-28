@@ -2,29 +2,34 @@
 
 buildscript {
     ext {
-        minSdkVersion = 24
-        buildToolsVersion = "35.0.0"
-        compileSdkVersion = 35
-        targetSdkVersion = 35
+        // Read by some libraries. SDK, NDK and Kotlin versions come from Expo's version catalog
+        // (applied by the expo-root-project plugin below).
         googlePlayServicesVersion = "16.+"
         googlePlayServicesIidVersion = "16.0.1"
         firebaseVersion = "17.3.4"
         firebaseMessagingVersion = "21.1.0"
-        ndkVersion = "27.1.12297006"
-        kotlin_version = '2.0.21'
-        kotlinVersion = '2.0.21'
     }
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle")
-        classpath("com.facebook.react:react-native-gradle-plugin")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
-	    classpath 'com.google.gms:google-services:4.4.3'  // Google Services plugin
+        classpath('com.android.tools.build:gradle')
+        classpath('com.facebook.react:react-native-gradle-plugin')
+        classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+        classpath 'com.google.gms:google-services:4.5.0'  // Google Services plugin
         classpath("com.bugsnag:bugsnag-android-gradle-plugin:8.2.0")
     }
+}
+
+// Gradle 9 removed jcenter(), but react-native-secure-key-store and react-native-prompt-android
+// still call it from their build.gradle. Point those calls at mavenCentral() instead.
+def redirectJcenter = { RepositoryHandler repositories ->
+    repositories.metaClass.jcenter = { -> delegate.mavenCentral() }
+}
+gradle.beforeProject { project ->
+    redirectJcenter(project.repositories)
+    redirectJcenter(project.buildscript.repositories)
 }
 
 allprojects {
@@ -32,39 +37,14 @@ allprojects {
         maven {
             url("$rootDir/../node_modules/detox/Detox-android")
         }
-
-            mavenCentral {
-	            // We don't want to fetch react-native from Maven Central as there are
-	            // older versions over there.
-	            content {
-	                excludeGroup "com.facebook.react"
-	            }
-	        }
-        mavenLocal()
-        maven {
-            // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
-            url("$rootDir/../node_modules/react-native/android")
-        }
-        maven {
-            // Android JSC is installed from npm
-            url("$rootDir/../node_modules/jsc-android/dist")
-        }
         google()
-                maven { url 'https://www.jitpack.io' }
+        mavenCentral()
+        maven { url 'https://www.jitpack.io' }
     }
 }
 
 subprojects {
     afterEvaluate {project ->
-        if (project.hasProperty("android")) {
-            android {
-                buildToolsVersion "35.0.0"
-                compileSdkVersion 35
-                 defaultConfig {
-                    minSdkVersion 24
-                }
-            }
-        }
         tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile) {
             // FIXME: next line should be removed when https://github.com/wix/Detox/issues/4678 is fixed
             kotlinOptions.freeCompilerArgs += ["-Xopt-in=kotlin.ExperimentalStdlibApi"]
@@ -74,6 +54,8 @@ subprojects {
                 kotlinOptions.jvmTarget = sourceCompatibility
             }
         }
-
     }
 }
+
+apply plugin: "expo-root-project"
+apply plugin: "com.facebook.react.rootproject"

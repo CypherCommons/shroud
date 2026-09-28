@@ -256,11 +256,7 @@ const ImportWallet = () => {
   );
 
   return (
-    <SafeAreaScrollView
-      contentContainerStyle={[styles.root, stylesHook.root]}
-      keyboardShouldPersistTaps="always"
-      automaticallyAdjustKeyboardInsets
-    >
+    <SafeAreaScrollView contentContainerStyle={[styles.root, stylesHook.root]} keyboardShouldPersistTaps="always">
       <Spacing20 />
       <TouchableWithoutFeedback accessibilityRole="button" onPress={speedBackdoorTap} testID="SpeedBackdoor">
         <ShroudFormLabel>{loc.wallets.import_explanation}</ShroudFormLabel>

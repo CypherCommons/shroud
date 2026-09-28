@@ -9,18 +9,18 @@ Pod::Spec.new do |s|
   s.homepage     = "https://github.com/Bitshala-Incubator/silent-pay-wallet"
   s.license      = package["license"] || "MIT"
   s.authors      = { "bitshala" => "dev@bitshala.org" }
-  
-  s.platforms    = { :ios => "13.0" }
+
+  s.platforms    = { :ios => "16.4" }
   s.source       = { :git => ".git", :tag => "#{s.version}" }
-  
+
   s.source_files = "RustJsiBridge/**/*.{h,m,mm,cpp}"
-  s.public_header_files = "RustJsiBridge/**/*.h"
-  
+  # RustJsiBridge.h is C++ (jsi), so only the Objective-C module header is public.
+  s.public_header_files = "RustJsiBridge/RustJsiBridgeModule.h"
+
   # Link Rust static libraries. Built by `npm run rust:build`, which writes
   # the xcframework here (alongside this podspec). See README iOS section.
   s.vendored_frameworks = "RustJsiBridge.xcframework"
-  
-  s.dependency "React-Core"
-  
-  # install_modules_dependencies(s) # This helper is usually for Podfile, not podspec.
+
+  # React Native headers, TurboModule support and the app's codegen output (ShroudSpecs).
+  install_modules_dependencies(s)
 end

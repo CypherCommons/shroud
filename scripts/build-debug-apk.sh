@@ -38,7 +38,7 @@ trap cleanup EXIT
 mkdir -p "$(dirname "$BUNDLE_OUTPUT")"
 mkdir -p "$RES_OUTPUT_DIR"
 
-npx react-native bundle \
+npx expo export:embed \
   --platform android \
   --dev false \
   --entry-file index.js \

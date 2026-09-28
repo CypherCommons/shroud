@@ -522,7 +522,7 @@ const styles = StyleSheet.create({
   // it — after the ScrollView, near the footer — while its children still assume this box starts
   // at stepRoot's own origin (see backButtonLayout/revealLayout above). absoluteFill pins it there.
   modalRoot: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   backButtonGhost: {
     position: 'absolute',
