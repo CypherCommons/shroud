@@ -5,7 +5,8 @@ import assert from 'assert';
 import BigNumber from 'bignumber.js';
 import { TOptions } from 'bip21';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, LayoutAnimation, ScrollView, StyleSheet, Text, Pressable, View } from 'react-native';
+import { Keyboard, LayoutAnimation, StyleSheet, Text, Pressable, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { isSilentPaymentAddress } from '../../helpers/silent-payments';
 import { getActiveNetwork } from '../../modules/network';
 import { btcToSatoshi, satoshiToBTC, satoshiToLocalCurrency } from '../../modules/currency';
@@ -29,6 +30,7 @@ import { BottomModalHandle } from '../../components/BottomModal';
 import FieldTextInput, { FieldAddressInput } from '../../components/FieldTextInput';
 import LabeledField from '../../components/LabeledField';
 import SafeArea from '../../components/SafeArea';
+import { KEYBOARD_BOTTOM_OFFSET } from '../../components/SafeAreaScrollView';
 import { shadowSm, useTheme } from '../../components/themes';
 import { Action } from '../../components/types';
 import { ClashFont } from '../../constants/fonts';
@@ -866,10 +868,11 @@ const SendDetails = () => {
 
   return (
     <SafeArea style={[styles.root, stylesHook.root]}>
-      <ScrollView
+      <KeyboardAwareScrollView
         testID="SendDetailsScrollView"
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
+        bottomOffset={KEYBOARD_BOTTOM_OFFSET}
         keyboardShouldPersistTaps="handled"
       >
         <AmountHero
@@ -974,7 +977,7 @@ const SendDetails = () => {
             {hasFeeEstimate && <ChevronRightIcon color={colors.iconSecondary} />}
           </Pressable>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <DismissKeyboardInputAccessory />
 

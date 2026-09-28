@@ -1,5 +1,6 @@
 import { NavigationContainer } from '@react-navigation/native';
 import React, { useEffect, useState } from 'react';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SizeClassProvider } from './components/Context/SizeClassProvider';
 import { SettingsProvider } from './components/Context/SettingsProvider';
@@ -86,17 +87,21 @@ const App = () => {
   if (!networkReady) return null;
 
   return (
-    <SizeClassProvider>
-      <SafeAreaProvider>
-        <StorageProvider>
-          <SettingsProvider>
-            <ContactsProvider>
-              <ThemedNavigationContainer />
-            </ContactsProvider>
-          </SettingsProvider>
-        </StorageProvider>
-      </SafeAreaProvider>
-    </SizeClassProvider>
+    // Edge-to-edge Android no longer resizes the window for the keyboard, so keyboard avoidance
+    // comes from react-native-keyboard-controller on both platforms.
+    <KeyboardProvider>
+      <SizeClassProvider>
+        <SafeAreaProvider>
+          <StorageProvider>
+            <SettingsProvider>
+              <ContactsProvider>
+                <ThemedNavigationContainer />
+              </ContactsProvider>
+            </SettingsProvider>
+          </StorageProvider>
+        </SafeAreaProvider>
+      </SizeClassProvider>
+    </KeyboardProvider>
   );
 };
 

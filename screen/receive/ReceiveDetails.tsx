@@ -350,7 +350,6 @@ const ReceiveDetails = () => {
         centerContent
         contentInsetAdjustmentBehavior="automatic"
         automaticallyAdjustsScrollIndicatorInsets
-        automaticallyAdjustKeyboardInsets
         testID="ReceiveDetailsScrollView"
         style={stylesHook.root}
         contentContainerStyle={[styles.root, stylesHook.root]}

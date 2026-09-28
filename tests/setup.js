@@ -57,6 +57,8 @@ jest.mock(
 
 jest.mock('react-native-permissions', () => require('react-native-permissions/mock'));
 
+jest.mock('react-native-keyboard-controller', () => require('react-native-keyboard-controller/jest'));
+
 jest.mock('react-native-device-info', () => {
   return {
     getUniqueId: jest.fn().mockReturnValue('uniqueId'),
