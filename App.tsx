@@ -13,8 +13,12 @@ import { StorageProvider } from './components/Context/StorageProvider';
 import { useSettings } from './hooks/context/useSettings';
 import { initializeIndexer } from './modules/SilentPaymentIndexer';
 import { initializeRustJsiBridge } from './modules/RustJsiBridge';
-import { INDEXER_BASE_URL, INDEXER_ONION_URL } from '@env';
 import { useColorScheme } from 'react-native';
+
+// Inlined at build time from .env locally, or from the EAS environment for `eas build` and
+// `eas update --environment`. Only direct `process.env.EXPO_PUBLIC_*` reads are inlined.
+const INDEXER_BASE_URL = process.env.EXPO_PUBLIC_INDEXER_BASE_URL;
+const INDEXER_ONION_URL = process.env.EXPO_PUBLIC_INDEXER_ONION_URL;
 
 const ThemedNavigationContainer = () => {
   const colorScheme = useColorScheme();
@@ -33,7 +37,7 @@ const ThemedNavigationContainer = () => {
 
 const App = () => {
   useEffect(() => {
-    if (!INDEXER_BASE_URL) throw new Error('INDEXER_BASE_URL is not set');
+    if (!INDEXER_BASE_URL) throw new Error('EXPO_PUBLIC_INDEXER_BASE_URL is not set');
     initializeRustJsiBridge();
     initializeIndexer({
       baseUrl: INDEXER_BASE_URL,

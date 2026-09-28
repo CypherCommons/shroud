@@ -95,6 +95,8 @@ dist/
 
 # Signing credentials (EAS manages these remotely)
 credentials.json
+# OTA update signing key; only certs/certificate.pem belongs in the repository
+private-key.pem
 *.jks
 *.p8
 *.p12

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>EXUpdatesEnabled</key>
+    <true/>
+    <key>EXUpdatesCheckOnLaunch</key>
+    <string>ALWAYS</string>
+    <key>EXUpdatesLaunchWaitMs</key>
+    <integer>0</integer>
+    <key>EXUpdatesCodeSigningCertificate</key>
+    <string>-----BEGIN CERTIFICATE-----&#xD;
+MIIC3TCCAcWgAwIBAgIJLL9VqNjFAkMdMA0GCSqGSIb3DQEBCwUAMBgxFjAUBgNV&#xD;
+BAMTDVNocm91ZCBXYWxsZXQwHhcNMjYwOTI3MTAyMTU1WhcNMzYwOTI3MTAyMTU1&#xD;
+WjAYMRYwFAYDVQQDEw1TaHJvdWQgV2FsbGV0MIIBIjANBgkqhkiG9w0BAQEFAAOC&#xD;
+AQ8AMIIBCgKCAQEApykkpRYrs5grb/ZleEJuAnT5W7J68zadTGfGHutLb6TWBGsQ&#xD;
+FBJJl5XKz0yoYeXlc3kUQpjaDOviOxDZpPvlvmaVf8Vi6RVyJ/A3rz/lxwhgy2ox&#xD;
+8OHKsHarHewVjuWAn7Ay0lpeUSnFw3Vle6lEDIRvetx2kBS/cOemr7o4hHP3590I&#xD;
+2EcX556q+uNNZv8Wt2QMntZQ3BFNTeacqeRKc4sbWGHf0cDamenYjvPMq3ITrmXq&#xD;
+kdvGETsgXzcHJn4qztky5k7fdnWfJB1X0wyergUL4Mw0JxFhM1nTPxUrBTlJDqCF&#xD;
+aJsz8xHCGHIMOtXb9eI6jtfWmZ/uFEALULrOrQIDAQABoyowKDAOBgNVHQ8BAf8E&#xD;
+BAMCB4AwFgYDVR0lAQH/BAwwCgYIKwYBBQUHAwMwDQYJKoZIhvcNAQELBQADggEB&#xD;
+AHVcSS/kpY2UBCH5EuyAAA1rUy27I2sGVWWhzQfmib5WpJjbrf0vKnS5C8eJNbtL&#xD;
+41MnaRAL37VDq8Y6P50cW+j2B2QmX46K4n8pBBkqJEmNjoAzUD+j9ksK/hc4N/jc&#xD;
+BErUQ2wTImYTPYgfPxzXVFFGkvEP0kg2LmxtMvM7WaxmLi5VdMPnAgOxzaGoaY3o&#xD;
+ddsk7rRD/LPqIrmJDFmIsCh8mOiKkD6GXmJuErhgXHsEALI+2bOlYIZ4ogNCm5iU&#xD;
+wV3dPGBO7JLc9pa4tLDbNHmCqhjkKUCNumXdr5vtG9mjyZPr6l13A34kZdW/hu+3&#xD;
+d+19T23bSbSZi1dkL6dbOCc=&#xD;
+-----END CERTIFICATE-----&#xD;
+</string>
+    <key>EXUpdatesCodeSigningMetadata</key>
+    <dict>
+      <key>keyid</key>
+      <string>main</string>
+      <key>alg</key>
+      <string>rsa-v1_5-sha256</string>
+    </dict>
+    <key>EXUpdatesEnableBsdiffPatchSupport</key>
+    <true/>
+    <key>EXUpdatesRuntimeVersion</key>
+    <string>file:fingerprint</string>
+    <key>EXUpdatesURL</key>
+    <string>https://u.expo.dev/eb7a9abe-b873-46b5-961c-88b36cc4d8a0</string>
+  </dict>
+</plist>
