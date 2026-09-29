@@ -82,6 +82,10 @@ export type Transaction = {
   blocktime: number;
   timestamp: number; // seconds, not milliseconds
   value?: number;
+  /** Block height once confirmed, so confirmations can be derived from the scan tip. */
+  height?: number;
+  /** Spent by another wallet on the same seed. The real txid is unknown. */
+  external?: boolean;
 };
 
 /**
