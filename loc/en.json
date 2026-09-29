@@ -55,7 +55,10 @@
         "broadcast": "Broadcast failed.",
         "error": "Error",
         "network": "Network Error",
-        "open_link_failed": "Couldn't open the link. No app is available to handle it."
+        "open_link_failed": "Couldn't open the link. No app is available to handle it.",
+        "crash_title": "Something went wrong",
+        "crash_message": "Shroud ran into an unexpected error. Your wallet and funds are safe. Try again, or close and reopen the app.",
+        "crash_retry": "Try again"
     },
     "pleasebackup": {
         "ask": "Have you saved your wallet’s backup phrase? This backup phrase is required to access your funds in case you lose this device. Without the backup phrase, your funds will be permanently lost.",

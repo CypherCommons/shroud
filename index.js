@@ -6,6 +6,7 @@ import React, { useEffect } from 'react';
 import { AppRegistry, LogBox } from 'react-native';
 
 import App from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import A from './modules/analytics';
 import { restoreSavedPreferredFiatCurrencyAndExchangeFromStorage } from './modules/currency';
 
@@ -27,7 +28,11 @@ const ShroudAppComponent = () => {
     A(A.ENUM.INIT);
   }, []);
 
-  return <App />;
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
 };
 
 AppRegistry.registerComponent('Shroud', () => ShroudAppComponent);
