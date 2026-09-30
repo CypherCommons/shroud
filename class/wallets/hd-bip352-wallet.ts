@@ -867,21 +867,26 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   }
 
   async fetchUtxo(): Promise<void> {
-    const spUtxos = this.getSilentPaymentUTXOs();
+    // Capture the current array reference. super.fetchUtxo() replaces this._utxo
+    // with a new array, but concurrent addUTXO() calls (e.g. from scanForPayments)
+    // push onto this old reference. We need it to recover those additions.
+    const utxoArrayBeforeAwait = this._utxo;
 
     try {
       await super.fetchUtxo();
-    } catch (error) {
-      console.warn('[SP] super.fetchUtxo failed:', error);
     } finally {
-      // Restore SP UTXOs
+      // Collect SP UTXOs from the old array — this includes both the pre-await
+      // snapshot and any that were added concurrently during the await.
+      const spUtxosFromOldArray = utxoArrayBeforeAwait.filter((u): u is SilentPaymentUTXO => 'tweak' in u && u.tweak instanceof Uint8Array);
+
       const existingKeys = new Set(this._utxo.map(u => `${u.txid}:${u.vout}`));
       let restoredCount = 0;
 
-      for (const utxo of spUtxos) {
+      for (const utxo of spUtxosFromOldArray) {
         const key = `${utxo.txid}:${utxo.vout}`;
         if (!existingKeys.has(key)) {
           this._utxo.push(utxo);
+          existingKeys.add(key);
           restoredCount++;
         }
       }
