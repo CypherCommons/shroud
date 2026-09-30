@@ -868,20 +868,44 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
   async fetchUtxo(): Promise<void> {
     const spUtxos = this.getSilentPaymentUTXOs();
+    const unspentSpUtxos = spUtxos.filter(u => !u.isSpent);
+    const spAddresses = [...new Set(unspentSpUtxos.map(u => u.address))];
+
+    let spElectrumResult: Record<string, Utxo[]> | null = null;
+    let spElectrumError: any = null;
+
+    try {
+      if (spAddresses.length > 0) {
+        spElectrumResult = await Electrum.multiGetUtxoByAddress(spAddresses);
+      }
+    } catch (e) {
+      spElectrumError = e;
+      console.warn('[SP] Failed to query SP addresses from Electrum:', e);
+    }
 
     try {
       await super.fetchUtxo();
-    } catch (error) {
-      console.warn('[SP] super.fetchUtxo failed:', error);
     } finally {
+      const canVerifySpends = spElectrumResult !== null && !spElectrumError;
+
       // Restore SP UTXOs
       const existingKeys = new Set(this._utxo.map(u => `${u.txid}:${u.vout}`));
       let restoredCount = 0;
 
       for (const utxo of spUtxos) {
+        // If it was previously unspent, and we can verify, and it's missing from Electrum, it's spent.
+        if (!utxo.isSpent && canVerifySpends) {
+          const electrumUtxos = spElectrumResult![utxo.address] || [];
+          const stillUnspent = electrumUtxos.some(eu => eu.txid === utxo.txid && eu.vout === utxo.vout);
+          if (!stillUnspent) {
+            utxo.isSpent = true;
+          }
+        }
+
         const key = `${utxo.txid}:${utxo.vout}`;
         if (!existingKeys.has(key)) {
           this._utxo.push(utxo);
+          existingKeys.add(key);
           restoredCount++;
         }
       }
