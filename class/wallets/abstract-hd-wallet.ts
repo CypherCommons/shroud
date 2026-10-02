@@ -58,7 +58,11 @@ function completePartialWords(secret: string): string {
 }
 
 type AbstractHDWalletStatics = {
-  derivationPath?: string;
+  /**
+   * Account-level derivation path for this wallet type, as a function of the BIP-44 coin type so
+   * the same class can derive on mainnet (0') and the test chains (1').
+   */
+  derivationPathForCoinType?: (coinType: number) => string;
 };
 
 /**
@@ -86,7 +90,6 @@ export class AbstractHDWallet extends AbstractWallet {
 
   constructor() {
     super();
-    const Constructor = this.constructor as unknown as AbstractHDWalletStatics;
     this.next_free_address_index = 0;
     this.next_free_change_address_index = 0;
     this.internal_addresses_cache = {}; // index => address
@@ -95,7 +98,18 @@ export class AbstractHDWallet extends AbstractWallet {
     this.usedAddresses = [];
     this._address_to_wif_cache = {};
     this.gap_limit = 20;
-    this._derivationPath = Constructor.derivationPath;
+    this.applyNetworkDefaults();
+  }
+
+  /**
+   * `super()` has already set `networkId`, so the coin type is available here. On deserialization
+   * a stored path overwrites this, which is what keeps wallets created before multi-network
+   * support on their original derivation; a blob with no path gets the default for its *stored*
+   * network, because `fromJson` calls this again after restoring `networkId`.
+   */
+  protected applyNetworkDefaults(): void {
+    const Constructor = this.constructor as unknown as AbstractHDWalletStatics;
+    this._derivationPath = Constructor.derivationPathForCoinType?.(this.getNetworkConfig().coinType);
   }
 
   getNextFreeAddressIndex(): number {

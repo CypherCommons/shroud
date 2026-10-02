@@ -148,7 +148,6 @@
     "react-native-vector-icons": "10.2.0",
     "react-test-renderer": "19.0.0",
     "realm": "20.1.0",
-    "silent-payments": "github:BlueWallet/SilentPayments#7ac4d17",
     "stream-browserify": "3.0.0",
     "url": "0.11.4"
   }

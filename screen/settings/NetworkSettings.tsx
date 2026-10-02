@@ -12,6 +12,7 @@ import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
 import { useStorage } from '../../hooks/context/useStorage';
 import { useSettings } from '../../hooks/context/useSettings';
 import * as Electrum from '../../modules/Electrum';
+import { getNetwork } from '../../modules/network';
 import loc from '../../loc';
 import { ClashFont } from '../../constants/fonts';
 
@@ -20,7 +21,7 @@ type ElectrumConfig = Partial<Awaited<ReturnType<typeof Electrum.getConfig>>>;
 const NetworkSettings: React.FC = () => {
   const { colors } = useTheme();
   const navigation = useExtendedNavigation();
-  const { scanState } = useStorage();
+  const { scanState, activeNetworkId } = useStorage();
   const { selectedBlockExplorer } = useSettings();
   const [config, setConfig] = useState<ElectrumConfig>({});
   const [preferredServer, setPreferredServer] = useState<Electrum.ElectrumServerItem>();
@@ -75,7 +76,17 @@ const NetworkSettings: React.FC = () => {
 
   return (
     <SafeAreaScrollView contentContainerStyle={styles.content} testID="NetworkSettingsScrollView">
-      <SettingsSectionHeader>{loc.settings.network_section_authentication}</SettingsSectionHeader>
+      <SettingsSectionHeader>{loc.settings.bitcoin_network}</SettingsSectionHeader>
+      <SettingsCard>
+        <SettingsNavRow
+          title={getNetwork(activeNetworkId).displayName}
+          onPress={() => navigation.navigate('BitcoinNetworkSettings')}
+          showSeparator={false}
+          testID="BitcoinNetworkRow"
+        />
+      </SettingsCard>
+
+      <SettingsSectionHeader style={styles.sectionHeaderGap}>{loc.settings.network_section_authentication}</SettingsSectionHeader>
       <SettingsCard>
         <View style={styles.serverRow}>
           <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>{loc.settings.network_server}</Text>

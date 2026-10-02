@@ -1,10 +1,10 @@
 /* eslint react/prop-types: "off", @typescript-eslint/ban-ts-comment: "off", camelcase: "off"   */
 import BigNumber from 'bignumber.js';
+import b58 from 'bs58check';
 import BIP32Factory, { BIP32Interface } from 'bip32';
 import * as bip39 from 'bip39';
 import * as bitcoin from 'bitcoinjs-lib';
 import { Psbt } from 'bitcoinjs-lib';
-import b58 from 'bs58check';
 import coinSelect, { CoinSelectOutput, CoinSelectReturnInput, CoinSelectTarget } from 'coinselect';
 import coinSelectSplit from 'coinselect/split';
 import * as utils from 'coinselect/utils';
@@ -16,11 +16,18 @@ import ecc from '../../modules/noble_ecc';
 import { randomBytes } from '../rng';
 import { AbstractHDWallet } from './abstract-hd-wallet';
 import { CreateTransactionResult, CreateTransactionTarget, CreateTransactionUtxo, Transaction, Utxo } from './types';
-import { SilentPayment, UTXOType as SPUTXOType, UTXO as SPUTXO } from 'silent-payments';
+import { isSilentPaymentAddress, resolveSilentPaymentTargets } from '../../helpers/silent-payments';
 import { isValidBech32Address } from '../../utils/isValidBech32Address';
+import type { PrivateKey } from '@silent-pay/core';
 
 const ECPair = ECPairFactory(ecc);
 const bip32 = BIP32Factory(ecc);
+
+/**
+ * SLIP-132 public version bytes for a native-segwit extended key, which bitcoinjs `Network` does
+ * not carry. Keyed by BIP-44 coin type: mainnet zpub, test-chain vpub.
+ */
+const SLIP132_P2WPKH_PUBLIC_VERSION: Record<number, string> = { 0: '04b24746', 1: '045f1cf6' };
 
 // `OP_1 <32-byte x-only pubkey>`
 const P2TR_SCRIPT_LENGTH = 34;
@@ -134,7 +141,9 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
   _getWIFByIndex(internal: boolean, index: number): string | false {
     if (!this.secret) return false;
     const seed = this._getSeed();
-    const root = bip32.fromSeed(seed);
+    // The network sets the WIF version byte (0x80 mainnet, 0xEF test chains), so it has to be
+    // threaded through here and not just at address-encoding time.
+    const root = bip32.fromSeed(seed, this.getNetworkConfig().bitcoinjs);
     const path = `${this.getDerivationPath()}/${internal ? 1 : 0}/${index}`;
     const child = root.derivePath(path);
 
@@ -143,6 +152,7 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
 
   _getNodeAddressByIndex(node: number, index: number): string {
     index = index * 1; // cast to int
+    const network = this.getNetworkConfig().bitcoinjs;
     if (node === 0) {
       if (this.external_addresses_cache[index]) return this.external_addresses_cache[index]; // cache hit
     }
@@ -153,13 +163,13 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
 
     if (node === 0 && !this._node0) {
       const xpub = this._zpubToXpub(this.getXpub());
-      const hdNode = bip32.fromBase58(xpub);
+      const hdNode = bip32.fromBase58(xpub, network);
       this._node0 = hdNode.derive(node);
     }
 
     if (node === 1 && !this._node1) {
       const xpub = this._zpubToXpub(this.getXpub());
-      const hdNode = bip32.fromBase58(xpub);
+      const hdNode = bip32.fromBase58(xpub, network);
       this._node1 = hdNode.derive(node);
     }
 
@@ -183,16 +193,17 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
 
   _getNodePubkeyByIndex(node: number, index: number) {
     index = index * 1; // cast to int
+    const network = this.getNetworkConfig().bitcoinjs;
 
     if (node === 0 && !this._node0) {
       const xpub = this._zpubToXpub(this.getXpub());
-      const hdNode = bip32.fromBase58(xpub);
+      const hdNode = bip32.fromBase58(xpub, network);
       this._node0 = hdNode.derive(node);
     }
 
     if (node === 1 && !this._node1) {
       const xpub = this._zpubToXpub(this.getXpub());
-      const hdNode = bip32.fromBase58(xpub);
+      const hdNode = bip32.fromBase58(xpub, network);
       this._node1 = hdNode.derive(node);
     }
 
@@ -227,7 +238,7 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
     }
     // first, getting xpub
     const seed = this._getSeed();
-    const root = bip32.fromSeed(seed);
+    const root = bip32.fromSeed(seed, this.getNetworkConfig().bitcoinjs);
 
     const path = this.getDerivationPath();
     if (!path) {
@@ -236,11 +247,10 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
     const child = root.derivePath(path).neutered();
     const xpub = child.toBase58();
 
-    // bitcoinjs does not support zpub yet, so we just convert it from xpub
-    let data = b58.decode(xpub);
-    data = data.slice(4);
-    data = Buffer.concat([Buffer.from('04b24746', 'hex'), data]);
-    this._xpub = b58.encode(data);
+    // bitcoinjs does not support zpub yet (nor its vpub test-chain counterpart), so we convert
+    // from the xpub/tpub the network handed us
+    const version = Buffer.from(SLIP132_P2WPKH_PUBLIC_VERSION[this.getNetworkConfig().coinType], 'hex');
+    this._xpub = b58.encode(Buffer.concat([version, b58.decode(xpub).slice(4)]));
 
     return this._xpub;
   }
@@ -897,7 +907,7 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
     if (!address) return null;
     let cleanAddress = address;
 
-    const isBech32Address = isValidBech32Address(address);
+    const isBech32Address = isValidBech32Address(address, this.getNetworkConfig().bitcoinjs);
 
     if (isBech32Address) {
       cleanAddress = address.toLocaleLowerCase();
@@ -935,37 +945,48 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
     if (targets.length === 0) throw new Error('No destination provided');
 
     let { inputs, outputs, fee } = this.coinselect(utxos, targets, feeRate);
+    const network = this.getNetworkConfig().bitcoinjs;
 
-    const hasSilentPaymentOutput: boolean = !!outputs.find(o => o.address?.startsWith('sp1'));
+    const hasSilentPaymentOutput: boolean = !!outputs.find(o => isSilentPaymentAddress(o.address, network));
     if (hasSilentPaymentOutput) {
       if (!this.allowSilentPaymentSend()) {
         throw new Error('This wallet can not send to SilentPayment address');
       }
 
-      // for a single wallet all utxos gona be the same type, so we define it only once:
-      let utxoType: SPUTXOType = 'non-eligible';
+      // BIP-352 only lets some input types contribute to the shared secret. Taproot inputs are
+      // summed as x-only keys (negated when the Y coordinate is odd); p2wpkh and p2sh-p2wpkh
+      // contribute their private key as-is. Anything else is ineligible, and summing its key
+      // anyway would produce an output the recipient can never find — so refuse rather than
+      // default. For a single wallet all utxos are the same type, so this is decided once.
+      let isXOnly: boolean;
       switch (this.segwitType) {
         case 'p2tr':
-          utxoType = 'p2tr';
-          break;
-        case 'p2sh(p2wpkh)':
-          utxoType = 'p2sh-p2wpkh';
+          isXOnly = true;
           break;
         case 'p2wpkh':
-          utxoType = 'p2wpkh';
+        case 'p2sh(p2wpkh)':
+          isXOnly = false;
           break;
         default:
-          // @ts-ignore override
-          if (this.type === 'HDlegacyP2PKH') utxoType = 'p2pkh';
+          throw new Error(`Cannot send to a silent payment address: ${this.segwitType ?? 'this'} wallet inputs are not BIP-352 eligible`);
       }
+      const inputPrivateKeys: PrivateKey[] = inputs.map(u => {
+        const wifForInput = u.wif ?? this._getWifForAddress(String(u.address));
+        const keyPair = ECPair.fromWIF(wifForInput, network);
+        if (!keyPair.privateKey) throw new Error('Internal error: no private key for a silent payment input');
+        return { key: Buffer.from(keyPair.privateKey).toString('hex'), isXOnly };
+      });
 
-      const spUtxos: SPUTXO[] = inputs.map(u => ({ ...u, utxoType, wif: u.wif! }));
-      const sp = new SilentPayment();
-      outputs = sp.createTransaction(spUtxos, outputs) as CoinSelectOutput[];
+      outputs = resolveSilentPaymentTargets(
+        outputs,
+        inputs.map(u => ({ txid: u.txid, vout: u.vout })),
+        inputPrivateKeys,
+        network,
+      ) as CoinSelectOutput[];
     }
 
     sequence = sequence || AbstractHDElectrumWallet.defaultRBFSequence;
-    let psbt = new bitcoin.Psbt();
+    let psbt = new bitcoin.Psbt({ network });
     let c = 0;
     const keypairs: Record<number, ECPairInterface> = {};
     const values: Record<number, number> = {};
@@ -974,7 +995,7 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
       let keyPair;
       if (!skipSigning) {
         // skiping signing related stuff
-        keyPair = ECPair.fromWIF(this._getWifForAddress(String(input.address)));
+        keyPair = ECPair.fromWIF(this._getWifForAddress(String(input.address)), network);
         keypairs[c] = keyPair;
       }
       values[c] = input.value;
@@ -1083,7 +1104,7 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
     if (!pubkey || !path) {
       throw new Error('Internal error: pubkey or path are invalid');
     }
-    const p2wpkh = bitcoin.payments.p2wpkh({ pubkey });
+    const p2wpkh = bitcoin.payments.p2wpkh({ pubkey, network: this.getNetworkConfig().bitcoinjs });
     if (!p2wpkh.output) {
       throw new Error('Internal error: could not create p2wpkh output during _addPsbtInput');
     }
@@ -1138,6 +1159,7 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
   _nodeToBech32SegwitAddress(hdNode: BIP32Interface): string {
     const { address } = bitcoin.payments.p2wpkh({
       pubkey: hdNode.publicKey,
+      network: this.getNetworkConfig().bitcoinjs,
     });
 
     if (!address) {
@@ -1231,10 +1253,13 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
   }
 
   isAddressValid(address: string): boolean {
+    const network = this.getNetworkConfig().bitcoinjs;
     try {
-      bitcoin.address.toOutputScript(address);
+      // Rejects an address belonging to another chain: toOutputScript checks the bech32 HRP and
+      // the base58 version bytes against this network.
+      bitcoin.address.toOutputScript(address, network);
 
-      if (!address.toLowerCase().startsWith('bc1')) return true;
+      if (!address.toLowerCase().startsWith(`${network.bech32}1`)) return true;
       const decoded = bitcoin.address.fromBech32(address);
       if (decoded.version === 0) return true;
       if (decoded.version === 1 && decoded.data.length !== 32) return false;
@@ -1286,12 +1311,13 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
       }
     }
 
+    const network = this.getNetworkConfig().bitcoinjs;
     for (const t of _targets) {
-      if (t.address?.startsWith('bc1')) {
-        t.script = { length: bitcoin.address.toOutputScript(t.address).length + 3 };
-      } else if (t.address?.startsWith('sp1')) {
+      if (t.address?.toLowerCase().startsWith(`${network.bech32}1`)) {
+        t.script = { length: bitcoin.address.toOutputScript(t.address, network).length + 3 };
+      } else if (isSilentPaymentAddress(t.address, network)) {
         // a silent payment target is unwrapped into a P2TR output before broadcast, so size it
-        // as one; the +3 is the same margin the bc1 branch above carries, for addresses that
+        // as one; the +3 is the same margin the bech32 branch above carries, for addresses that
         // take more bytes than coinselect anticipates by default.
         t.script = { length: P2TR_SCRIPT_LENGTH + 3 };
       }

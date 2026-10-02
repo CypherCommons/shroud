@@ -1,14 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import navigationStyle, { CloseButtonPosition } from '../components/navigationStyle';
 import { useTheme } from '../components/themes';
 import loc from '../loc';
 import Broadcast from '../screen/send/Broadcast';
 import Success from '../screen/send/success';
-import CPFP from '../screen/transactions/CPFP';
 import TransactionDetails from '../screen/transactions/TransactionDetails';
-import RBFBumpFee from '../screen/transactions/RBFBumpFee';
-import RBFCancel from '../screen/transactions/RBFCancel';
 import WalletsList from '../screen/wallets/WalletsList';
 import { DetailViewStack } from './index';
 import SettingsButton from '../components/icons/SettingsButton';
@@ -24,6 +21,7 @@ import ElectrumServerSettings from '../screen/settings/ElectrumServerSettings';
 import BlockExplorerSettings from '../screen/settings/BlockExplorerSettings';
 import TorSettings from '../screen/settings/TorSettings';
 import NetworkSettings from '../screen/settings/NetworkSettings';
+import BitcoinNetworkSettings from '../screen/settings/BitcoinNetworkSettings';
 
 import { useSizeClass, SizeClass } from '../modules/sizeClass';
 import { isDesktop } from '../modules/environment';
@@ -36,10 +34,13 @@ import OnboardingStack from './OnboardingStack';
 import ContactList from '../screen/contacts/ContactList';
 import ContactEdit from '../screen/contacts/ContactEdit';
 import ContactDetail from '../screen/contacts/ContactDetail';
+import { useStorage } from '../hooks/context/useStorage';
+import { navigationRef } from '../NavigationService';
 
 const DetailViewStackScreensStack = () => {
   const theme = useTheme();
   const { sizeClass } = useSizeClass();
+  const { activeNetworkId, wallets } = useStorage();
   const RightBarButtons = useMemo(() => <SettingsButton />, []);
 
   const walletListScreenOptions = useMemo<NativeStackNavigationOptions>(() => {
@@ -57,6 +58,17 @@ const DetailViewStackScreensStack = () => {
   // which lags one render behind on launch and would otherwise pin us to Onboarding even
   // when a wallet exists. initialRouteName is only read once at navigator mount.
   const initialRoute = ShroudApp.getInstance().getWallets().length === 0 ? 'Onboarding' : 'WalletsList';
+
+  // initialRouteName is read once, so a runtime network switch cannot rely on it: moving to a
+  // chain with no wallet yet (or back to one that has one) has to re-route explicitly.
+  const previousNetworkId = useRef(activeNetworkId);
+  useEffect(() => {
+    if (previousNetworkId.current === activeNetworkId) return;
+    previousNetworkId.current = activeNetworkId;
+
+    const target = wallets.length === 0 ? 'Onboarding' : 'WalletsList';
+    navigationRef.current?.reset({ index: 0, routes: [{ name: target }] });
+  }, [activeNetworkId, wallets.length]);
 
   return (
     <DetailViewStack.Navigator
@@ -76,17 +88,6 @@ const DetailViewStackScreensStack = () => {
           statusBarStyle: 'auto',
           headerTitle: loc.transactions.details_title,
         })(theme)}
-      />
-      <DetailViewStack.Screen name="CPFP" component={CPFP} options={navigationStyle({ title: loc.transactions.cpfp_title })(theme)} />
-      <DetailViewStack.Screen
-        name="RBFBumpFee"
-        component={RBFBumpFee}
-        options={navigationStyle({ title: loc.transactions.rbf_title })(theme)}
-      />
-      <DetailViewStack.Screen
-        name="RBFCancel"
-        component={RBFCancel}
-        options={navigationStyle({ title: loc.transactions.cancel_title })(theme)}
       />
       <DetailViewStack.Screen
         name="Broadcast"
@@ -151,6 +152,11 @@ const DetailViewStackScreensStack = () => {
         name="NetworkSettings"
         component={NetworkSettings}
         options={navigationStyle({ title: loc.settings.network })(theme)}
+      />
+      <DetailViewStack.Screen
+        name="BitcoinNetworkSettings"
+        component={BitcoinNetworkSettings}
+        options={navigationStyle({ title: loc.settings.bitcoin_network })(theme)}
       />
       <DetailViewStack.Screen
         name="TrackPayment"

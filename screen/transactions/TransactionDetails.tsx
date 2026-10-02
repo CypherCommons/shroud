@@ -15,6 +15,7 @@ import { BitcoinUnit } from '../../models/bitcoinUnits';
 import { ClashFont } from '../../constants/fonts';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
 import ExternalLinkIcon from '../../components/icons/ExternalLinkIcon';
+import { getActiveNetwork } from '../../modules/network';
 import DetailRow from '../../components/DetailRow';
 
 type RouteProps = RouteProp<DetailViewStackParamList, 'TransactionDetails'>;
@@ -50,7 +51,7 @@ const TransactionDetails = () => {
 
   const viewInBlockExplorer = () => {
     if (tx?.hash) {
-      Linking.openURL(`https://mempool.space/tx/${tx.hash}`);
+      Linking.openURL(getActiveNetwork().explorerTxUrl(tx.hash));
     }
   };
 

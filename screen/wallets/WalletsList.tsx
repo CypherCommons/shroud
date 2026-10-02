@@ -24,6 +24,7 @@ import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
 import { useSendToAddress } from '../../hooks/useSendToAddress';
 import { useStorage } from '../../hooks/context/useStorage';
 import SafeAreaSectionList from '../../components/SafeAreaSectionList';
+import TestnetBadge from '../../components/TestnetBadge';
 import { scanQrHelper } from '../../helpers/scan-qr.ts';
 import QRScanIcon from '../../components/icons/QRScanIcon';
 import { ClashFont } from '../../constants/fonts';
@@ -506,6 +507,7 @@ const WalletsList: React.FC = () => {
 
     return (
       <View style={[styles.walletSection, stylesHook.walletContainer]}>
+        <TestnetBadge style={styles.testnetBadge} />
         <TouchableOpacity onPress={changeWalletBalanceUnit} style={styles.balanceHeader}>
           <View style={styles.balanceRow}>
             <Text style={[styles.balanceNumber, stylesHook.foregroundText]} adjustsFontSizeToFit numberOfLines={1}>
@@ -716,6 +718,9 @@ const styles = StyleSheet.create({
   walletSection: {
     paddingHorizontal: 16,
     paddingBottom: 8,
+  },
+  testnetBadge: {
+    marginBottom: 12,
   },
   balanceHeader: {
     alignItems: 'center',

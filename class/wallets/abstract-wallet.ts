@@ -2,6 +2,7 @@ import b58 from 'bs58check';
 import { sha256 } from '@noble/hashes/sha256';
 
 import { BitcoinUnit, Chain } from '../../models/bitcoinUnits';
+import { DEFAULT_NETWORK_ID, getActiveNetworkId, getNetwork, isNetworkId, NetworkConfig, NetworkId } from '../../modules/network';
 import { CreateTransactionResult, CreateTransactionUtxo, Transaction, Utxo } from './types';
 
 type WalletWithPassphrase = AbstractWallet & { getPassphrase: () => string };
@@ -9,6 +10,16 @@ type UtxoMetadata = {
   frozen?: boolean;
   memo?: string;
 };
+
+/**
+ * Resolve the network of a wallet coming back out of storage. Wallets persisted before
+ * multi-network support carry no `networkId`, and every one of those is mainnet — so absent or
+ * unrecognised means mainnet, never "whatever is currently selected". Getting this wrong would
+ * silently re-label an existing mainnet wallet as testnet on first load after a network switch.
+ */
+export function normaliseStoredNetworkId(value: unknown): NetworkId {
+  return isNetworkId(value) ? value : DEFAULT_NETWORK_ID;
+}
 
 export class AbstractWallet {
   static readonly type = 'abstract';
@@ -21,10 +32,17 @@ export class AbstractWallet {
   static fromJson(obj: string): AbstractWallet {
     const obj2 = JSON.parse(obj);
     const temp = new this();
+    // `new this()` stamped the wallet with whichever chain is selected right now. Pin it to the
+    // stored one before anything else runs, so nothing below can inherit the ambient chain.
+    temp.networkId = normaliseStoredNetworkId(obj2.networkId);
     for (const key2 of Object.keys(obj2)) {
+      if (key2 === 'networkId') continue; // already resolved; the raw value may be unrecognised
       // @ts-ignore This kind of magic is not allowed in typescript, we should try and be more specific
       temp[key2] = obj2[key2];
     }
+    // Anything the constructor defaulted from the ambient chain and the blob did not override has
+    // to be recomputed for the stored one.
+    if (obj2._derivationPath === undefined) temp.applyNetworkDefaults();
 
     return temp;
   }
@@ -45,6 +63,11 @@ export class AbstractWallet {
   userHasSavedExport: boolean;
   _hideTransactionsInWalletsList: boolean;
   _utxoMetadata: Record<string, UtxoMetadata>;
+  /**
+   * Chain this wallet lives on. Serialized with the wallet (it is a plain own property, so
+   * `Object.assign` in saveToDisk picks it up) and restored via `normaliseStoredNetworkId`.
+   */
+  networkId: NetworkId;
 
   constructor() {
     this.label = '';
@@ -61,6 +84,20 @@ export class AbstractWallet {
     this.userHasSavedExport = false;
     this._hideTransactionsInWalletsList = false;
     this._utxoMetadata = {};
+    // A freshly constructed wallet belongs to whatever network is selected now. Deserialization
+    // overwrites this from storage — see `normaliseStoredNetworkId`.
+    this.networkId = getActiveNetworkId();
+  }
+
+  /**
+   * (Re)compute defaults that depend on `networkId`. The constructor runs before deserialization
+   * has restored the stored chain, so `fromJson` calls this again once it has.
+   */
+  protected applyNetworkDefaults(): void {}
+
+  /** Full config (bitcoinjs network, coin type, backends) for the chain this wallet is on. */
+  getNetworkConfig(): NetworkConfig {
+    return getNetwork(this.networkId);
   }
 
   /**
@@ -74,7 +111,14 @@ export class AbstractWallet {
     const thisWithPassphrase = this as unknown as WalletWithPassphrase;
     const passphrase = thisWithPassphrase.getPassphrase ? thisWithPassphrase.getPassphrase() : '';
     const path = this._derivationPath ?? '';
-    const string2hash = this.type + this.getSecret() + passphrase + path;
+    // Mainnet contributes an empty suffix, so every ID minted before multi-network support is
+    // byte-identical — existing Realm transaction rows and the stored selected-wallet id stay
+    // valid, and no migration is needed. The suffix exists because testnet4 and signet share
+    // coin type 1' and therefore the same derivation path: without it they hash to the same ID,
+    // which makes loadFromDisk silently drop one of them and merges their tx histories in the
+    // Realm cache (which is keyed on wallet id).
+    const networkSuffix = this.networkId === DEFAULT_NETWORK_ID ? '' : this.networkId;
+    const string2hash = this.type + this.getSecret() + passphrase + path + networkSuffix;
     return Buffer.from(sha256(string2hash)).toString('hex');
   }
 
@@ -264,15 +308,20 @@ export class AbstractWallet {
   }
 
   /*
-   * Converts zpub to xpub
+   * Rewrites an extended public key to this network's standard BIP-32 public version — xpub on
+   * mainnet, tpub on the test chains. Named for the zpub case it was written for, but it is
+   * version-agnostic on input, so passing an already-normalised key through is a no-op. That
+   * matters because taproot wallets hand it a plain xpub/tpub.
    *
    * @param {String} zpub
-   * @returns {String} xpub
+   * @returns {String} xpub (or tpub on the test chains)
    */
   _zpubToXpub(zpub: string): string {
+    const version = Buffer.alloc(4);
+    version.writeUInt32BE(this.getNetworkConfig().bitcoinjs.bip32.public);
     let data = b58.decode(zpub);
     data = data.slice(4);
-    data = Buffer.concat([Buffer.from('0488b21e', 'hex'), data]);
+    data = Buffer.concat([version, data]);
 
     return b58.encode(data);
   }

@@ -3,6 +3,7 @@ import * as bitcoin from 'bitcoinjs-lib';
 import URL from 'url';
 import { Chain } from '../models/bitcoinUnits';
 import { ElectrumServerItem, parseElectrumServerString } from '../modules/Electrum';
+import { getActiveNetwork } from '../modules/network';
 import type { TWallet } from './wallets/types';
 
 type TCompletionHandlerParams = [string, object];
@@ -94,7 +95,7 @@ class DeeplinkSchemaMatch {
   static isBitcoinAddress(address: string): boolean {
     address = address.replace('://', ':').replace('bitcoin:', '').replace('BITCOIN:', '').replace('bitcoin=', '').split('?')[0];
     try {
-      bitcoin.address.toOutputScript(address);
+      bitcoin.address.toOutputScript(address, getActiveNetwork().bitcoinjs);
       return true;
     } catch {
       return false;
@@ -119,7 +120,7 @@ class DeeplinkSchemaMatch {
 
   static bip21encode(address: string, options?: TOptions): string {
     // uppercase address if bech32 to satisfy BIP_0173
-    const isBech32 = address.startsWith('bc1');
+    const isBech32 = address.toLowerCase().startsWith(`${getActiveNetwork().bitcoinjs.bech32}1`);
     if (isBech32) {
       address = address.toUpperCase();
     }

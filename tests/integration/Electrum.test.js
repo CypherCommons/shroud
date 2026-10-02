@@ -105,6 +105,12 @@ describe('Electrum', () => {
 
     assert.ok(await Electrum.testConnection('electrum1.bluewallet.io', false, 443));
     assert.ok(await Electrum.testConnection('mainnet.foundationdevices.com', false, 50002));
+
+    // The testnet4 fallback peer shipped in modules/network.ts. Asserted live because it is the
+    // only default the test chains have — if aranguren drops the endpoint, testnet4 silently
+    // falls back to "no server configured" and only manual entry works. NB 51002 on the same host
+    // is testnet3, so a port typo here would pass a connection test while serving the wrong chain.
+    assert.ok(await Electrum.testConnection('testnet.aranguren.org', false, 52002));
   });
 
   it('ElectrumClient can estimate fees', async () => {

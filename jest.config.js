@@ -6,9 +6,7 @@ module.exports = {
     '^.+\\.(ts|tsx)$': 'ts-jest',
   },
   moduleFileExtensions: ['js', 'json', 'ts', 'tsx'],
-  transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native(-.*)?|@react-native(-community)?)|@rneui|silent-payments/|@react-navigation)',
-  ],
+  transformIgnorePatterns: ['node_modules/(?!((jest-)?react-native(-.*)?|@react-native(-community)?)|@rneui|@react-navigation)'],
   setupFiles: ['./tests/setup.js'],
   watchPathIgnorePatterns: ['<rootDir>/node_modules'],
 };
