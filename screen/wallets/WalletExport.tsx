@@ -1,223 +1,196 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import Clipboard from '@react-native-clipboard/clipboard';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
-import { Icon } from '@rneui/themed';
-import { LayoutChangeEvent, ScrollView, StyleSheet, Pressable, View } from 'react-native';
-import { useScreenProtect } from '../../hooks/useScreenProtect';
-import { validateMnemonic } from '../../modules/bip39';
-import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
-import { ShroudText } from '../../ShroudComponents';
-import { computeResponsiveQRSize } from '../../helpers/computeResponsiveQRSize';
-import QRCard from '../../components/QRCard';
-import SeedWords from '../../components/SeedWords';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import dayjs from 'dayjs';
+import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import SafeAreaScrollView from '../../components/SafeAreaScrollView';
+import LabeledField from '../../components/LabeledField';
+import FieldTextInput from '../../components/FieldTextInput';
+import Checkbox from '../../components/Checkbox';
+import InfoBanner from '../../components/InfoBanner';
+import ActionButton from '../../components/ActionButton';
+import PinPrompt from '../../components/PinPrompt';
+import presentAlert from '../../components/Alert';
 import { useTheme } from '../../components/themes';
-import { useSettings } from '../../hooks/context/useSettings';
 import { useStorage } from '../../hooks/context/useStorage';
-import useAppState from '../../hooks/useAppState';
+import { useProtectedAction } from '../../hooks/useProtectedAction';
+import { writeFileAndExport } from '../../modules/fs';
+import { ClashFont } from '../../constants/fonts';
 import loc from '../../loc';
-import { WalletExportStackParamList } from '../../navigation/WalletExportStack';
 
-type RouteProps = RouteProp<WalletExportStackParamList, 'WalletExport'>;
-
-const HORIZONTAL_PADDING = 20;
-
-const CopyBox: React.FC<{ text: string; onPress: () => void }> = ({ text, onPress }) => {
-  const { colors } = useTheme();
-  const stylesHook = StyleSheet.create({
-    copyRoot: { backgroundColor: colors.borderDefault },
-  });
-
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [pressed && styles.pressed, styles.copyRoot, stylesHook.copyRoot]}>
-      <View style={styles.copyLeft}>
-        <ShroudText textBreakStrategy="balanced" style={styles.copyText}>
-          {text}
-        </ShroudText>
-      </View>
-      <View style={styles.copyRight}>
-        <Icon name="copy" type="font-awesome-5" color={colors.textSecondary} />
-      </View>
-    </Pressable>
-  );
-};
-
-const DoNotDisclose: React.FC = () => {
-  const { colors } = useTheme();
-
-  return (
-    <View style={[styles.warningBox, { backgroundColor: colors.textWarning }]}>
-      <Icon type="font-awesome-5" name="exclamation-circle" color="white" />
-      <ShroudText style={styles.warning}>{loc.wallets.warning_do_not_disclose}</ShroudText>
-    </View>
-  );
-};
+const MIN_PASSWORD_LENGTH = 8;
 
 const WalletExport: React.FC = () => {
-  const { wallets } = useStorage();
-  const { walletID } = useRoute<RouteProps>().params;
-  const navigation = useNavigation();
-  const { isScreenCaptureAllowed } = useSettings();
   const { colors } = useTheme();
-  const wallet = wallets.find(w => w.getID() === walletID)!;
-  const [qrCodeSize, setQRCodeSize] = useState(90);
-  const { currentAppState, previousAppState } = useAppState();
-  const stylesHook = StyleSheet.create({
-    root: { backgroundColor: colors.background },
-  });
+  const insets = useSafeAreaInsets();
+  const { exportEncryptedBackup } = useStorage();
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const navigation = useNavigation();
+  const { runProtected, isPinPromptVisible, pinAttempt } = useProtectedAction();
+  const [isUnlocked, setIsUnlocked] = useState(false);
 
-  const secret: string = useMemo(() => {
-    try {
-      const s = wallet.getSecret();
-      return typeof s === 'string' ? s : '';
-    } catch (error) {
-      console.error('Failed to get wallet secret:', error);
-      return '';
-    }
-  }, [wallet]);
-
-  const secretIsMnemonic: boolean = useMemo(() => {
-    return secret.length > 0 && validateMnemonic(secret);
-  }, [secret]);
-
-  const { enableScreenProtect, disableScreenProtect } = useScreenProtect();
-
+  // The file holds the seed, so opening this screen takes the same check as revealing the recovery phrase.
   useEffect(() => {
-    if (previousAppState === 'active' && currentAppState !== 'active') {
-      const timer = setTimeout(() => navigation.goBack(), 500);
-      return () => clearTimeout(timer);
-    }
-  }, [currentAppState, previousAppState, navigation]);
-
-  useEffect(() => {
-    if (!isScreenCaptureAllowed) {
-      enableScreenProtect();
-    }
-    return () => {
-      disableScreenProtect();
-    };
-  }, [isScreenCaptureAllowed, enableScreenProtect, disableScreenProtect]);
-
-  const onLayout = useCallback((e: LayoutChangeEvent) => {
-    const { height, width } = e.nativeEvent.layout;
-    const isPortrait = height > width;
-    const maxQRSize = 400;
-
-    const size = isPortrait
-      ? computeResponsiveQRSize(
-          { height, width },
-          { heightRatio: 0.5, widthRatio: 0.75, maxSize: maxQRSize, horizontalPadding: HORIZONTAL_PADDING },
-        )
-      : computeResponsiveQRSize({ height, width }, { heightRatio: 0.6, widthRatio: 0.35, maxSize: maxQRSize });
-
-    setQRCodeSize(size);
+    runProtected(
+      () => setIsUnlocked(true),
+      () => navigation.goBack(),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleCopy = useCallback(() => {
-    Clipboard.setString(wallet.getSecret());
-    triggerHapticFeedback(HapticFeedbackTypes.Selection);
-  }, [wallet]);
+  const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
 
-  if (!secret) {
-    return null;
-  }
+  const canSubmit = useMemo(
+    () => password.length >= MIN_PASSWORD_LENGTH && password === confirmPassword && isConfirmed && !isCreating,
+    [password, confirmPassword, isConfirmed, isCreating],
+  );
+
+  const handleCreateBackup = async () => {
+    if (!canSubmit) return;
+    setIsCreating(true);
+    try {
+      const encrypted = await exportEncryptedBackup(password);
+      const fileName = `Shroud-Export-${dayjs().format('YYYY-MM-DD')}.backup`;
+      await writeFileAndExport(fileName, encrypted);
+      setPassword('');
+      setConfirmPassword('');
+      setIsConfirmed(false);
+      presentAlert({ message: loc.wallets.export_backup_created });
+    } catch (error) {
+      console.error('backup export failed:', error);
+      presentAlert({ message: loc.wallets.export_backup_error });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  if (isPinPromptVisible) return <PinPrompt subtitle={loc.wallets.export_backup_pin_subtitle} pinAttempt={pinAttempt} />;
+  if (!isUnlocked) return null;
 
   return (
-    <ScrollView
-      automaticallyAdjustContentInsets
-      contentInsetAdjustmentBehavior="automatic"
-      style={stylesHook.root}
-      contentContainerStyle={styles.scrollViewContent}
-      onLayout={onLayout}
-      testID="WalletExportScroll"
-    >
-      <DoNotDisclose />
+    <SafeAreaScrollView contentContainerStyle={styles.content} testID="WalletExportScrollView">
+      <Text style={[styles.description, { color: colors.textMuted }]}>{loc.wallets.export_backup_description}</Text>
 
-      <ShroudText style={styles.scanText}>{loc.wallets.scan_import}</ShroudText>
+      <LabeledField
+        label={loc.wallets.export_backup_password_label}
+        trailing={
+          <Pressable onPress={() => setIsPasswordVisible(v => !v)} hitSlop={8} testID="TogglePasswordVisibility">
+            <Text style={[styles.toggleText, { color: colors.primary }]}>
+              {isPasswordVisible ? loc.wallets.export_backup_hide : loc.wallets.export_backup_show}
+            </Text>
+          </Pressable>
+        }
+      >
+        <FieldTextInput
+          testID="BackupPasswordInput"
+          secureTextEntry={!isPasswordVisible}
+          value={password}
+          onChangeText={setPassword}
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="off"
+        />
+      </LabeledField>
+      <Text style={[styles.fieldHint, { color: colors.textMuted }]}>
+        {loc.formatString(loc.wallets.export_backup_password_hint, { count: MIN_PASSWORD_LENGTH })}
+      </Text>
 
-      <QRCard value={secret} size={qrCodeSize} isMenuAvailable={false} />
+      <View style={styles.fieldGap} />
 
-      {/* Do not allow to copy mnemonic */}
-      {secretIsMnemonic ? (
-        <>
-          <View>
-            <ShroudText style={styles.manualText}>{loc.wallets.write_down_header}</ShroudText>
-            <ShroudText style={styles.writeText}>{loc.wallets.write_down}</ShroudText>
-          </View>
-          <SeedWords word={secret} index={0} />
-        </>
-      ) : (
-        <>
-          <ShroudText style={styles.writeText}>{loc.wallets.copy_ln_public}</ShroudText>
-          <CopyBox text={secret} onPress={handleCopy} />
-        </>
-      )}
+      <LabeledField label={loc.wallets.export_backup_confirm_label}>
+        <FieldTextInput
+          testID="BackupConfirmPasswordInput"
+          secureTextEntry={!isPasswordVisible}
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="off"
+        />
+      </LabeledField>
+      {passwordsMismatch && <InfoBanner variant="error" text={loc.wallets.export_backup_mismatch} containerStyle={styles.mismatchBanner} />}
 
-      <ShroudText style={styles.typeText}>
-        {loc.formatString(loc.wallets.wallet_type_this, {
-          type: wallet.typeReadable,
-        })}
-      </ShroudText>
-    </ScrollView>
+      <Pressable style={styles.checkboxRow} onPress={() => setIsConfirmed(c => !c)} testID="ConfirmPasswordUnderstoodRow">
+        <Checkbox value={isConfirmed} onValueChange={setIsConfirmed} accessibilityLabel={loc.wallets.export_backup_checkbox} />
+        <Text style={[styles.checkboxText, { color: colors.textPrimary }]}>{loc.wallets.export_backup_checkbox}</Text>
+      </Pressable>
+
+      <View style={styles.spacer} />
+
+      <InfoBanner
+        variant="caution"
+        text={loc.wallets.export_backup_warning}
+        emphasis={loc.wallets.export_backup_warning_emphasis}
+        containerStyle={styles.banner}
+      />
+
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 32) }]}>
+        <ActionButton
+          title={isCreating ? loc.wallets.export_backup_creating : loc.wallets.export_backup_button}
+          onPress={handleCreateBackup}
+          disabled={!canSubmit}
+          backgroundColor={canSubmit ? colors.brandPrimary : colors.ctaDisabled}
+          color={colors.white}
+          testID="CreateBackupFileButton"
+        />
+      </View>
+    </SafeAreaScrollView>
   );
 };
 
+export default WalletExport;
+
 const styles = StyleSheet.create({
-  scrollViewContent: {
-    justifyContent: 'center',
+  content: {
     flexGrow: 1,
-    gap: 32,
-    paddingHorizontal: HORIZONTAL_PADDING,
-    paddingTop: 10,
-    paddingBottom: 20,
+    paddingHorizontal: 24,
+    paddingTop: 16,
   },
-  warningBox: {
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 10,
-    alignSelf: 'stretch',
+  description: {
+    fontFamily: ClashFont.regular,
+    fontSize: 15,
+    lineHeight: 22.5,
+    marginBottom: 24,
+  },
+  fieldGap: {
+    height: 16,
+  },
+  fieldHint: {
+    fontFamily: ClashFont.regular,
+    fontSize: 13,
+    marginTop: 6,
+  },
+  mismatchBanner: {
+    marginTop: 12,
+  },
+  toggleText: {
+    fontFamily: ClashFont.medium,
+    fontSize: 14,
+  },
+  checkboxRow: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 20,
   },
-  warning: {
-    fontSize: 20,
-    color: 'white',
+  checkboxText: {
+    flex: 1,
+    fontFamily: ClashFont.regular,
+    fontSize: 14,
+    lineHeight: 20,
   },
-  scanText: {
-    textAlign: 'center',
-    fontSize: 20,
+  spacer: {
+    flex: 1,
+    minHeight: 24,
   },
-  writeText: {
-    textAlign: 'center',
-    fontSize: 17,
+  banner: {
+    marginBottom: 20,
   },
-  manualText: {
-    textAlign: 'center',
-    fontSize: 20,
-    marginBottom: 10,
-  },
-  typeText: {
-    textAlign: 'center',
-    fontSize: 17,
-    color: 'grey',
-  },
-  copyRoot: {
-    padding: 10,
-    borderRadius: 8,
-    flexDirection: 'row',
-  },
-  copyLeft: {
-    flexShrink: 1,
-  },
-  copyRight: {
-    justifyContent: 'center',
-    marginHorizontal: 8,
-  },
-  copyText: {
-    fontSize: 17,
-  },
-  pressed: {
-    opacity: 0.6,
+  footer: {
+    paddingTop: 8,
   },
 });
-
-export default WalletExport;

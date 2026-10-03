@@ -4,14 +4,19 @@ import triggerHapticFeedback, { HapticFeedbackTypes } from '../modules/hapticFee
 import { ShroudTextCentered } from '../ShroudComponents';
 import Button from '../components/Button';
 import SafeArea from '../components/SafeArea';
+import PinEntry from '../components/PinEntry';
 import { BiometricType, unlockWithBiometrics, useBiometrics } from '../hooks/useBiometrics';
 import loc from '../loc';
 import { useStorage } from '../hooks/context/useStorage';
 import { useTheme } from '../components/themes';
+import { hasPinSet } from '../helpers/pinLock';
+import { usePinAttempt } from '../hooks/usePinAttempt';
+import { useResetApp } from '../hooks/useResetApp';
 
 enum AuthType {
   Encrypted,
   Biometrics,
+  Pin,
   None,
   BiometricsUnavailable,
 }
@@ -72,8 +77,7 @@ const UnlockWith: React.FC = () => {
     isUnlockingWallets.current = true;
     dispatch({ type: SET_IS_AUTHENTICATING, payload: true });
 
-    if (await unlockWithBiometrics()) {
-      await startAndDecrypt();
+    if ((await unlockWithBiometrics()) && (await startAndDecrypt())) {
       successfullyAuthenticated();
     }
 
@@ -102,13 +106,18 @@ const UnlockWith: React.FC = () => {
       const biometricUseCapableAndEnabled = await isBiometricUseCapableAndEnabled();
       const biometricsUseEnabled = await isBiometricUseEnabled();
       const biometricType = biometricUseCapableAndEnabled ? deviceBiometricType : undefined;
+      // A keychain read error fails closed: show the PIN keypad rather than unlocking unchecked.
+      const pinIsSet = await hasPinSet().catch(() => true);
 
+      // Encrypted storage is gated by its own password, which the PIN and biometrics can't stand in for.
       if (storageIsEncrypted) {
         dispatch({ type: SET_AUTH, payload: { type: AuthType.Encrypted, detail: undefined } });
         unlockWithKey();
       } else if (biometricUseCapableAndEnabled) {
         dispatch({ type: SET_AUTH, payload: { type: AuthType.Biometrics, detail: biometricType } });
         unlockUsingBiometrics();
+      } else if (pinIsSet) {
+        dispatch({ type: SET_AUTH, payload: { type: AuthType.Pin, detail: undefined } });
       } else if (biometricsUseEnabled && biometricType === undefined) {
         triggerHapticFeedback(HapticFeedbackTypes.NotificationError);
         dispatch({ type: SET_AUTH, payload: { type: AuthType.BiometricsUnavailable, detail: undefined } });
@@ -130,6 +139,21 @@ const UnlockWith: React.FC = () => {
     }
   };
 
+  const unlockAfterPin = useCallback(async () => {
+    isUnlockingWallets.current = true;
+    if (await startAndDecrypt()) {
+      triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
+      successfullyAuthenticated();
+    } else {
+      isUnlockingWallets.current = false;
+    }
+  }, [startAndDecrypt, successfullyAuthenticated]);
+
+  const pinAttempt = usePinAttempt(unlockAfterPin);
+
+  // After a reset there's no PIN or wallet left: unlock as a fresh install, which lands on onboarding.
+  const resetApp = useResetApp(unlockWithKey);
+
   const renderUnlockOptions = () => {
     if (state.isAuthenticating) {
       return <ActivityIndicator color={colors.brandPrimary} />;
@@ -145,6 +169,19 @@ const UnlockWith: React.FC = () => {
       }
     }
   };
+
+  if (state.auth.type === AuthType.Pin) {
+    return (
+      <SafeArea style={styles.root}>
+        <View style={styles.container}>
+          <Image source={require('../img/logo.png')} style={styles.logoImage} resizeMode="contain" />
+        </View>
+        <View style={styles.pinRow}>
+          <PinEntry pinAttempt={pinAttempt} onForgotPin={resetApp} forgotPinTestID="ForgotPinButton" />
+        </View>
+      </SafeArea>
+    );
+  }
 
   return (
     <SafeArea style={styles.root}>
@@ -174,6 +211,10 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 20,
     paddingHorizontal: 20,
+  },
+  pinRow: {
+    alignSelf: 'center',
+    marginBottom: 20,
   },
   logoImage: {
     width: 100,
