@@ -27,11 +27,8 @@ const _shareOpen = async (filePath: string, showShareDialog: boolean = false) =>
       failOnCancel: false,
     });
   } catch (error: any) {
-    console.log(error);
     // If user cancels sharing, we dont want to show an error. for some reason we get 'CANCELLED' string as error
-    if (error.message !== 'CANCELLED') {
-      presentAlert({ message: error.message });
-    }
+    if (error.message !== 'CANCELLED') throw error;
   } finally {
     await RNFS.unlink(filePath);
   }
@@ -39,33 +36,24 @@ const _shareOpen = async (filePath: string, showShareDialog: boolean = false) =>
 
 /**
  * Writes a file to fs, and triggers an OS sharing dialog, so user can decide where to put this file (share to cloud
- * or perhaps messaging app). Provided filename should be just a file name, NOT a path
+ * or perhaps messaging app). Provided filename should be just a file name, NOT a path.
+ * Throws on failure so the caller can report it; cancelling the share dialog is not a failure.
  */
 
 export const writeFileAndExport = async function (fileName: string, contents: string, showShareDialog: boolean = true) {
   const sanitizedFileName = _sanitizeFileName(fileName);
-  try {
-    if (Platform.OS === 'ios') {
-      const filePath = `${RNFS.TemporaryDirectoryPath}/${sanitizedFileName}`;
-      await RNFS.writeFile(filePath, contents);
-      await _shareOpen(filePath, showShareDialog);
-    } else if (Platform.OS === 'android') {
-      const filePath = `${RNFS.DownloadDirectoryPath}/${sanitizedFileName}`;
-      try {
-        await RNFS.writeFile(filePath, contents);
-        if (showShareDialog) {
-          await _shareOpen(filePath);
-        } else {
-          presentAlert({ message: loc.formatString(loc.send.file_saved_at_path, { filePath }) });
-        }
-      } catch (e: any) {
-        console.error(e);
-        presentAlert({ message: e.message });
-      }
+  if (Platform.OS === 'ios') {
+    const filePath = `${RNFS.TemporaryDirectoryPath}/${sanitizedFileName}`;
+    await RNFS.writeFile(filePath, contents);
+    await _shareOpen(filePath, showShareDialog);
+  } else if (Platform.OS === 'android') {
+    const filePath = `${RNFS.DownloadDirectoryPath}/${sanitizedFileName}`;
+    await RNFS.writeFile(filePath, contents);
+    if (showShareDialog) {
+      await _shareOpen(filePath);
+    } else {
+      presentAlert({ message: loc.formatString(loc.send.file_saved_at_path, { filePath }) });
     }
-  } catch (error: any) {
-    console.error(error);
-    presentAlert({ message: error.message });
   }
 };
 

@@ -1,17 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, AppStateStatus, Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, AppState, AppStateStatus, Image, Modal, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import PinKeypad from './PinKeypad';
+import PinEntry from './PinEntry';
 import Button from './Button';
 import { useTheme } from './themes';
 import { useStorage } from '../hooks/context/useStorage';
-import { useSettings } from '../hooks/context/useSettings';
 import { unlockWithBiometrics, useBiometrics } from '../hooks/useBiometrics';
 import { hasPinSet } from '../helpers/pinLock';
 import { usePinAttempt } from '../hooks/usePinAttempt';
 import { useResetApp } from '../hooks/useResetApp';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../modules/hapticFeedback';
-import { ClashFont } from '../constants/fonts';
 import loc from '../loc';
 
 type LockMethod = 'biometrics' | 'pin' | null;
@@ -25,7 +23,6 @@ type LockMethod = 'biometrics' | 'pin' | null;
 const AppLock: React.FC = () => {
   const { colors } = useTheme();
   const { walletsInitialized, setWalletsInitialized } = useStorage();
-  const { isPinLayoutScrambled } = useSettings();
   const { isBiometricUseCapableAndEnabled } = useBiometrics();
   const [lockMethod, setLockMethod] = useState<LockMethod>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -100,10 +97,11 @@ const AppLock: React.FC = () => {
     return () => subscription.remove();
   }, [lockMethod, unlockUsingBiometrics]);
 
-  const { submitPin, pinError, clearPinError, isLockedOut, lockoutMessage, canOfferReset, refreshLockout } = usePinAttempt(() => {
+  const pinAttempt = usePinAttempt(() => {
     triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
     unlock();
   });
+  const { refreshLockout } = pinAttempt;
 
   useEffect(() => {
     if (lockMethod === 'pin') refreshLockout();
@@ -124,21 +122,7 @@ const AppLock: React.FC = () => {
         </View>
         <View style={styles.unlockRow}>
           {lockMethod === 'pin' ? (
-            <>
-              <PinKeypad
-                scrambled={isPinLayoutScrambled}
-                onComplete={submitPin}
-                error={pinError}
-                onErrorShown={clearPinError}
-                disabled={isLockedOut}
-              />
-              {lockoutMessage && <Text style={[styles.lockoutText, { color: colors.textMuted }]}>{lockoutMessage}</Text>}
-              {canOfferReset && (
-                <TouchableOpacity onPress={resetApp} accessibilityRole="button" testID="AppLockForgotPinButton">
-                  <Text style={[styles.forgotPinText, { color: colors.primary }]}>{loc.settings.pin_forgot}</Text>
-                </TouchableOpacity>
-              )}
-            </>
+            <PinEntry pinAttempt={pinAttempt} onForgotPin={resetApp} forgotPinTestID="AppLockForgotPinButton" />
           ) : isAuthenticating ? (
             <ActivityIndicator color={colors.primary} />
           ) : (
@@ -165,18 +149,6 @@ const styles = StyleSheet.create({
   logo: {
     width: 100,
     height: 75,
-  },
-  lockoutText: {
-    fontFamily: ClashFont.regular,
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  forgotPinText: {
-    fontFamily: ClashFont.medium,
-    fontSize: 15,
-    textAlign: 'center',
-    marginTop: 16,
   },
   unlockRow: {
     alignSelf: 'center',

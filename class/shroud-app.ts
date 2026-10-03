@@ -7,6 +7,7 @@ import RNSecureKeyStore, { ACCESSIBLE } from 'react-native-secure-key-store';
 import Realm from 'realm';
 
 import * as encryption from '../modules/encryption';
+import { encryptBackup } from '../modules/backupEncryption';
 import { GROUP_IO_SHROUD } from '../modules/currency';
 import presentAlert from '../components/Alert';
 import { randomBytes } from './rng';
@@ -199,12 +200,10 @@ export class ShroudApp {
   };
 
   /**
-   * Cleans up all current application data (wallets, tx metadata etc)
-   * Encrypts the bucket and saves it storage
-   */
-  /**
-   * Forgets everything this app stores about the wallet: in-memory state plus the keystore copy and the
-   * Realm key-value backup, including any encrypted and decoy buckets. Used by the forgot-PIN reset.
+   * Forgets everything this app stores about the wallet: in-memory state, the keystore copy and the
+   * Realm key-value backup (encrypted and decoy buckets included), and the Realm transaction caches.
+   * Used by the forgot-PIN reset. Throws if any of it can't be removed, so the caller doesn't go on
+   * to drop the PIN while the old wallet is still on disk.
    */
   wipeAllData = async (): Promise<void> => {
     usedBucketNum = false;
@@ -212,9 +211,39 @@ export class ShroudApp {
     this.wallets = [];
     this.tx_metadata = {};
     this.contacts = {};
-    await this.saveToDisk();
+
+    // Wait out a save already in flight and hold its lock, so it can't write the old wallet back
+    // after this wipe.
+    // eslint-disable-next-line no-unmodified-loop-condition -- saveToDisk() clears it while this awaits
+    while (savingInProgress) await new Promise(resolve => setTimeout(resolve, 100));
+    savingInProgress = 1;
+    try {
+      // Written directly rather than through saveToDisk(), which reports errors with an alert instead of throwing.
+      const data = JSON.stringify({ wallets: [], tx_metadata: {}, contacts: {} });
+      await this.setItem('data', data);
+      await this.setItem(ShroudApp.FLAG_ENCRYPTED, '');
+      const realmkeyValue = await this.openRealmKeyValue();
+      try {
+        this.saveToRealmKeyValue(realmkeyValue, 'data', data);
+        this.saveToRealmKeyValue(realmkeyValue, ShroudApp.FLAG_ENCRYPTED, '');
+      } finally {
+        realmkeyValue.close();
+      }
+
+      // One transaction cache per storage password (see getRealmForTransactions), plus Realm's lock/note/management files.
+      const files = await RNFS.readDir(RNFS.CachesDirectoryPath);
+      for (const file of files) {
+        if (file.name.includes('-wallettransactions.realm')) await RNFS.unlink(file.path);
+      }
+    } finally {
+      savingInProgress = 0;
+    }
   };
 
+  /**
+   * Cleans up all current application data (wallets, tx metadata etc)
+   * Encrypts the bucket and saves it storage
+   */
   createFakeStorage = async (fakePassword: string): Promise<boolean> => {
     usedBucketNum = false; // resetting currently used bucket so we wont overwrite it
     this.wallets = [];
@@ -278,7 +307,7 @@ export class ShroudApp {
       tx_metadata: this.tx_metadata,
       contacts: this.contacts,
     };
-    return encryption.encrypt(JSON.stringify(data), password);
+    return encryptBackup(JSON.stringify(data), password);
   };
 
   hashIt = (s: string): string => {

@@ -288,12 +288,16 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     setWallets(shroudApp.getWallets());
   }, []);
 
-  // Forgot-PIN reset: wipes the wallet data and the PIN. txMetadata is cleared too, since saveToDisk()
-  // copies it back into the singleton on every save.
+  // Forgot-PIN reset: wipes the wallet data and the PIN. The queued save is cancelled and txMetadata
+  // cleared first, since saveToDisk() copies it back into the singleton on every save.
   const wipeDevice = useCallback(async () => {
+    if (persistTimeoutRef.current) {
+      clearTimeout(persistTimeoutRef.current);
+      persistTimeoutRef.current = null;
+    }
+    txMetadata.current = {};
     await shroudApp.wipeAllData();
     await clearPin();
-    txMetadata.current = {};
     setWallets([]);
   }, []);
 

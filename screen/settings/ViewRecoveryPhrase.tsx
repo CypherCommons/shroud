@@ -6,7 +6,7 @@ import { BlurView } from '@react-native-community/blur';
 import SeedWordsGrid from '../../components/SeedWordsGrid';
 import InfoBanner from '../../components/InfoBanner';
 import ActionButton from '../../components/ActionButton';
-import PinKeypad from '../../components/PinKeypad';
+import PinPrompt from '../../components/PinPrompt';
 import HeaderBackButton from '../../components/HeaderBackButton';
 import EyeIcon from '../../components/icons/EyeIcon';
 import { useTheme } from '../../components/themes';
@@ -15,10 +15,8 @@ import { useSettings } from '../../hooks/context/useSettings';
 import { useScreenProtect } from '../../hooks/useScreenProtect';
 import useAppState from '../../hooks/useAppState';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
-import { unlockWithBiometrics, useBiometrics } from '../../hooks/useBiometrics';
+import { useProtectedAction } from '../../hooks/useProtectedAction';
 import { isE2E } from '../../helpers/e2e';
-import { hasPinSet } from '../../helpers/pinLock';
-import { usePinAttempt } from '../../hooks/usePinAttempt';
 import { ClashFont } from '../../constants/fonts';
 import loc from '../../loc';
 
@@ -59,12 +57,10 @@ const ViewRecoveryPhrase: React.FC = () => {
   const navigation = useExtendedNavigation();
   const insets = useSafeAreaInsets();
   const { wallets } = useStorage();
-  const { isScreenCaptureAllowed, isPinLayoutScrambled } = useSettings();
-  const { isBiometricUseCapableAndEnabled } = useBiometrics();
+  const { isScreenCaptureAllowed } = useSettings();
   const { enableScreenProtect, disableScreenProtect } = useScreenProtect();
   const [isRevealed, setIsRevealed] = useState(false);
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [isPinPromptVisible, setIsPinPromptVisible] = useState(false);
+  const { runProtected, isAuthenticating, isPinPromptVisible, cancelPinPrompt, pinAttempt } = useProtectedAction();
   const { currentAppState } = useAppState();
 
   // BlurView's Android capture root is the whole Activity content view, not its own bounds
@@ -124,30 +120,7 @@ const ViewRecoveryPhrase: React.FC = () => {
 
   const handleBack = () => navigation.goBack();
 
-  // Biometrics if enabled, else the PIN if one is set. With neither there is nothing to check against.
-  const handleReveal = async () => {
-    setIsAuthenticating(true);
-    try {
-      if (await isBiometricUseCapableAndEnabled()) {
-        if (await unlockWithBiometrics()) setIsRevealed(true);
-      } else if (await hasPinSet().catch(() => true)) {
-        setIsPinPromptVisible(true);
-      } else {
-        setIsRevealed(true);
-      }
-    } finally {
-      setIsAuthenticating(false);
-    }
-  };
-
-  const { submitPin, pinError, clearPinError, isLockedOut, lockoutMessage, refreshLockout } = usePinAttempt(() => {
-    setIsPinPromptVisible(false);
-    setIsRevealed(true);
-  });
-
-  useEffect(() => {
-    if (isPinPromptVisible) refreshLockout();
-  }, [isPinPromptVisible, refreshLockout]);
+  const handleReveal = () => runProtected(() => setIsRevealed(true));
 
   const revealContent = revealWindowLayout && (
     <View style={styles.modalRoot} pointerEvents="box-none">
@@ -182,20 +155,9 @@ const ViewRecoveryPhrase: React.FC = () => {
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
         <View style={styles.headerRow}>
-          <HeaderBackButton onPress={() => setIsPinPromptVisible(false)} color={colors.textPrimary} testID="RecoveryPhrasePinBackButton" />
+          <HeaderBackButton onPress={cancelPinPrompt} color={colors.textPrimary} testID="RecoveryPhrasePinBackButton" />
         </View>
-        <View style={styles.pinPrompt}>
-          <Text style={[styles.pinTitle, { color: colors.textPrimary }]}>{loc.settings.pin_enter}</Text>
-          <Text style={[styles.pinSubtitle, { color: colors.textMuted }]}>{loc.settings.security_recovery_phrase_pin_subtitle}</Text>
-          <PinKeypad
-            scrambled={isPinLayoutScrambled}
-            onComplete={submitPin}
-            error={pinError}
-            onErrorShown={clearPinError}
-            disabled={isLockedOut}
-          />
-          {lockoutMessage && <Text style={[styles.lockoutText, { color: colors.textMuted }]}>{lockoutMessage}</Text>}
-        </View>
+        <PinPrompt subtitle={loc.settings.security_recovery_phrase_pin_subtitle} pinAttempt={pinAttempt} />
       </SafeAreaView>
     );
   }
@@ -338,13 +300,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 16,
   },
-  pinPrompt: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  pinTitle: { fontFamily: ClashFont.medium, fontSize: 22, textAlign: 'center', marginBottom: 8 },
-  lockoutText: { fontFamily: ClashFont.regular, fontSize: 14, textAlign: 'center', marginTop: 8 },
-  pinSubtitle: { fontFamily: ClashFont.regular, fontSize: 14, textAlign: 'center', marginBottom: 32 },
 });

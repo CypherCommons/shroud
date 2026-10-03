@@ -2,6 +2,7 @@ import React, { ReactNode, useCallback } from 'react';
 import { StyleProp, TouchableOpacityProps, ViewStyle } from 'react-native';
 
 import * as fs from '../modules/fs';
+import presentAlert from './Alert';
 import loc from '../loc';
 import { ActionIcons } from '../typings/ActionIcons';
 import ToolTipMenu from './TooltipMenu';
@@ -35,14 +36,14 @@ const SaveFileButton: React.FC<SaveFileButtonProps> = ({
       }
       const action = actions.find(a => a.id === actionId);
 
-      if (action?.id === 'save') {
-        await fs.writeFileAndExport(fileName, fileContent, false).finally(() => {
-          afterOnPress?.();
-        });
-      } else if (action?.id === 'share') {
-        await fs.writeFileAndExport(fileName, fileContent, true).finally(() => {
-          afterOnPress?.();
-        });
+      if (action?.id !== 'save' && action?.id !== 'share') return;
+      try {
+        await fs.writeFileAndExport(fileName, fileContent, action.id === 'share');
+      } catch (error: any) {
+        console.error(error);
+        presentAlert({ message: error.message });
+      } finally {
+        afterOnPress?.();
       }
     },
     [afterOnPress, beforeOnPress, fileContent, fileName],

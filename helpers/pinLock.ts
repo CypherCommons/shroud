@@ -17,15 +17,16 @@ const hashPin = (pin: string, saltHex: string): string => {
 
 // Single reader so "no PIN" means the same thing everywhere: the library resolves `false` when
 // there is no entry, but some keystore states (and the jest mock) resolve `null`/`undefined`.
-// Keychain errors are rethrown so callers can fail closed.
-const readStoredPin = async (): Promise<StoredPin | null> => {
+// Keychain errors are rethrown so callers can fail closed. An unreadable entry still counts as a PIN
+// that never matches, so wrong tries add up to the reset offer instead of skipping the lock.
+const readStoredPin = async (): Promise<StoredPin | 'corrupt' | null> => {
   const credentials = await Keychain.getGenericPassword({ service: KEYCHAIN_SERVICE });
   if (!credentials) return null;
   try {
-    return JSON.parse(credentials.password);
-  } catch {
-    return null;
-  }
+    const stored = JSON.parse(credentials.password);
+    if (typeof stored?.hash === 'string' && typeof stored?.salt === 'string') return stored;
+  } catch {}
+  return 'corrupt';
 };
 
 export const hasPinSet = async (): Promise<boolean> => {
@@ -41,7 +42,7 @@ export const setPin = async (pin: string): Promise<void> => {
 
 const verifyPin = async (pin: string): Promise<boolean> => {
   const stored = await readStoredPin();
-  return stored !== null && hashPin(pin, stored.salt) === stored.hash;
+  return stored !== null && stored !== 'corrupt' && hashPin(pin, stored.salt) === stored.hash;
 };
 
 export const clearPin = async (): Promise<void> => {
@@ -60,46 +61,59 @@ export const RESET_OFFER_AFTER = 10;
 
 export interface AttemptState {
   failures: number;
-  lockedUntil: number;
-  lastFailureAt: number;
+  /** Lockout time still to serve. */
+  remainingMs: number;
+  /** Monotonic time of the last check, only meaningful within `session`. */
+  checkedAt: number;
+  session: string;
 }
 
 export interface PinLockout {
-  /** Epoch ms until which PIN entry is blocked, or null when it isn't. */
-  lockedUntil: number | null;
+  /** Ms until PIN entry is allowed again, or null when it isn't blocked. */
+  retryInMs: number | null;
   canOfferReset: boolean;
 }
 
 export type PinAttemptResult = { ok: true } | ({ ok: false } & PinLockout);
 
-const NO_ATTEMPTS: AttemptState = { failures: 0, lockedUntil: 0, lastFailureAt: 0 };
+// Identifies this app process. performance.now() restarts from zero in every process, so a checkedAt
+// from another session can't be compared against it.
+const SESSION = `${Date.now()}-${Math.random()}`;
+
+const monotonicNow = (): number => performance.now();
+
+const NO_ATTEMPTS: AttemptState = { failures: 0, remainingMs: 0, checkedAt: 0, session: '' };
 
 /** Delay before the next try, after `failures` wrong PINs in a row: none for the first few, then doubling up to a cap. */
 export const delayAfterFailures = (failures: number): number =>
   failures < FREE_ATTEMPTS ? 0 : Math.min(BASE_DELAY_MS * 2 ** (failures - FREE_ATTEMPTS), MAX_DELAY_MS);
 
 /**
- * If the clock is now earlier than the last failure, it was moved back: restart the remaining delay from
- * now instead of letting a rewound clock stretch it (or a user's clock correction lock them out for long).
+ * Takes the time that passed since the last check off the lockout. Only a monotonic clock in the same
+ * process counts, so changing the device clock can't shorten it. Time while the app isn't running
+ * doesn't count either: after a restart the rest of the delay has to be waited out in the app.
  */
-export const rebaseForClock = (state: AttemptState, now: number): AttemptState => {
-  if (now >= state.lastFailureAt) return state;
-  return { ...state, lockedUntil: now + Math.max(0, state.lockedUntil - state.lastFailureAt), lastFailureAt: now };
+export const creditElapsed = (state: AttemptState, now: number, session: string = SESSION): AttemptState => {
+  const elapsed = state.session === session ? Math.max(0, now - state.checkedAt) : 0;
+  return { ...state, remainingMs: Math.max(0, state.remainingMs - elapsed), checkedAt: now, session };
 };
 
-const toLockout = (state: AttemptState, now: number): PinLockout => ({
-  lockedUntil: state.lockedUntil > now ? state.lockedUntil : null,
+const toLockout = (state: AttemptState): PinLockout => ({
+  retryInMs: state.remainingMs > 0 ? state.remainingMs : null,
   canOfferReset: state.failures >= RESET_OFFER_AFTER,
 });
+
+// An unreadable count could hide any number of failures, so it is read as the longest lockout.
+const CORRUPT_ATTEMPTS: AttemptState = { failures: RESET_OFFER_AFTER, remainingMs: MAX_DELAY_MS, checkedAt: 0, session: '' };
 
 const readAttempts = async (): Promise<AttemptState> => {
   const credentials = await Keychain.getGenericPassword({ service: ATTEMPTS_SERVICE });
   if (!credentials) return NO_ATTEMPTS;
   try {
-    return { ...NO_ATTEMPTS, ...JSON.parse(credentials.password) };
-  } catch {
-    return NO_ATTEMPTS;
-  }
+    const stored = { ...NO_ATTEMPTS, ...JSON.parse(credentials.password) };
+    if (Number.isFinite(stored.failures) && Number.isFinite(stored.remainingMs) && Number.isFinite(stored.checkedAt)) return stored;
+  } catch {}
+  return CORRUPT_ATTEMPTS;
 };
 
 const writeAttempts = async (state: AttemptState): Promise<void> => {
@@ -110,18 +124,26 @@ const resetAttempts = async (): Promise<void> => {
   await Keychain.resetGenericPassword({ service: ATTEMPTS_SERVICE });
 };
 
+// Reads the attempt state with elapsed time credited, saving the credit so a restart doesn't lose it.
+const readCreditedAttempts = async (now: number): Promise<AttemptState> => {
+  const stored = await readAttempts();
+  const state = creditElapsed(stored, now);
+  if (stored.remainingMs > 0) await writeAttempts(state);
+  return state;
+};
+
 /** Current lockout, for a screen to show a countdown before any PIN is typed. */
-export const getPinLockout = async (now: number = Date.now()): Promise<PinLockout> => {
-  return toLockout(rebaseForClock(await readAttempts(), now), now);
+export const getPinLockout = async (now: number = monotonicNow()): Promise<PinLockout> => {
+  return toLockout(await readCreditedAttempts(now));
 };
 
 /**
  * The only way to check a PIN. While locked out it doesn't check the PIN at all, so waiting out the
  * delay can't be skipped by guessing. Keychain errors are rethrown so callers can fail closed.
  */
-export const attemptPin = async (pin: string, now: number = Date.now()): Promise<PinAttemptResult> => {
-  const state = rebaseForClock(await readAttempts(), now);
-  if (state.lockedUntil > now) return { ok: false, ...toLockout(state, now) };
+export const attemptPin = async (pin: string, now: number = monotonicNow()): Promise<PinAttemptResult> => {
+  const state = await readCreditedAttempts(now);
+  if (state.remainingMs > 0) return { ok: false, ...toLockout(state) };
 
   if (await verifyPin(pin)) {
     await resetAttempts();
@@ -129,7 +151,7 @@ export const attemptPin = async (pin: string, now: number = Date.now()): Promise
   }
 
   const failures = state.failures + 1;
-  const next: AttemptState = { failures, lockedUntil: now + delayAfterFailures(failures), lastFailureAt: now };
+  const next: AttemptState = { ...state, failures, remainingMs: delayAfterFailures(failures) };
   await writeAttempts(next);
-  return { ok: false, ...toLockout(next, now) };
+  return { ok: false, ...toLockout(next) };
 };

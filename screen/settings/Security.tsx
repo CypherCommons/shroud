@@ -210,9 +210,7 @@ const Security: React.FC = () => {
         />
         <SettingsNavRow
           title={loc.settings.security_export_wallet}
-          onPress={() =>
-            wallet && navigation.navigate('WalletExportRoot', { screen: 'WalletExport', params: { walletID: wallet.getID() } })
-          }
+          onPress={() => navigation.navigate('WalletExportRoot')}
           showSeparator={false}
           testID="ExportWalletRow"
         />

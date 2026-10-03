@@ -5,7 +5,7 @@ import {
   delayAfterFailures,
   getPinLockout,
   hasPinSet,
-  rebaseForClock,
+  creditElapsed,
   RESET_OFFER_AFTER,
   setPin,
 } from '../../helpers/pinLock';
@@ -66,6 +66,20 @@ describe('pinLock', () => {
     expect((await attemptPin('1234', T0)).ok).toBe(false);
   });
 
+  it.each(['not json', '{}'])('treats an unreadable PIN entry %p as a PIN that never matches', async value => {
+    store.shroud_pin = value;
+    expect(await hasPinSet()).toBe(true);
+    await failTimes(1);
+    expect(JSON.parse(store.shroud_pin_attempts).failures).toBe(1);
+  });
+
+  it.each(['not json', '{"failures":"x"}'])('treats an unreadable attempt count %p as the longest lockout', async value => {
+    await setPin('1234');
+    store.shroud_pin_attempts = value;
+    expect(await getPinLockout(T0)).toEqual({ retryInMs: 60 * 60 * SECOND, canOfferReset: true });
+    expect((await attemptPin('1234', T0)).ok).toBe(false);
+  });
+
   it('clears a set PIN', async () => {
     await setPin('1234');
     await clearPin();
@@ -80,16 +94,16 @@ describe('pinLock', () => {
 
     it('allows the first few wrong PINs without a delay', async () => {
       await failTimes(4);
-      expect(await getPinLockout(T0)).toEqual({ lockedUntil: null, canOfferReset: false });
+      expect(await getPinLockout(T0)).toEqual({ retryInMs: null, canOfferReset: false });
       expect(await attemptPin('1234', T0)).toEqual({ ok: true });
     });
 
     it('locks out after the fifth wrong PIN, without checking the PIN while locked', async () => {
       await failTimes(5);
-      expect(await getPinLockout(T0)).toEqual({ lockedUntil: T0 + 30 * SECOND, canOfferReset: false });
+      expect(await getPinLockout(T0)).toEqual({ retryInMs: 30 * SECOND, canOfferReset: false });
 
       // The right PIN is refused during the delay, and doesn't add a failure either.
-      expect(await attemptPin('1234', T0 + 10 * SECOND)).toEqual({ ok: false, lockedUntil: T0 + 30 * SECOND, canOfferReset: false });
+      expect(await attemptPin('1234', T0 + 10 * SECOND)).toEqual({ ok: false, retryInMs: 20 * SECOND, canOfferReset: false });
       expect(await attemptPin('1234', T0 + 30 * SECOND)).toEqual({ ok: true });
     });
 
@@ -97,7 +111,7 @@ describe('pinLock', () => {
       await failTimes(5);
       await attemptPin('1234', T0 + 30 * SECOND);
       await failTimes(4, T0 + 31 * SECOND);
-      expect(await getPinLockout(T0 + 31 * SECOND)).toEqual({ lockedUntil: null, canOfferReset: false });
+      expect(await getPinLockout(T0 + 31 * SECOND)).toEqual({ retryInMs: null, canOfferReset: false });
     });
 
     it('keeps the count across restarts, since it lives in the keychain', async () => {
@@ -119,13 +133,13 @@ describe('pinLock', () => {
     it('resets the count when a new PIN is set', async () => {
       await failTimes(5);
       await setPin('5678');
-      expect(await getPinLockout(T0)).toEqual({ lockedUntil: null, canOfferReset: false });
+      expect(await getPinLockout(T0)).toEqual({ retryInMs: null, canOfferReset: false });
     });
 
-    it('restarts the remaining delay when the clock is moved back', async () => {
+    it('keeps the credited wait when the lockout is checked again later', async () => {
       await failTimes(5);
-      const earlier = T0 - 24 * 60 * 60 * SECOND;
-      expect(await getPinLockout(earlier)).toEqual({ lockedUntil: earlier + 30 * SECOND, canOfferReset: false });
+      await getPinLockout(T0 + 10 * SECOND);
+      expect(JSON.parse(store.shroud_pin_attempts).remainingMs).toBe(20 * SECOND);
     });
   });
 
@@ -139,10 +153,16 @@ describe('pinLock', () => {
     });
   });
 
-  describe('rebaseForClock', () => {
-    it('leaves the state alone when the clock moved forward', () => {
-      const state = { failures: 5, lockedUntil: T0 + 30 * SECOND, lastFailureAt: T0 };
-      expect(rebaseForClock(state, T0 + 5 * SECOND)).toBe(state);
+  describe('creditElapsed', () => {
+    const state = { failures: 5, remainingMs: 30 * SECOND, checkedAt: 100 * SECOND, session: 'a' };
+
+    it('takes the time since the last check off the wait, within the same session', () => {
+      expect(creditElapsed(state, 110 * SECOND, 'a').remainingMs).toBe(20 * SECOND);
+      expect(creditElapsed(state, 200 * SECOND, 'a').remainingMs).toBe(0);
+    });
+
+    it('credits nothing across a restart, where the monotonic clock started over', () => {
+      expect(creditElapsed(state, 500 * SECOND, 'b')).toEqual({ ...state, checkedAt: 500 * SECOND, session: 'b' });
     });
   });
 });
