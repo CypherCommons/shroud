@@ -1,10 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import presentAlert from '../components/Alert';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../modules/hapticFeedback';
-import { attemptPin, getPinLockout, PinLockout } from '../helpers/pinLock';
+import { attemptPin, getPinLockout } from '../helpers/pinLock';
 import loc from '../loc';
 
-const NOT_LOCKED: PinLockout = { lockedUntil: null, canOfferReset: false };
+interface Lockout {
+  /** Epoch ms the countdown runs to, or null when not locked out. Display only: attemptPin() decides. */
+  lockedUntil: number | null;
+  canOfferReset: boolean;
+}
+
+const NOT_LOCKED: Lockout = { lockedUntil: null, canOfferReset: false };
+
+const toDisplayLockout = ({ retryInMs, canOfferReset }: { retryInMs: number | null; canOfferReset: boolean }): Lockout => ({
+  lockedUntil: retryInMs === null ? null : Date.now() + retryInMs,
+  canOfferReset,
+});
 
 const formatWait = (seconds: number): string => {
   const m = Math.floor(seconds / 60);
@@ -17,7 +28,7 @@ const formatWait = (seconds: number): string => {
  * and tracks the lockout countdown. `onSuccess` runs once the PIN is right.
  */
 export const usePinAttempt = (onSuccess: () => void | Promise<void>) => {
-  const [lockout, setLockout] = useState<PinLockout>(NOT_LOCKED);
+  const [lockout, setLockout] = useState<Lockout>(NOT_LOCKED);
   const [now, setNow] = useState(Date.now());
   const [pinError, setPinError] = useState(false);
   const onSuccessRef = useRef(onSuccess);
@@ -27,7 +38,7 @@ export const usePinAttempt = (onSuccess: () => void | Promise<void>) => {
   // prompt), since another screen may have added failures in between.
   const refreshLockout = useCallback(() => {
     getPinLockout()
-      .then(setLockout)
+      .then(l => setLockout(toDisplayLockout(l)))
       .catch(e => console.warn('getPinLockout failed:', e));
   }, []);
 
@@ -59,7 +70,7 @@ export const usePinAttempt = (onSuccess: () => void | Promise<void>) => {
       return;
     }
     triggerHapticFeedback(HapticFeedbackTypes.NotificationError);
-    setLockout({ lockedUntil: result.lockedUntil, canOfferReset: result.canOfferReset });
+    setLockout(toDisplayLockout(result));
     setPinError(true);
   }, []);
 

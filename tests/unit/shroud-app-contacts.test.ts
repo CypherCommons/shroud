@@ -1,5 +1,6 @@
 import assert from 'assert';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import RNFS from 'react-native-fs';
 
 import { ShroudApp } from '../../class/shroud-app';
 
@@ -9,6 +10,7 @@ describe('ShroudApp persistence', () => {
   // its own subject.
   beforeEach(async () => {
     await AsyncStorage.clear();
+    (RNFS.readDir as jest.Mock).mockResolvedValue([]);
   });
 
   const ADDR_A = 'sp1qqfqnnv8czppwysafq3uwgwvsc638hc8rx3hscuddh0xa2yd746s7xqh6yy9ncjnqhqxazct0fzh98w7lpkm5fvlepqec2yy0sxlq4j6ccc3h6t0g';
@@ -82,5 +84,30 @@ describe('ShroudApp persistence', () => {
     assert.deepStrictEqual(reloaded.tx_metadata, {});
     assert.strictEqual(await reloaded.isPasswordInUse('real-password'), false);
     assert.strictEqual(await reloaded.isPasswordInUse('duress-password'), false);
+  });
+
+  it('wipeAllData deletes the Realm transaction caches and nothing else', async () => {
+    const file = (name: string) => ({ name, path: `/cache/${name}` });
+    (RNFS.readDir as jest.Mock).mockResolvedValue([
+      file('abc-wallettransactions.realm'),
+      file('abc-wallettransactions.realm.lock'),
+      file('def-wallettransactions.realm.management'),
+      file('keyvalue.realm'),
+    ]);
+    (RNFS.unlink as jest.Mock).mockClear();
+
+    await new ShroudApp().wipeAllData();
+
+    expect((RNFS.unlink as jest.Mock).mock.calls.map(([path]) => path)).toEqual([
+      '/cache/abc-wallettransactions.realm',
+      '/cache/abc-wallettransactions.realm.lock',
+      '/cache/def-wallettransactions.realm.management',
+    ]);
+  });
+
+  it('wipeAllData throws when the stored data cannot be overwritten', async () => {
+    const app = new ShroudApp();
+    jest.spyOn(app, 'setItem').mockRejectedValueOnce(new Error('keystore unavailable'));
+    await expect(app.wipeAllData()).rejects.toThrow('keystore unavailable');
   });
 });

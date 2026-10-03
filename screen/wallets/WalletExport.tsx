@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import dayjs from 'dayjs';
+import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SafeAreaScrollView from '../../components/SafeAreaScrollView';
 import LabeledField from '../../components/LabeledField';
@@ -8,9 +9,11 @@ import FieldTextInput from '../../components/FieldTextInput';
 import Checkbox from '../../components/Checkbox';
 import InfoBanner from '../../components/InfoBanner';
 import ActionButton from '../../components/ActionButton';
+import PinPrompt from '../../components/PinPrompt';
 import presentAlert from '../../components/Alert';
 import { useTheme } from '../../components/themes';
 import { useStorage } from '../../hooks/context/useStorage';
+import { useProtectedAction } from '../../hooks/useProtectedAction';
 import { writeFileAndExport } from '../../modules/fs';
 import { ClashFont } from '../../constants/fonts';
 import loc from '../../loc';
@@ -26,6 +29,18 @@ const WalletExport: React.FC = () => {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const navigation = useNavigation();
+  const { runProtected, isPinPromptVisible, pinAttempt } = useProtectedAction();
+  const [isUnlocked, setIsUnlocked] = useState(false);
+
+  // The file holds the seed, so opening this screen takes the same check as revealing the recovery phrase.
+  useEffect(() => {
+    runProtected(
+      () => setIsUnlocked(true),
+      () => navigation.goBack(),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const passwordsMismatch = confirmPassword.length > 0 && password !== confirmPassword;
 
@@ -41,6 +56,10 @@ const WalletExport: React.FC = () => {
       const encrypted = await exportEncryptedBackup(password);
       const fileName = `Shroud-Export-${dayjs().format('YYYY-MM-DD')}.backup`;
       await writeFileAndExport(fileName, encrypted);
+      setPassword('');
+      setConfirmPassword('');
+      setIsConfirmed(false);
+      presentAlert({ message: loc.wallets.export_backup_created });
     } catch (error) {
       console.error('backup export failed:', error);
       presentAlert({ message: loc.wallets.export_backup_error });
@@ -48,6 +67,9 @@ const WalletExport: React.FC = () => {
       setIsCreating(false);
     }
   };
+
+  if (isPinPromptVisible) return <PinPrompt subtitle={loc.wallets.export_backup_pin_subtitle} pinAttempt={pinAttempt} />;
+  if (!isUnlocked) return null;
 
   return (
     <SafeAreaScrollView contentContainerStyle={styles.content} testID="WalletExportScrollView">
@@ -108,7 +130,7 @@ const WalletExport: React.FC = () => {
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 32) }]}>
         <ActionButton
-          title={loc.wallets.export_backup_button}
+          title={isCreating ? loc.wallets.export_backup_creating : loc.wallets.export_backup_button}
           onPress={handleCreateBackup}
           disabled={!canSubmit}
           backgroundColor={canSubmit ? colors.brandPrimary : colors.ctaDisabled}
