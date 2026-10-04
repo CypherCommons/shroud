@@ -10,7 +10,7 @@ import presentAlert from '../../components/Alert';
 import confirm from '../../helpers/confirm';
 import loc from '../../loc';
 import { ClashFont } from '../../constants/fonts';
-import { getAllNetworks, type NetworkId } from '../../modules/network';
+import { getEnabledNetworks, type NetworkId } from '../../modules/network';
 
 /**
  * Which chain the wallet is on: mainnet, testnet4 or signet. Not to be confused with
@@ -20,7 +20,7 @@ import { getAllNetworks, type NetworkId } from '../../modules/network';
 const BitcoinNetworkSettings: React.FC = () => {
   const { colors } = useTheme();
   const { activeNetworkId, switchNetwork, isSwitchingNetwork, scanState } = useStorage();
-  const networks = getAllNetworks();
+  const networks = getEnabledNetworks();
 
   const onSelect = useCallback(
     async (next: NetworkId) => {

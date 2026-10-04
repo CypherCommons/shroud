@@ -1,6 +1,6 @@
 import { initializeIndexer, disconnectIndexer } from '../../modules/SilentPaymentIndexer';
 import * as Electrum from '../../modules/Electrum';
-import { configureIndexerEndpoints, getActiveNetworkId, setActiveNetwork } from '../../modules/network';
+import { configureIndexerEndpoints, getActiveNetworkId, getNetwork, setActiveNetwork } from '../../modules/network';
 import {
   bootActiveNetwork,
   persistNetworkId,
@@ -23,6 +23,16 @@ const MAINNET_INDEXER = 'https://mainnet.indexer.test';
 const TESTNET4_INDEXER = 'https://testnet4.indexer.test';
 const MAINNET_ONION = 'http://mainnet-indexer.onion';
 const TESTNET4_ONION = 'http://testnet4-indexer.onion';
+
+// These tests are about switch sequencing and need a second working chain. Testnet4 is switched off
+// in the registry, so turn it back on for this file only (the registry is per test file); the flag
+// itself is covered in network-enabled.test.ts.
+beforeAll(() => {
+  getNetwork('testnet4').enabled = true;
+});
+afterAll(() => {
+  getNetwork('testnet4').enabled = false;
+});
 
 describe('network switch sequencing', () => {
   beforeAll(() => {
@@ -127,7 +137,7 @@ describe('boot network', () => {
   it('falls back to mainnet when the stored chain has no indexer, without overwriting the preference', async () => {
     await persistNetworkId('signet');
 
-    expect(await bootActiveNetwork()).toEqual({ id: 'bitcoin', fellBackFrom: 'signet' });
+    expect(await bootActiveNetwork()).toEqual({ id: 'bitcoin', fellBackFrom: 'signet', reason: 'no-indexer' });
     expect(getActiveNetworkId()).toBe('bitcoin');
     expect(initializeIndexer).toHaveBeenCalledWith(expect.objectContaining({ baseUrl: MAINNET_INDEXER }));
     // Kept, so configuring the signet indexer later puts the user back where they were.

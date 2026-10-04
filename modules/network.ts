@@ -41,6 +41,13 @@ export interface Peer {
 export interface NetworkConfig {
   id: NetworkId;
   displayName: string;
+  /**
+   * Whether the network is offered in the UI and can be switched to or started on. Switching a
+   * network off removes nothing: it stays in the registry, its stored wallets stay on disk (the
+   * app only ever filters by chain on read, never on write), and wallet IDs and derivation keep
+   * working. It just cannot be selected, so bringing it back is flipping this flag.
+   */
+  enabled: boolean;
   /** Address encoding, xpub/tpub prefix, WIF version byte, PSBT. Shared by testnet4 + signet. */
   bitcoinjs: bitcoin.Network;
   /** BIP-44 coin type for every derivation path. 1' for all test chains. */
@@ -95,6 +102,7 @@ const NETWORKS: Record<NetworkId, NetworkConfig> = {
   bitcoin: {
     id: 'bitcoin',
     displayName: 'Mainnet',
+    enabled: true,
     bitcoinjs: bitcoin.networks.bitcoin,
     coinType: 0,
     isTestnet: false,
@@ -107,6 +115,8 @@ const NETWORKS: Record<NetworkId, NetworkConfig> = {
   testnet4: {
     id: 'testnet4',
     displayName: 'Testnet4',
+    // Switched off while its indexer is down. Existing testnet4 wallets are left in storage.
+    enabled: false,
     bitcoinjs: bitcoin.networks.testnet,
     coinType: 1,
     isTestnet: true,
@@ -119,6 +129,7 @@ const NETWORKS: Record<NetworkId, NetworkConfig> = {
   signet: {
     id: 'signet',
     displayName: 'Signet',
+    enabled: true,
     bitcoinjs: bitcoin.networks.testnet,
     coinType: 1,
     isTestnet: true,
@@ -142,6 +153,15 @@ export function getNetwork(id: NetworkId): NetworkConfig {
 
 export function getAllNetworks(): NetworkConfig[] {
   return NETWORK_IDS.map(id => NETWORKS[id]);
+}
+
+export function isNetworkEnabled(id: NetworkId): boolean {
+  return NETWORKS[id].enabled;
+}
+
+/** The networks the UI may offer. Use this, not `getAllNetworks`, for anything user-facing. */
+export function getEnabledNetworks(): NetworkConfig[] {
+  return getAllNetworks().filter(network => network.enabled);
 }
 
 export function getActiveNetwork(): NetworkConfig {

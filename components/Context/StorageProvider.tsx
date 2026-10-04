@@ -12,7 +12,7 @@ import { startAndDecrypt } from '../../modules/start-and-decrypt';
 import { navigationRef } from '../../NavigationService';
 import { type ScanStateInfo, IDLE_SCAN_STATE, isScannable } from '../../helpers/silent-payments';
 import { getActiveNetworkId, type NetworkId } from '../../modules/network';
-import { assertIndexerConfigured, rollbackNetworkSwitch, switchNetworkBackends } from '../../modules/networkPreference';
+import { assertNetworkSwitchable, rollbackNetworkSwitch, switchNetworkBackends } from '../../modules/networkPreference';
 
 const shroudApp = ShroudApp.getInstance();
 
@@ -338,9 +338,9 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       const previous = getActiveNetworkId();
       if (next === previous) return;
 
-      // Before any teardown: a chain that cannot be scanned must not cost the user their running
-      // scan or leave the outgoing wallets detached.
-      assertIndexerConfigured(next);
+      // Before any teardown: a chain that is switched off or cannot be scanned must not cost the
+      // user their running scan or leave the outgoing wallets detached.
+      assertNetworkSwitchable(next);
 
       setIsSwitchingNetwork(true);
       const outgoingWallets = shroudApp.getWallets();

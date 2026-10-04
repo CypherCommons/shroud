@@ -42,7 +42,7 @@ make sure to copy .env.example → .env, set at least one indexer URL in `.env`,
 
 ### Networks
 
-The wallet runs on mainnet, testnet4 or signet, switchable at runtime under **Settings → Network → Bitcoin Network**. Each network needs its own silent-payment indexer:
+The wallet supports mainnet, testnet4 and signet, switchable at runtime under **Settings → Network → Bitcoin Network**. Testnet4 is currently switched off (`enabled: false` in `modules/network.ts`), so the picker offers mainnet and signet only; wallets already stored on testnet4 are left untouched, and setting the flag back to `true` restores it. Each network needs its own silent-payment indexer:
 
 ```
 INDEXER_BASE_URL_MAINNET=...

@@ -69,11 +69,11 @@ const App = () => {
     initializeRustJsiBridge();
 
     bootActiveNetwork()
-      .then(({ id, fellBackFrom }) => {
+      .then(({ id, fellBackFrom, reason }) => {
         if (fellBackFrom) {
-          presentAlert({
-            message: `No silent payment indexer is configured for ${getNetwork(fellBackFrom).displayName}, so the app started on ${getNetwork(id).displayName} instead.`,
-          });
+          const from = getNetwork(fellBackFrom).displayName;
+          const why = reason === 'disabled' ? `${from} is currently disabled` : `No silent payment indexer is configured for ${from}`;
+          presentAlert({ message: `${why}, so the app started on ${getNetwork(id).displayName} instead.` });
         }
       })
       .catch((error: any) => {

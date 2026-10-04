@@ -3,7 +3,15 @@ import DefaultPreference from 'react-native-default-preference';
 import { GROUP_IO_SHROUD } from './currency';
 import * as Electrum from './Electrum';
 import { disconnectIndexer, initializeIndexer } from './SilentPaymentIndexer';
-import { DEFAULT_NETWORK_ID, getActiveNetworkId, getNetwork, isNetworkId, setActiveNetwork, type NetworkId } from './network';
+import {
+  DEFAULT_NETWORK_ID,
+  getActiveNetworkId,
+  getNetwork,
+  isNetworkEnabled,
+  isNetworkId,
+  setActiveNetwork,
+  type NetworkId,
+} from './network';
 
 /**
  * Persistence and backend wiring for the active network.
@@ -50,12 +58,25 @@ export async function hydrateActiveNetwork(): Promise<NetworkId> {
   return id;
 }
 
+/** Throws if the chain is switched off in the registry (`enabled: false`). Side-effect free. */
+export function assertNetworkEnabled(id: NetworkId): void {
+  if (!isNetworkEnabled(id)) {
+    throw new Error(`${getNetwork(id).displayName} is currently disabled.`);
+  }
+}
+
 /** Throws if the chain has no indexer configured. Cheap and side-effect free, so call it first. */
 export function assertIndexerConfigured(id: NetworkId): void {
   const network = getNetwork(id);
   if (!network.indexerBaseUrl) {
     throw new Error(`No silent payment indexer is configured for ${network.displayName}. Set INDEXER_BASE_URL_* in .env`);
   }
+}
+
+/** Everything that can be known about a switch before touching anything. Side-effect free. */
+export function assertNetworkSwitchable(id: NetworkId): void {
+  assertNetworkEnabled(id);
+  assertIndexerConfigured(id);
 }
 
 /** Point the indexer singleton at the active chain. Throws if that chain has no indexer set. */
@@ -81,12 +102,22 @@ function reconnectElectrum(): void {
 /**
  * Apply the stored network and point the indexer at it, as the app starts.
  *
- * If the stored chain has no indexer (its URL was removed from `.env`, say) the app would mount on
- * a chain it cannot scan, so it falls back to the default chain for this run. The stored
- * preference is left alone: configuring the indexer later puts the user back where they were.
+ * If the stored chain is switched off, or has no indexer (its URL was removed from `.env`, say),
+ * the app would mount on a chain it cannot use, so it falls back to the default chain for this
+ * run. The stored preference is left alone: re-enabling the chain, or configuring its indexer,
+ * puts the user back where they were.
  */
-export async function bootActiveNetwork(): Promise<{ id: NetworkId; fellBackFrom?: NetworkId }> {
+export async function bootActiveNetwork(): Promise<{
+  id: NetworkId;
+  fellBackFrom?: NetworkId;
+  reason?: 'disabled' | 'no-indexer';
+}> {
   const stored = await hydrateActiveNetwork();
+  if (!isNetworkEnabled(stored)) {
+    setActiveNetwork(DEFAULT_NETWORK_ID);
+    pointIndexerAtActiveNetwork();
+    return { id: DEFAULT_NETWORK_ID, fellBackFrom: stored, reason: 'disabled' };
+  }
   try {
     pointIndexerAtActiveNetwork();
     return { id: stored };
@@ -94,7 +125,7 @@ export async function bootActiveNetwork(): Promise<{ id: NetworkId; fellBackFrom
     if (stored === DEFAULT_NETWORK_ID) throw e;
     setActiveNetwork(DEFAULT_NETWORK_ID);
     pointIndexerAtActiveNetwork();
-    return { id: DEFAULT_NETWORK_ID, fellBackFrom: stored };
+    return { id: DEFAULT_NETWORK_ID, fellBackFrom: stored, reason: 'no-indexer' };
   }
 }
 
@@ -110,7 +141,7 @@ export async function bootActiveNetwork(): Promise<{ id: NetworkId; fellBackFrom
  * throws after the module has moved, the caller restores it with `rollbackNetworkSwitch`.
  */
 export async function switchNetworkBackends(next: NetworkId): Promise<void> {
-  assertIndexerConfigured(next);
+  assertNetworkSwitchable(next);
 
   Electrum.resetForNetworkSwitch();
 
