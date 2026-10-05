@@ -3,7 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import useAppState from '../../hooks/useAppState';
 import ScanProgressBar from '../../components/ScanProgressBar';
 import { useScanActions, useScannableWallet } from '../../hooks/useScannableWallet';
-import { Animated, InteractionManager, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { InteractionManager, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import A from '../../modules/analytics';
 import { getClipboardContent } from '../../modules/clipboard';
 import { isDesktop } from '../../modules/environment';
@@ -12,6 +12,7 @@ import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/haptic
 import DeeplinkSchemaMatch from '../../class/deeplink-schema-match';
 import { ExtendedTransaction, Transaction, TWallet } from '../../class/wallets/types';
 import presentAlert from '../../components/Alert';
+import Toast from '../../components/Toast';
 import { useTheme } from '../../components/themes';
 import { TransactionListItem } from '../../components/TransactionListItem';
 import { useSizeClass, SizeClass } from '../../modules/sizeClass';
@@ -134,28 +135,8 @@ const WalletsList: React.FC = () => {
   const dataSource = getTransactions(undefined, Infinity);
   const walletsCount = useRef<number>(wallets.length);
   const [showZeroBalanceToast, setShowZeroBalanceToast] = useState(false);
-  const toastOpacity = useRef(new Animated.Value(0)).current;
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
-
-  const dismissToast = useCallback(() => {
-    Animated.timing(toastOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(({ finished }) => {
-      if (finished) setShowZeroBalanceToast(false);
-    });
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-  }, [toastOpacity]);
-
-  const triggerZeroBalanceToast = useCallback(() => {
-    setShowZeroBalanceToast(true);
-    Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(dismissToast, 4000);
-  }, [toastOpacity, dismissToast]);
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    };
-  }, []);
+  const dismissToast = useCallback(() => setShowZeroBalanceToast(false), []);
+  const triggerZeroBalanceToast = useCallback(() => setShowZeroBalanceToast(true), []);
 
   const stylesHook = useMemo(
     () => ({
@@ -185,10 +166,6 @@ const WalletsList: React.FC = () => {
       payBtnDisabled: {
         backgroundColor: colors.ctaDisabled,
       },
-      cardStyle: {
-        backgroundColor: colors.background,
-        borderColor: colors.borderDefault,
-      },
       foregroundText: {
         color: colors.textPrimary,
       },
@@ -201,9 +178,6 @@ const WalletsList: React.FC = () => {
       payBtnLabel: {
         color: colors.white,
       },
-      toastRequestBtn: {
-        backgroundColor: colors.brandPrimary,
-      },
       shareAddrStyle: {
         borderWidth: 1.63,
         borderColor: colors.accentSubtle,
@@ -211,9 +185,6 @@ const WalletsList: React.FC = () => {
       },
       shareAddrText: {
         color: colors.textBrand,
-      },
-      zeroBalanceRequestText: {
-        color: colors.white,
       },
     }),
     [colors, sizeClass],
@@ -678,24 +649,14 @@ const WalletsList: React.FC = () => {
         ignoreTopInset={true} // Ignore top inset as the screen header already handles it
         {...refreshProps}
       />
-      <Modal transparent visible={showZeroBalanceToast} statusBarTranslucent animationType="none" onRequestClose={dismissToast}>
-        <View style={styles.toastModalOverlay} pointerEvents="box-none">
-          <Animated.View testID="ZeroBalanceToast" style={[styles.zeroBalanceToast, stylesHook.cardStyle, { opacity: toastOpacity }]}>
-            <View style={styles.zeroBalanceToastText}>
-              <Text style={[styles.zeroBalanceToastTitle, stylesHook.foregroundText]}>{loc.wallets.zero_balance_toast_title}</Text>
-              <Text style={[styles.zeroBalanceToastSubtitle, stylesHook.alternativeText]}>{loc.wallets.zero_balance_toast_subtitle}</Text>
-            </View>
-            <TouchableOpacity
-              testID="ZeroBalanceToastRequestButton"
-              style={[styles.toastRequestBtn, stylesHook.toastRequestBtn]}
-              onPress={onZeroBalanceRequestPress}
-              accessibilityRole="button"
-            >
-              <Text style={[styles.zeroBalanceRequestText, stylesHook.zeroBalanceRequestText]}>{loc.wallets.request_button}</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-      </Modal>
+      <Toast
+        visible={showZeroBalanceToast}
+        title={loc.wallets.zero_balance_toast_title}
+        subtitle={loc.wallets.zero_balance_toast_subtitle}
+        action={{ label: loc.wallets.request_button, onPress: onZeroBalanceRequestPress, testID: 'ZeroBalanceToastRequestButton' }}
+        onHide={dismissToast}
+        testID="ZeroBalanceToast"
+      />
     </>
   );
 };
@@ -839,47 +800,5 @@ const styles = StyleSheet.create({
     letterSpacing: -0.31,
     textAlign: 'center',
     fontFamily: ClashFont.medium,
-  },
-  toastModalOverlay: {
-    flex: 1,
-  },
-  zeroBalanceToast: {
-    position: 'absolute',
-    top: 51,
-    left: 23,
-    right: 23,
-    height: 76,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
-    gap: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  zeroBalanceToastText: {
-    flex: 1,
-  },
-  zeroBalanceToastTitle: {
-    fontSize: 15,
-    fontFamily: ClashFont.semibold,
-    marginBottom: 2,
-  },
-  zeroBalanceToastSubtitle: {
-    fontSize: 13,
-    fontFamily: ClashFont.regular,
-  },
-  zeroBalanceRequestText: {
-    fontSize: 15,
-    fontFamily: ClashFont.medium,
-  },
-  toastRequestBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
   },
 });
