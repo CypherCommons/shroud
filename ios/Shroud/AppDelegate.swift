@@ -263,7 +263,7 @@ class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate {
 
         userDefaultsGroup?.setValue(userActivityData, forKey: "onUserActivityOpen")
 
-        if ["org.bitshala.shroud.receiveonchain", "org.bitshala.shroud.xpub", "org.bitshala.shroud.blockexplorer"].contains(activityType) {
+        if ["com.shroudwallet.app.receiveonchain", "com.shroudwallet.app.xpub", "com.shroudwallet.app.blockexplorer"].contains(activityType) {
             return true
         }
 
@@ -322,7 +322,7 @@ class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate {
     }
     
     @objc func showHelp(_ sender: Any) {
-        if let url = URL(string: "https://github.com/Bitshala-Incubator/silent-pay-wallet") {
+        if let url = URL(string: "https://github.com/CypherCommons/shroud") {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
     }

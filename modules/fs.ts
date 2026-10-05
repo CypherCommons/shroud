@@ -120,9 +120,9 @@ export const showFilePickerAndReadFile = async function (): Promise<{ data: stri
       type:
         Platform.OS === 'ios'
           ? [
-              'org.bitshala.shroud.psbt',
-              'org.bitshala.shroud.psbt.txn',
-              'org.bitshala.shroud.backup',
+              'com.shroudwallet.app.psbt',
+              'com.shroudwallet.app.psbt.txn',
+              'com.shroudwallet.app.backup',
               types.plainText,
               types.json,
               types.images,
@@ -188,7 +188,7 @@ const handleImageFile = async (fileCopyUri: string): Promise<{ data: string | fa
 export const openSignedTransactionRaw: () => Promise<string> = async () => {
   try {
     const [res] = await pick({
-      type: Platform.OS === 'ios' ? ['org.bitshala.shroud.psbt', 'org.bitshala.shroud.psbt.txn', types.json] : [types.allFiles],
+      type: Platform.OS === 'ios' ? ['com.shroudwallet.app.psbt', 'com.shroudwallet.app.psbt.txn', types.json] : [types.allFiles],
     });
     const file = await RNFS.readFile(res.uri);
     if (file) {

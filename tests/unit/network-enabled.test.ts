@@ -12,7 +12,7 @@ import { bootActiveNetwork, persistNetworkId, readStoredNetworkId, switchNetwork
 import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
 import { ShroudApp } from '../../class/shroud-app';
 
-jest.mock('../../modules/currency', () => ({ GROUP_IO_SHROUD: 'group.org.bitshala.shroud' }));
+jest.mock('../../modules/currency', () => ({ GROUP_IO_SHROUD: 'group.com.shroudwallet.app' }));
 jest.mock('../../modules/Electrum', () => ({
   resetForNetworkSwitch: jest.fn(),
   connectMain: jest.fn().mockResolvedValue(undefined),

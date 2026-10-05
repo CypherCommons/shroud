@@ -9,5 +9,5 @@
 import Foundation
 
 enum UserDefaultsGroupKey: String {
-  case GroupName = "group.org.bitshala.shroud"
+  case GroupName = "group.com.shroudwallet.app"
 }

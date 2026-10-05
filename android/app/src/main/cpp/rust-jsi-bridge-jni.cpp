@@ -6,9 +6,9 @@
 
 namespace {
 
-// Native half of org.bitshala.shroud.RustJsiBridgeModule#getBindingsInstaller.
+// Native half of com.shroudwallet.app.RustJsiBridgeModule#getBindingsInstaller.
 struct JRustJsiBridgeModule : facebook::jni::JavaClass<JRustJsiBridgeModule> {
-  static constexpr auto kJavaDescriptor = "Lorg/bitshala/shroud/RustJsiBridgeModule;";
+  static constexpr auto kJavaDescriptor = "Lcom/shroudwallet/app/RustJsiBridgeModule;";
 
   static facebook::jni::local_ref<facebook::react::BindingsInstallerHolder::javaobject>
   getBindingsInstaller(facebook::jni::alias_ref<JRustJsiBridgeModule> /* self */) {

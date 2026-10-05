@@ -4,7 +4,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Bitshala-Incubator/silent-pay-wallet.git"
+    "url": "https://github.com/CypherCommons/shroud.git"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",
@@ -88,7 +88,7 @@
     "type": "all",
     "jsSrcsDir": "modules/specs",
     "android": {
-      "javaPackageName": "org.bitshala.shroud"
+      "javaPackageName": "com.shroudwallet.app"
     },
     "ios": {
       "modulesProvider": {

@@ -4,7 +4,7 @@
 <dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>org.bitshala.shroud.fetchTxsForWallet</string>
+		<string>com.shroudwallet.app.fetchTxsForWallet</string>
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
@@ -25,7 +25,7 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>org.bitshala.shroud.psbt</string>
+				<string>com.shroudwallet.app.psbt</string>
 			</array>
 		</dict>
 		<dict>
@@ -54,7 +54,7 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>org.bitshala.shroud.psbt.txn</string>
+				<string>com.shroudwallet.app.psbt.txn</string>
 			</array>
 		</dict>
 		<dict>
@@ -68,7 +68,7 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>org.bitshala.shroud.backup</string>
+				<string>com.shroudwallet.app.backup</string>
 			</array>
 		</dict>
 	</array>
@@ -174,8 +174,8 @@
 	<string>In order to import an image for scanning, we need your permission to access your photo library.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
-		<string>org.bitshala.shroud.receiveonchain</string>
-		<string>org.bitshala.shroud.xpub</string>
+		<string>com.shroudwallet.app.receiveonchain</string>
+		<string>com.shroudwallet.app.xpub</string>
 	</array>
 	<key>RCTNewArchEnabled</key>
 	<true/>
@@ -239,7 +239,7 @@
 			<key>UTTypeDescription</key>
 			<string>Partially Signed Bitcoin Transaction</string>
 			<key>UTTypeIdentifier</key>
-			<string>org.bitshala.shroud.psbt</string>
+			<string>com.shroudwallet.app.psbt</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -256,7 +256,7 @@
 			<key>UTTypeDescription</key>
 			<string>Bitcoin Transaction</string>
 			<key>UTTypeIdentifier</key>
-			<string>org.bitshala.shroud.psbt.txn</string>
+			<string>com.shroudwallet.app.psbt.txn</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -273,7 +273,7 @@
 			<key>UTTypeDescription</key>
 			<string>Electrum Backup</string>
 			<key>UTTypeIdentifier</key>
-			<string>org.bitshala.shroud.backup</string>
+			<string>com.shroudwallet.app.backup</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -309,8 +309,6 @@
 			</dict>
 		</dict>
 	</array>
-	<key>WKCompanionAppBundleIdentifier</key>
-	<string>org.bitshala.shroud</string>
 	<key>bugsnag</key>
 	<dict>
 		<key>apiKey</key>

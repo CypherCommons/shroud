@@ -93,14 +93,14 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdkVersion rootProject.ext.compileSdkVersion
 
-    namespace "org.bitshala.shroud"
+    namespace "com.shroudwallet.app"
 
     buildFeatures {
         prefab true
     }
 
     defaultConfig {
-        applicationId "org.bitshala.shroud"
+        applicationId "com.shroudwallet.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

@@ -161,7 +161,7 @@ select device in "${devices[@]}"; do
       # dynamically build APNS payload with selected address
       read -r -d '' APNS_PAYLOAD << JSON
 {
-  "Simulator Target Bundle": "org.bitshala.shroud",
+  "Simulator Target Bundle": "com.shroudwallet.app",
   "aps": {
     "alert": {
       "title": "Transaction Received",

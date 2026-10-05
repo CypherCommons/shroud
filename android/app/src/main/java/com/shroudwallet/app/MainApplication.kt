@@ -1,4 +1,4 @@
-package org.bitshala.shroud
+package com.shroudwallet.app
 
 import android.app.Application
 import android.content.Context
@@ -32,7 +32,7 @@ class MainApplication : Application(), ReactApplication {
 
     override fun onCreate() {
         super.onCreate()
-        sharedPref = getSharedPreferences("group.org.bitshala.shroud", Context.MODE_PRIVATE)
+        sharedPref = getSharedPreferences("group.com.shroudwallet.app", Context.MODE_PRIVATE)
 
         val sharedI18nUtilInstance = I18nUtil.instance
         sharedI18nUtilInstance.allowRTL(applicationContext, false)

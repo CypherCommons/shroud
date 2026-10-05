@@ -9,7 +9,7 @@ import {
   switchNetworkBackends,
 } from '../../modules/networkPreference';
 
-jest.mock('../../modules/currency', () => ({ GROUP_IO_SHROUD: 'group.org.bitshala.shroud' }));
+jest.mock('../../modules/currency', () => ({ GROUP_IO_SHROUD: 'group.com.shroudwallet.app' }));
 jest.mock('../../modules/Electrum', () => ({
   resetForNetworkSwitch: jest.fn(),
   connectMain: jest.fn().mockResolvedValue(undefined),
