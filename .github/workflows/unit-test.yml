@@ -30,6 +30,9 @@ jobs:
       if: steps.cache-node-modules.outputs.cache-hit != 'true'
       run: npm install
 
+    - name: Run update server tests
+      run: npm run test:ota
+
     - name: Run unit tests
       run: npm run unit
       env:

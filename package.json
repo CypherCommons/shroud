@@ -79,6 +79,9 @@
     "lint:fix": "npm run lint -- --fix",
     "lint:quickfix": "git status --porcelain | grep -v '\\.json' | grep -E '\\.js|\\.ts' --color=never |  awk '{print $2}' | xargs eslint --fix; exit 0",
     "unit": "jest -b --maxWorkers=2 tests/unit/",
+    "test:ota": "node --test 'update-server/test/*.test.mjs'",
+    "ota:publish": "node scripts/ota/publish.mjs",
+    "ota:rollback": "node scripts/ota/rollback.mjs",
     "rust:build": "bash rust-native-setup.sh",
     "rust:rebuild": "cd rust_jsi_bridge && cargo clean && cd .. && npm run rust:build",
     "android:rust": "npm run rust:build && cd android && ./gradlew clean && cd .. && npm run android"
