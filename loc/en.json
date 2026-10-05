@@ -413,6 +413,7 @@
         "details_are_you_sure": "Are you sure?",
         "details_delete": "Delete",
         "details_delete_wallet": "Delete Wallet",
+        "details_delete_pin_subtitle": "Enter your PIN to delete your wallet.",
         "details_title": "Wallet",
         "details_yes_delete": "Yes, delete",
         "export_title": "Export Wallet",

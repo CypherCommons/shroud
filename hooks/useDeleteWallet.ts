@@ -1,18 +1,22 @@
 import { useCallback } from 'react';
 import { CommonActions } from '@react-navigation/native';
 import { useStorage } from './context/useStorage';
-import { useBiometrics, unlockWithBiometrics } from './useBiometrics';
+import { useProtectedAction } from './useProtectedAction';
 import { useExtendedNavigation } from './useExtendedNavigation';
 import loc from '../loc';
 import presentAlert from '../components/Alert';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../modules/hapticFeedback';
 
+/**
+ * Delete-wallet flow: confirm, then the same biometrics-or-PIN check as revealing the recovery phrase.
+ * While the PIN is asked for, `isPinPromptVisible` is true and the screen shows a <PinPrompt> with `pinAttempt`.
+ */
 export const useDeleteWallet = () => {
   const { wallets, handleWalletDeletion } = useStorage();
-  const { isBiometricUseCapableAndEnabled } = useBiometrics();
+  const { runProtected, isPinPromptVisible, pinAttempt } = useProtectedAction();
   const navigation = useExtendedNavigation();
 
-  return useCallback(() => {
+  const deleteWallet = useCallback(() => {
     const wallet = wallets[0];
     if (!wallet) return;
 
@@ -24,18 +28,19 @@ export const useDeleteWallet = () => {
         {
           text: loc.wallets.details_yes_delete,
           style: 'destructive',
-          onPress: async () => {
-            const biometricsEnabled = await isBiometricUseCapableAndEnabled();
-            if (biometricsEnabled && !(await unlockWithBiometrics())) return;
-            const ok = await handleWalletDeletion(wallet.getID());
-            if (ok) {
-              triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
-              navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Onboarding' }] }));
-            }
-          },
+          onPress: () =>
+            runProtected(async () => {
+              const ok = await handleWalletDeletion(wallet.getID());
+              if (ok) {
+                triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
+                navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'Onboarding' }] }));
+              }
+            }),
         },
       ],
       options: { cancelable: false },
     });
-  }, [wallets, handleWalletDeletion, isBiometricUseCapableAndEnabled, navigation]);
+  }, [wallets, handleWalletDeletion, runProtected, navigation]);
+
+  return { deleteWallet, isPinPromptVisible, pinAttempt };
 };
