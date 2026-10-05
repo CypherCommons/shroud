@@ -3,7 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import useAppState from '../../hooks/useAppState';
 import ScanProgressBar from '../../components/ScanProgressBar';
 import { useScanActions, useScannableWallet } from '../../hooks/useScannableWallet';
-import { Alert, Animated, InteractionManager, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, InteractionManager, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import A from '../../modules/analytics';
 import { getClipboardContent } from '../../modules/clipboard';
 import { isDesktop } from '../../modules/environment';
@@ -318,7 +318,7 @@ const WalletsList: React.FC = () => {
           navigation.navigate(...completionValue);
         });
       } catch (e: any) {
-        Alert.alert(loc.errors.error, e.message);
+        presentAlert({ title: loc.errors.error, message: e.message });
       }
     },
     [navigation],

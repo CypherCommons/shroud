@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { RouteProp, useRoute } from '@react-navigation/native';
 import DefaultPreference from 'react-native-default-preference';
 import SafeAreaScrollView from '../../components/SafeAreaScrollView';
@@ -156,15 +156,13 @@ const ElectrumServerSettings: React.FC = () => {
     if (!params?.server) return;
     const server = params.server;
     triggerHapticFeedback(HapticFeedbackTypes.ImpactHeavy);
-    Alert.alert(
-      loc.formatString(loc.settings.set_electrum_server_as_default, { server: server.host }),
-      '',
-      [
+    presentAlert({
+      message: loc.formatString(loc.settings.set_electrum_server_as_default, { server: server.host }),
+      buttons: [
         { text: loc._.ok, onPress: () => saveServer(server), style: 'default' },
-        { text: loc._.cancel, onPress: () => {}, style: 'cancel' },
+        { text: loc._.cancel, style: 'cancel' },
       ],
-      { cancelable: false },
-    );
+    });
   }, [params?.server, saveServer]);
 
   const parsedCustom = customInput.trim() ? parseServerInput(customInput) : null;

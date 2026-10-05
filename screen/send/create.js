@@ -4,7 +4,7 @@ import BigNumber from 'bignumber.js';
 import * as bitcoin from 'bitcoinjs-lib';
 import PropTypes from 'prop-types';
 import React, { useCallback, useEffect } from 'react';
-import { Alert, FlatList, Linking, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, Linking, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Icon } from '@rneui/themed';
 import RNFS from 'react-native-fs';
 import { PERMISSIONS, request, RESULTS } from 'react-native-permissions';
@@ -88,16 +88,14 @@ const SendCreate = () => {
         }
       } else {
         console.log('Storage Permission: Denied');
-        Alert.alert(loc.send.permission_storage_title, loc.send.permission_storage_denied_message, [
-          {
-            text: loc.send.open_settings,
-            onPress: () => {
-              Linking.openSettings();
-            },
-            style: 'default',
-          },
-          { text: loc._.cancel, onPress: () => {}, style: 'cancel' },
-        ]);
+        presentAlert({
+          title: loc.send.permission_storage_title,
+          message: loc.send.permission_storage_denied_message,
+          buttons: [
+            { text: loc.send.open_settings, onPress: () => Linking.openSettings(), style: 'default' },
+            { text: loc._.cancel, style: 'cancel' },
+          ],
+        });
       }
     }
   }, [tx]);
