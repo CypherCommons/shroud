@@ -1,6 +1,6 @@
 import * as Electrum from '../../modules/Electrum';
 import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Appearance } from 'react-native';
 import DefaultPreference from 'react-native-default-preference';
 import { isReadClipboardAllowed, setReadClipboardAllowed } from '../../modules/clipboard';
 import { getPreferredCurrency, GROUP_IO_SHROUD, initCurrencyDaemon, setPreferredCurrency } from '../../modules/currency';
@@ -294,6 +294,11 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       console.error('Error setting isClipboardGetContentEnabled:', e);
     }
   }, []);
+
+  // Pushes the theme choice to the OS so native UI (alerts, menus, keyboard) matches the app.
+  useEffect(() => {
+    Appearance.setColorScheme(themePreference === 'system' ? 'unspecified' : themePreference);
+  }, [themePreference]);
 
   const setThemePreferenceStorage = useCallback(async (value: ThemePreference): Promise<void> => {
     try {

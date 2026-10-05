@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import SafeAreaScrollView from '../../components/SafeAreaScrollView';
 import CheckmarkIcon from '../../components/icons/CheckmarkIcon';
 import { ShroudDarkTheme, ShroudDefaultTheme, useTheme } from '../../components/themes';
@@ -9,7 +9,8 @@ import loc from '../../loc';
 import { ClashFont } from '../../constants/fonts';
 
 interface ThemeCardProps {
-  variant: 'light' | 'dark';
+  /** 'system' previews half light, half dark: the phone's own scheme can't be read while one is forced. */
+  variant: 'light' | 'dark' | 'system';
   label: string;
   selected: boolean;
   onPress: () => void;
@@ -18,7 +19,7 @@ interface ThemeCardProps {
 
 const ThemeCard: React.FC<ThemeCardProps> = ({ variant, label, selected, onPress, testID }) => {
   const { colors } = useTheme();
-  const isLight = variant === 'light';
+  const isLight = variant !== 'dark';
   // Preview swatches render as literal light/dark mini-mocks regardless of the
   // app's active theme, so each variant reads its fixed scheme's doc tokens
   // directly (bg/primary, text/disabled, border/default) — never raw hex.
@@ -37,6 +38,9 @@ const ThemeCard: React.FC<ThemeCardProps> = ({ variant, label, selected, onPress
   return (
     <Pressable onPress={onPress} style={styles.cardWrapper} testID={testID} accessibilityRole="button" accessibilityLabel={label}>
       <View style={[styles.card, cardStyle]}>
+        {variant === 'system' && (
+          <View style={[styles.darkHalf, { backgroundColor: ShroudDarkTheme.colors.background, borderRadius: 18 - borderWidth }]} />
+        )}
         <View style={[styles.bar, styles.barWide, { backgroundColor: barColor }]} />
         <View style={[styles.bar, styles.barNarrow, { backgroundColor: barColor }]} />
         <View style={[styles.pill, { backgroundColor: colors.brandPrimary }]} />
@@ -54,7 +58,6 @@ const ThemeCard: React.FC<ThemeCardProps> = ({ variant, label, selected, onPress
 const ThemeSettings: React.FC = () => {
   const { colors } = useTheme();
   const { themePreference, setThemePreferenceStorage } = useSettings();
-  const systemColorScheme = useColorScheme();
 
   const description = useMemo(() => {
     switch (themePreference) {
@@ -87,7 +90,7 @@ const ThemeSettings: React.FC = () => {
           testID="ThemeDarkOption"
         />
         <ThemeCard
-          variant={systemColorScheme === 'dark' ? 'dark' : 'light'}
+          variant="system"
           label={loc.settings.theme_system}
           selected={themePreference === 'system'}
           onPress={() => selectTheme('system')}
@@ -123,6 +126,15 @@ const styles = StyleSheet.create({
     paddingLeft: 18,
     paddingTop: 53,
     alignItems: 'flex-start',
+  },
+  darkHalf: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: '50%',
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
   },
   bar: {
     height: 10,
