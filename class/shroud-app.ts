@@ -13,6 +13,7 @@ import { randomBytes } from './rng';
 import { ExtendedTransaction, Transaction, TWallet } from './wallets/types';
 import { HDSilentPaymentsWallet } from './wallets/hd-bip352-wallet.ts';
 import { readContacts, TContacts } from './contacts';
+import { getActiveNetworkId } from '../modules/network';
 
 let usedBucketNum: boolean | number = false;
 let savingInProgress = 0; // its both a flag and a counter of attempts to write to disk
@@ -524,6 +525,8 @@ export class ShroudApp {
       } catch (error: any) {
         presentAlert({ message: error.message });
       }
+      // Every network's wallets, not just the active one's — this array is what replaces the
+      // stored bucket, so narrowing it here would drop the other chains' wallets.
       for (const key of this.wallets) {
         if (typeof key === 'boolean') continue;
         key.prepareForSerialization();
@@ -617,13 +620,13 @@ export class ShroudApp {
     console.log('fetchWalletBalances for wallet#', typeof index === 'undefined' ? '(all)' : index);
     if (index || index === 0) {
       let c = 0;
-      for (const wallet of this.wallets) {
+      for (const wallet of this.activeWallets) {
         if (c++ === index) {
           await wallet.fetchBalance();
         }
       }
     } else {
-      for (const wallet of this.wallets) {
+      for (const wallet of this.activeWallets) {
         console.log('fetching balance for', wallet.getLabel());
         await wallet.fetchBalance();
       }
@@ -644,7 +647,7 @@ export class ShroudApp {
     console.log('fetchWalletTransactions for wallet#', typeof index === 'undefined' ? '(all)' : index);
     if (index || index === 0) {
       let c = 0;
-      for (const wallet of this.wallets) {
+      for (const wallet of this.activeWallets) {
         if (c++ === index) {
           await wallet.fetchTransactions();
 
@@ -654,7 +657,7 @@ export class ShroudApp {
         }
       }
     } else {
-      for (const wallet of this.wallets) {
+      for (const wallet of this.activeWallets) {
         await wallet.fetchTransactions();
         if ('fetchPendingTransactions' in wallet) {
           await (wallet as any).fetchPendingTransactions();
@@ -663,7 +666,25 @@ export class ShroudApp {
     }
   };
 
+  /**
+   * Wallets on the currently selected chain.
+   *
+   * `this.wallets` deliberately holds every network's wallets at once, because `saveToDisk`
+   * serializes that array wholesale — filtering it in place would delete the other chains'
+   * wallets on the next save. So the rule throughout this class is: **filter on read, never on
+   * write.**
+   */
+  private get activeWallets(): TWallet[] {
+    const activeNetworkId = getActiveNetworkId();
+    return this.wallets.filter(w => w.networkId === activeNetworkId);
+  }
+
   getWallets = (): TWallet[] => {
+    return this.activeWallets;
+  };
+
+  /** Every wallet across every chain. Only for persistence; the UI wants `getWallets()`. */
+  getAllWalletsAcrossNetworks = (): TWallet[] => {
     return this.wallets;
   };
 
@@ -683,7 +704,7 @@ export class ShroudApp {
     if (index || index === 0) {
       let txs: Transaction[] = [];
       let c = 0;
-      for (const wallet of this.wallets) {
+      for (const wallet of this.activeWallets) {
         if (c++ === index) {
           txs = txs.concat(wallet.getTransactions());
 
@@ -703,7 +724,9 @@ export class ShroudApp {
     }
 
     const txs: ExtendedTransaction[] = [];
-    for (const wallet of this.wallets.filter(w => includeWalletsWithHideTransactionsEnabled || !w.getHideTransactionsInWalletsList())) {
+    for (const wallet of this.activeWallets.filter(
+      w => includeWalletsWithHideTransactionsEnabled || !w.getHideTransactionsInWalletsList(),
+    )) {
       const walletTransactions: Transaction[] = wallet.getTransactions();
       const walletID = wallet.getID();
       const walletPreferredBalanceUnit = wallet.getPreferredBalanceUnit();
@@ -728,7 +751,7 @@ export class ShroudApp {
    */
   getBalance = (): number => {
     let finalBalance = 0;
-    for (const wal of this.wallets) {
+    for (const wal of this.activeWallets) {
       finalBalance += wal.getBalance();
     }
     return finalBalance;

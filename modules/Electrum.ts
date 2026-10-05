@@ -9,6 +9,7 @@ import { sha256 as _sha256 } from '@noble/hashes/sha256';
 import presentAlert from '../components/Alert';
 import loc from '../loc';
 import { GROUP_IO_SHROUD } from './currency';
+import { DEFAULT_NETWORK_ID, getActiveNetwork, getActiveNetworkId, type NetworkId, type Peer } from './network';
 import { uint8ArrayToHex } from './uint8array-extras/index';
 import TorManager, { DEFAULT_SOCKS_HOST } from './torManager';
 import { createSocksNet } from './socksSocket';
@@ -65,24 +66,26 @@ type ElectrumTransactionWithHex = ElectrumTransaction & {
 };
 
 const decodeOutputAddress = (scriptHex: string): string | false => {
+  const network = getActiveNetwork().bitcoinjs;
   try {
-    return bitcoin.address.fromOutputScript(Buffer.from(scriptHex, 'hex'), bitcoin.networks.bitcoin);
+    return bitcoin.address.fromOutputScript(Buffer.from(scriptHex, 'hex'), network);
   } catch (_) {}
   // Fallback: decode native segwit (P2WPKH, P2WSH, P2TR) manually when initEccLib hasn't been called
   try {
+    const hrp = network.bech32;
     const buf = Buffer.from(scriptHex, 'hex');
     if (buf[0] === 0x51 && buf[1] === 0x20 && buf.length === 34) {
       // P2TR: OP_1 OP_PUSH32 <32-byte-key>
       const words = bech32m.toWords(buf.slice(2));
-      return bech32m.encode('bc', [1, ...words]);
+      return bech32m.encode(hrp, [1, ...words]);
     } else if (buf[0] === 0x00 && buf[1] === 0x14 && buf.length === 22) {
       // P2WPKH: OP_0 OP_PUSH20 <20-byte-hash>
       const words = bech32.toWords(buf.slice(2));
-      return bech32.encode('bc', [0, ...words]);
+      return bech32.encode(hrp, [0, ...words]);
     } else if (buf[0] === 0x00 && buf[1] === 0x20 && buf.length === 34) {
       // P2WSH: OP_0 OP_PUSH32 <32-byte-hash>
       const words = bech32.toWords(buf.slice(2));
-      return bech32.encode('bc', [0, ...words]);
+      return bech32.encode(hrp, [0, ...words]);
     }
   } catch (_) {}
   return false;
@@ -92,12 +95,6 @@ type MempoolTransaction = {
   height: 0;
   tx_hash: string;
   fee: number;
-};
-
-type Peer = {
-  host: string;
-  ssl?: number;
-  tcp?: number;
 };
 
 export type ElectrumServerItem = Peer;
@@ -119,23 +116,25 @@ export const parseElectrumServerString = (value: string): ElectrumServerItem | n
   return null;
 };
 
+// Base names of the user's preferred-server preference. Mainnet uses them as-is — that is where
+// every install saved its server before multi-network support, so the existing value simply is
+// the mainnet one and needs no migration. Other chains append their id (see `electrumPreferenceKeys`).
 export const ELECTRUM_HOST = 'electrum_host';
 export const ELECTRUM_TCP_PORT = 'electrum_tcp_port';
 export const ELECTRUM_SSL_PORT = 'electrum_ssl_port';
 const storageKey = 'ELECTRUM_PEERS';
-const defaultPeer = { host: 'electrum1.bluewallet.io', ssl: 443 };
-export const hardcodedPeers: Peer[] = [
-  { host: 'mainnet.foundationdevices.com', ssl: 50002 },
-  { host: 'bitcoin.lu.ke', ssl: 50002 },
-  // { host: 'electrum.jochen-hoenicke.de', ssl: '50006' },
-  { host: 'electrum1.bluewallet.io', ssl: 443 },
-  { host: 'electrum.acinq.co', ssl: 50002 },
-  { host: 'electrum.bitaroo.net', ssl: 50002 },
-];
 
-export const suggestedServers: Peer[] = hardcodedPeers.map(peer => ({
-  ...peer,
-}));
+/**
+ * Fallback peers for the active chain. Empty where no public server has been verified: Electrum
+ * only powers the regular-output branch — silent payments go through the indexer — and shipping
+ * unverified hostnames would be worse than making the user enter one in the network settings.
+ */
+export const getHardcodedPeers = (): Peer[] => getActiveNetwork().electrumPeers;
+
+/** May be undefined on a chain with no known public servers; callers must handle that. */
+const getDefaultPeer = (): Peer | undefined => getHardcodedPeers()[0];
+
+export const getSuggestedServers = (): Peer[] => getHardcodedPeers().map(peer => ({ ...peer }));
 
 let mainClient: typeof ElectrumClient | undefined;
 let mainConnected: boolean = false;
@@ -143,7 +142,11 @@ let wasConnectedAtLeastOnce: boolean = false;
 let serverName: string | false = false;
 let disableBatching: boolean = false;
 let connectionAttempt: number = 0;
-let currentPeerIndex = Math.floor(Math.random() * hardcodedPeers.length);
+// Random start spreads load across the peer list. Never used as a raw index: the active chain (and
+// so the list length) can change at runtime, so getCurrentPeer/getNextPeer reduce it modulo the
+// current list, which is what keeps any seed safe.
+const randomPeerIndex = (): number => Math.floor(Math.random() * 1000);
+let currentPeerIndex = randomPeerIndex();
 let latestBlock: { height: number; time: number } | { height: undefined; time: undefined } = { height: undefined, time: undefined };
 const txhashHeightCache: Record<string, number> = {};
 let _realm: Realm | undefined;
@@ -183,12 +186,28 @@ async function _getRealm() {
   return _realm;
 }
 
+/**
+ * Preference keys holding the user's preferred server for a chain. A server is only meaningful on
+ * the chain it serves: one global preference let a mainnet server answer for testnet4 (empty
+ * scripthash results, test transactions broadcast to a mainnet node) and a signet server answer
+ * for a real mainnet wallet.
+ */
+export const electrumPreferenceKeys = (id: NetworkId = getActiveNetworkId()): { host: string; tcp: string; ssl: string } => {
+  const suffix = id === DEFAULT_NETWORK_ID ? '' : `_${id}`;
+  return {
+    host: `${ELECTRUM_HOST}${suffix}`,
+    tcp: `${ELECTRUM_TCP_PORT}${suffix}`,
+    ssl: `${ELECTRUM_SSL_PORT}${suffix}`,
+  };
+};
+
 export const getPreferredServer = async (): Promise<ElectrumServerItem | undefined> => {
   try {
     await DefaultPreference.setName(GROUP_IO_SHROUD);
-    const host = (await DefaultPreference.get(ELECTRUM_HOST)) as string;
-    const tcpPort = await DefaultPreference.get(ELECTRUM_TCP_PORT);
-    const sslPort = await DefaultPreference.get(ELECTRUM_SSL_PORT);
+    const keys = electrumPreferenceKeys();
+    const host = (await DefaultPreference.get(keys.host)) as string;
+    const tcpPort = await DefaultPreference.get(keys.tcp);
+    const sslPort = await DefaultPreference.get(keys.ssl);
 
     console.log('Getting preferred server:', { host, tcpPort, sslPort });
 
@@ -208,26 +227,31 @@ export const getPreferredServer = async (): Promise<ElectrumServerItem | undefin
   }
 };
 
-function getCurrentPeer() {
-  return hardcodedPeers[currentPeerIndex];
+function getCurrentPeer(): Peer | undefined {
+  const peers = getHardcodedPeers();
+  if (peers.length === 0) return undefined;
+  return peers[currentPeerIndex % peers.length];
 }
 
 /**
- * Returns NEXT hardcoded electrum server (increments index after use)
+ * Returns NEXT hardcoded electrum server (increments index after use), or undefined on a chain
+ * that ships no fallback peers — in which case only a user-entered server can be used.
  */
-function getNextPeer() {
+function getNextPeer(): Peer | undefined {
+  const peers = getHardcodedPeers();
+  if (peers.length === 0) return undefined;
   const peer = getCurrentPeer();
-  currentPeerIndex++;
-  if (currentPeerIndex + 1 >= hardcodedPeers.length) currentPeerIndex = 0;
+  currentPeerIndex = (currentPeerIndex + 1) % peers.length;
   return peer;
 }
 
 async function getSavedPeer(): Promise<Peer | null> {
   try {
     await DefaultPreference.setName(GROUP_IO_SHROUD);
-    const host = (await DefaultPreference.get(ELECTRUM_HOST)) as string;
-    const tcpPort = await DefaultPreference.get(ELECTRUM_TCP_PORT);
-    const sslPort = await DefaultPreference.get(ELECTRUM_SSL_PORT);
+    const keys = electrumPreferenceKeys();
+    const host = (await DefaultPreference.get(keys.host)) as string;
+    const tcpPort = await DefaultPreference.get(keys.tcp);
+    const sslPort = await DefaultPreference.get(keys.ssl);
 
     console.log('Getting saved peer:', { host, tcpPort, sslPort });
 
@@ -255,6 +279,13 @@ export async function connectMain(): Promise<void> {
   const savedPeer = await getSavedPeer();
   if (savedPeer && savedPeer.host && (savedPeer.tcp || savedPeer.ssl)) {
     usingPeer = savedPeer;
+  }
+
+  if (!usingPeer) {
+    // No fallback peers for this chain and the user has not entered one. Silent payments do not
+    // need Electrum, so this is a normal state on the test chains rather than an error.
+    console.log(`No Electrum server available for ${getActiveNetwork().displayName}; skipping connectMain`);
+    return;
   }
 
   console.log('Using peer:', JSON.stringify(usingPeer));
@@ -381,7 +412,7 @@ const presentNetworkErrorAlert = async (usingPeer?: Peer) => {
  * Not used for now.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function getRandomDynamicPeer(): Promise<Peer> {
+async function getRandomDynamicPeer(): Promise<Peer | undefined> {
   try {
     let peers = JSON.parse((await DefaultPreference.get(storageKey)) as string);
     peers = peers.sort(() => Math.random() - 0.5); // shuffle
@@ -403,16 +434,16 @@ async function getRandomDynamicPeer(): Promise<Peer> {
       if (ret.host && ret.tcp) return ret;
     }
 
-    return defaultPeer; // failed to find random client, using default
+    return getDefaultPeer(); // failed to find random client, using default
   } catch (_) {
-    return defaultPeer; // smth went wrong, using default
+    return getDefaultPeer(); // smth went wrong, using default
   }
 }
 
 export const getBalanceByAddress = async function (address: string): Promise<{ confirmed: number; unconfirmed: number }> {
   try {
     if (!mainClient) throw new Error('Electrum client is not connected');
-    const script = bitcoin.address.toOutputScript(address);
+    const script = bitcoin.address.toOutputScript(address, getActiveNetwork().bitcoinjs);
     const hash = bitcoinjs_crypto_sha256(script);
     const reversedHash = Buffer.from(hash).reverse();
     const balance = await mainClient.blockchainScripthash_getBalance(reversedHash.toString('hex'));
@@ -436,7 +467,7 @@ export const getConfig = async function () {
 
 export const getTransactionsByAddress = async function (address: string): Promise<ElectrumHistory[]> {
   if (!mainClient) throw new Error('Electrum client is not connected');
-  const script = bitcoin.address.toOutputScript(address);
+  const script = bitcoin.address.toOutputScript(address, getActiveNetwork().bitcoinjs);
   const hash = bitcoinjs_crypto_sha256(script);
   const reversedHash = Buffer.from(hash).reverse();
   const history = await mainClient.blockchainScripthash_getHistory(reversedHash.toString('hex'));
@@ -449,7 +480,7 @@ export const getTransactionsByAddress = async function (address: string): Promis
 
 export const getMempoolTransactionsByAddress = async function (address: string): Promise<MempoolTransaction[]> {
   if (!mainClient) throw new Error('Electrum client is not connected');
-  const script = bitcoin.address.toOutputScript(address);
+  const script = bitcoin.address.toOutputScript(address, getActiveNetwork().bitcoinjs);
   const hash = bitcoinjs_crypto_sha256(script);
   const reversedHash = Buffer.from(hash).reverse();
   return mainClient.blockchainScripthash_getMempool(reversedHash.toString('hex'));
@@ -521,7 +552,8 @@ export function txhexToElectrumTransaction(txhex: string): ElectrumTransactionWi
     address = decodeOutputAddress(scriptHex);
     let legacyAddress: string | false = false;
     try {
-      legacyAddress = bitcoin.payments.p2pkh({ output: Buffer.from(scriptHex, 'hex'), network: bitcoin.networks.bitcoin }).address ?? false;
+      legacyAddress =
+        bitcoin.payments.p2pkh({ output: Buffer.from(scriptHex, 'hex'), network: getActiveNetwork().bitcoinjs }).address ?? false;
     } catch (_) {}
 
     if (/^5120[0-9a-f]{64}$/i.test(scriptHex)) {
@@ -644,7 +676,7 @@ export const multiGetBalanceByAddress = async (addresses: string[], batchsize: n
     const scripthashes = [];
     const scripthash2addr: Record<string, string> = {};
     for (const addr of chunk) {
-      const script = bitcoin.address.toOutputScript(addr);
+      const script = bitcoin.address.toOutputScript(addr, getActiveNetwork().bitcoinjs);
       const hash = bitcoinjs_crypto_sha256(script);
       const reversedHash = Buffer.from(hash).reverse().toString('hex');
       scripthashes.push(reversedHash);
@@ -688,7 +720,7 @@ export const multiGetUtxoByAddress = async function (addresses: string[], batchs
     const scripthashes = [];
     const scripthash2addr: Record<string, string> = {};
     for (const addr of chunk) {
-      const script = bitcoin.address.toOutputScript(addr);
+      const script = bitcoin.address.toOutputScript(addr, getActiveNetwork().bitcoinjs);
       const hash = bitcoinjs_crypto_sha256(script);
       const reversedHash = Buffer.from(hash).reverse().toString('hex');
       scripthashes.push(reversedHash);
@@ -738,7 +770,7 @@ export const multiGetHistoryByAddress = async function (
     const scripthashes = [];
     const scripthash2addr: Record<string, string> = {};
     for (const addr of chunk) {
-      const script = bitcoin.address.toOutputScript(addr);
+      const script = bitcoin.address.toOutputScript(addr, getActiveNetwork().bitcoinjs);
       const hash = bitcoinjs_crypto_sha256(script);
       const reversedHash = Buffer.from(hash).reverse().toString('hex');
       scripthashes.push(reversedHash);
@@ -1155,6 +1187,29 @@ export const testConnection = async function (host: string, tcpPort?: number, ss
 
 export const forceDisconnect = (): void => {
   mainClient?.close();
+};
+
+/**
+ * Drop everything learned from the chain we are leaving. `forceDisconnect` only closes the
+ * socket, which leaves `mainClient` defined, `mainConnected` true and `latestBlock` holding the
+ * old tip — so on the new chain the block-height estimates are wrong and, when it has no peer,
+ * every `if (!mainClient)` guard passes against a dead client instead of reporting "not connected".
+ */
+export const resetForNetworkSwitch = (): void => {
+  // Cleared first: `onError` reconnects when it sees `mainConnected`, and closing the socket can
+  // raise it. A reconnect here would race the switch.
+  mainConnected = false;
+  const outgoing = mainClient;
+  mainClient = undefined;
+  serverName = false;
+  disableBatching = false;
+  latestBlock = { height: undefined, time: undefined };
+  currentPeerIndex = randomPeerIndex();
+  try {
+    outgoing?.close();
+  } catch (e) {
+    console.warn('Error closing Electrum during a network switch:', e);
+  }
 };
 
 export const setBatchingDisabled = () => {

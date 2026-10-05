@@ -11,6 +11,7 @@ import presentAlert from '../../components/Alert';
 import { useTheme } from '../../components/themes';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
 import SafeArea from '../../components/SafeArea';
+import TestnetBadge from '../../components/TestnetBadge';
 import { satoshiToBTC, satoshiToLocalCurrency } from '../../modules/currency';
 import * as Electrum from '../../modules/Electrum';
 import { unlockWithBiometrics, useBiometrics } from '../../hooks/useBiometrics';
@@ -172,6 +173,7 @@ const Confirm: React.FC = () => {
   return (
     <SafeArea style={[styles.root, stylesHook.root]}>
       <View style={styles.content}>
+        <TestnetBadge style={styles.testnetBadge} />
         <AmountHero amount={satoshiToBTC(amountSats)} fiat={`≈ ${satoshiToLocalCurrency(amountSats)}`} />
 
         <View style={[styles.divider, stylesHook.divider]} />
@@ -251,6 +253,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 16,
     gap: 12,
+  },
+  testnetBadge: {
+    marginBottom: 4,
   },
   divider: {
     height: StyleSheet.hairlineWidth,

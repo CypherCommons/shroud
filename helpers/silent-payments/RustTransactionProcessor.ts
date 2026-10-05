@@ -9,20 +9,23 @@ import {
 import { IndexerTransaction, SilentPaymentUTXO } from './types';
 import { spScanTransactions, RustMatchedUTXO, RustBatchScanResult } from '../../modules/RustJsiBridge';
 import { hexToUint8Array } from '../../modules/uint8array-extras';
+import type { NetworkConfig } from '../../modules/network';
 
 export class RustTransactionProcessor {
   private scanPrivkeyHex: string;
   /** Main spend pubkey plus the label-0 (change) spend pubkey — the scanner tries both. */
   private spendPubkeysHex: string[];
   private silentPaymentAddress: string;
+  private network: NetworkConfig;
 
-  constructor(seed: Buffer) {
-    this.scanPrivkeyHex = Buffer.from(getScanPrivateKey(seed)).toString('hex');
+  constructor(seed: Buffer, network: NetworkConfig) {
+    this.network = network;
+    this.scanPrivkeyHex = Buffer.from(getScanPrivateKey(seed, network)).toString('hex');
     this.spendPubkeysHex = [
-      Buffer.from(getSpendPublicKey(seed)).toString('hex'),
-      Buffer.from(getSilentPaymentChangeSpendPublicKey(seed)).toString('hex'),
+      Buffer.from(getSpendPublicKey(seed, network)).toString('hex'),
+      Buffer.from(getSilentPaymentChangeSpendPublicKey(seed, network)).toString('hex'),
     ];
-    this.silentPaymentAddress = getSilentPaymentAddress(seed);
+    this.silentPaymentAddress = getSilentPaymentAddress(seed, network);
   }
 
   private convertToSilentPaymentUTXO(rustUtxo: RustMatchedUTXO): SilentPaymentUTXO {
@@ -33,6 +36,7 @@ export class RustTransactionProcessor {
       height: rustUtxo.height,
       address: bitcoin.payments.p2tr({
         pubkey: hexToUint8Array(rustUtxo.pubKey),
+        network: this.network.bitcoinjs,
       }).address!,
 
       // sp specific fields
@@ -81,6 +85,6 @@ export class RustTransactionProcessor {
   }
 }
 
-export function createTransactionProcessor(seed: Buffer): RustTransactionProcessor {
-  return new RustTransactionProcessor(seed);
+export function createTransactionProcessor(seed: Buffer, network: NetworkConfig): RustTransactionProcessor {
+  return new RustTransactionProcessor(seed, network);
 }

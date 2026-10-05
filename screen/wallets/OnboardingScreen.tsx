@@ -11,7 +11,6 @@ import presentAlert from '../../components/Alert';
 import { useStorage } from '../../hooks/context/useStorage';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
 import { getDefaultIndexer } from '../../modules/SilentPaymentIndexer';
-import { BIP352_ACTIVATION_HEIGHT } from '../../modules/constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../../components/Button';
 
@@ -44,7 +43,7 @@ const OnboardingScreen: React.FC = () => {
       // indexer unreachable (or not initialised) at creation: remember when the wallet was made so
       // the first scan that reaches it resolves the height, instead of rescanning from BIP-352 activation.
       console.warn('Could not fetch birth height, deferring resolution to the first scan:', error);
-      w.updateBirthHeight(BIP352_ACTIVATION_HEIGHT, { pendingTimestamp: Math.floor(Date.now() / 1000) });
+      w.updateBirthHeight(w.getNetworkConfig().bip352ActivationHeight, { pendingTimestamp: Math.floor(Date.now() / 1000) });
     }
     await saveToDisk();
 

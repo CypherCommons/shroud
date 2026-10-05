@@ -22,3 +22,5 @@ export type {
 } from './types';
 export { IDLE_SCAN_STATE, isScannable } from './types';
 export { RustTransactionProcessor, createTransactionProcessor } from './RustTransactionProcessor';
+export { isSilentPaymentAddress, findSmallestOutpoint, resolveSilentPaymentTargets } from './SilentPaymentBuilder';
+export type { SilentPaymentTarget } from './SilentPaymentBuilder';

@@ -134,9 +134,11 @@ const ElectrumServerSettings: React.FC = () => {
         }
 
         await DefaultPreference.setName(GROUP_IO_SHROUD);
-        await DefaultPreference.set(Electrum.ELECTRUM_HOST, server.host);
-        await DefaultPreference.set(Electrum.ELECTRUM_TCP_PORT, server.tcp ? String(server.tcp) : '');
-        await DefaultPreference.set(Electrum.ELECTRUM_SSL_PORT, server.ssl ? String(server.ssl) : '');
+        // The preferred server belongs to the active chain only; see `electrumPreferenceKeys`.
+        const keys = Electrum.electrumPreferenceKeys();
+        await DefaultPreference.set(keys.host, server.host);
+        await DefaultPreference.set(keys.tcp, server.tcp ? String(server.tcp) : '');
+        await DefaultPreference.set(keys.ssl, server.ssl ? String(server.ssl) : '');
 
         triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
         presentAlert({ message: loc.settings.electrum_saved });
@@ -168,24 +170,32 @@ const ElectrumServerSettings: React.FC = () => {
   }, [params?.server, saveServer]);
 
   const parsedCustom = customInput.trim() ? parseServerInput(customInput) : null;
+  // Per active chain, and empty on one that ships no public servers (signet).
+  const suggestedServers = Electrum.getSuggestedServers();
 
   return (
     <SafeAreaScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="always" testID="ElectrumServerSettingsScrollView">
-      <SettingsSectionHeader>{loc.settings.electrum_trusted_servers}</SettingsSectionHeader>
-      <SettingsCard>
-        {Electrum.suggestedServers.map((server, index) => (
-          <ServerRow
-            key={`${server.host}:${server.ssl ?? server.tcp}`}
-            server={server}
-            selected={isSameServer(server, preferredServer)}
-            onPress={() => saveServer(server)}
-            showSeparator={index < Electrum.suggestedServers.length - 1}
-            testID={`ElectrumServerOption-${server.host}`}
-          />
-        ))}
-      </SettingsCard>
+      {suggestedServers.length > 0 && (
+        <>
+          <SettingsSectionHeader>{loc.settings.electrum_trusted_servers}</SettingsSectionHeader>
+          <SettingsCard>
+            {suggestedServers.map((server, index) => (
+              <ServerRow
+                key={`${server.host}:${server.ssl ?? server.tcp}`}
+                server={server}
+                selected={isSameServer(server, preferredServer)}
+                onPress={() => saveServer(server)}
+                showSeparator={index < suggestedServers.length - 1}
+                testID={`ElectrumServerOption-${server.host}`}
+              />
+            ))}
+          </SettingsCard>
+        </>
+      )}
 
-      <SettingsSectionHeader style={styles.sectionHeaderGap}>{loc.settings.electrum_custom_server}</SettingsSectionHeader>
+      <SettingsSectionHeader style={suggestedServers.length > 0 ? styles.sectionHeaderGap : undefined}>
+        {loc.settings.electrum_custom_server}
+      </SettingsSectionHeader>
       <SettingsCard>
         <View style={styles.customServerContent}>
           <SettingsTextInput

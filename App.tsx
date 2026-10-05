@@ -1,5 +1,5 @@
 import { NavigationContainer } from '@react-navigation/native';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SizeClassProvider } from './components/Context/SizeClassProvider';
 import { SettingsProvider } from './components/Context/SettingsProvider';
@@ -10,9 +10,19 @@ import { markNavigationReady, navigationRef } from './NavigationService';
 import { useLogger } from '@react-navigation/devtools';
 import { StorageProvider } from './components/Context/StorageProvider';
 import { useSettings } from './hooks/context/useSettings';
-import { initializeIndexer } from './modules/SilentPaymentIndexer';
 import { initializeRustJsiBridge } from './modules/RustJsiBridge';
-import { INDEXER_BASE_URL, INDEXER_ONION_URL } from '@env';
+import {
+  INDEXER_BASE_URL,
+  INDEXER_BASE_URL_MAINNET,
+  INDEXER_BASE_URL_SIGNET,
+  INDEXER_BASE_URL_TESTNET4,
+  INDEXER_ONION_URL,
+  INDEXER_ONION_URL_SIGNET,
+  INDEXER_ONION_URL_TESTNET4,
+} from '@env';
+import { configureIndexerEndpoints, getNetwork } from './modules/network';
+import { bootActiveNetwork } from './modules/networkPreference';
+import presentAlert from './components/Alert';
 import { useColorScheme } from 'react-native';
 
 const ThemedNavigationContainer = () => {
@@ -31,15 +41,49 @@ const ThemedNavigationContainer = () => {
 };
 
 const App = () => {
+  // The provider tree does not mount until the active network is known. StorageProvider loads
+  // wallets on mount and `getActiveNetwork()` is synchronous with a mainnet default, so mounting
+  // first and hydrating after would briefly show the wrong chain's wallets — and worse, let a
+  // scan start against the wrong indexer.
+  const [networkReady, setNetworkReady] = useState(false);
+
   useEffect(() => {
-    if (!INDEXER_BASE_URL) throw new Error('INDEXER_BASE_URL is not set');
+    // The only place that reads `@env`: the network registry is a leaf module so wallet classes
+    // (and their unit tests) can import it without the babel transform for `@env`. Every network
+    // ships its own indexer addresses; these are optional overrides, and a blank one is ignored.
+    configureIndexerEndpoints(
+      {
+        // INDEXER_BASE_URL is the pre-multi-network name, still honoured as the mainnet default.
+        bitcoin: INDEXER_BASE_URL_MAINNET || INDEXER_BASE_URL,
+        testnet4: INDEXER_BASE_URL_TESTNET4,
+        signet: INDEXER_BASE_URL_SIGNET,
+      },
+      // Each chain's own onion address: INDEXER_ONION_URL predates multi-network support and is
+      // mainnet's. A shared one would route test-chain scans to the mainnet indexer over Tor.
+      {
+        bitcoin: INDEXER_ONION_URL,
+        testnet4: INDEXER_ONION_URL_TESTNET4,
+        signet: INDEXER_ONION_URL_SIGNET,
+      },
+    );
+
     initializeRustJsiBridge();
-    initializeIndexer({
-      baseUrl: INDEXER_BASE_URL,
-      onionUrl: INDEXER_ONION_URL,
-      timeout: 100000,
-    });
+
+    bootActiveNetwork()
+      .then(({ id, fellBackFrom, reason }) => {
+        if (fellBackFrom) {
+          const from = getNetwork(fellBackFrom).displayName;
+          const why = reason === 'disabled' ? `${from} is currently disabled` : `No silent payment indexer is configured for ${from}`;
+          presentAlert({ message: `${why}, so the app started on ${getNetwork(id).displayName} instead.` });
+        }
+      })
+      .catch((error: any) => {
+        presentAlert({ message: error?.message ?? String(error) });
+      })
+      .finally(() => setNetworkReady(true));
   }, []);
+
+  if (!networkReady) return null;
 
   return (
     <SizeClassProvider>

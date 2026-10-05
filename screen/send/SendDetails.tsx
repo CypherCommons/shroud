@@ -6,7 +6,8 @@ import BigNumber from 'bignumber.js';
 import { TOptions } from 'bip21';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, LayoutAnimation, ScrollView, StyleSheet, Text, Pressable, View } from 'react-native';
-import { SilentPayment } from 'silent-payments';
+import { isSilentPaymentAddress } from '../../helpers/silent-payments';
+import { getActiveNetwork } from '../../modules/network';
 import { btcToSatoshi, satoshiToBTC, satoshiToLocalCurrency } from '../../modules/currency';
 import triggerHapticFeedback, { HapticFeedbackTypes, triggerSelectionHapticFeedback } from '../../modules/hapticFeedback';
 import DeeplinkSchemaMatch from '../../class/deeplink-schema-match';
@@ -456,7 +457,7 @@ const SendDetails = () => {
       }
 
       const dataWithoutSchema = data.replace('bitcoin:', '').replace('BITCOIN:', '');
-      if (wallet.isAddressValid(dataWithoutSchema) || SilentPayment.isPaymentCodeValid(dataWithoutSchema)) {
+      if (wallet.isAddressValid(dataWithoutSchema) || isSilentPaymentAddress(dataWithoutSchema, getActiveNetwork().bitcoinjs)) {
         setAddresses(addrs => {
           addrs[0].address = dataWithoutSchema;
           return [...addrs];
@@ -528,7 +529,7 @@ const SendDetails = () => {
       }
 
       if (!error) {
-        const isSilentPayment = SilentPayment.isPaymentCodeValid(transaction.address);
+        const isSilentPayment = isSilentPaymentAddress(transaction.address, getActiveNetwork().bitcoinjs);
         if (!wallet.isAddressValid(transaction.address) && !isSilentPayment) {
           console.log('validation error');
           error = loc.send.details_address_field_is_not_valid;
