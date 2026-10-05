@@ -107,7 +107,6 @@ android {
         versionName "7.2.1"
         testBuildType System.getProperty('testBuildType', 'debug')
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
-        missingDimensionStrategy 'detox', 'full'
         missingDimensionStrategy "react-native-capture-protection", "callbackTiramisu", "base"
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -167,7 +166,9 @@ tasks.configureEach { task ->
 }
 
 dependencies {
-    androidTestImplementation(project(':detox'))
+    // The prebuilt AAR from node_modules/detox/Detox-android. Detox as a source subproject breaks
+    // `expo run:android`, which configures projects on demand.
+    androidTestImplementation('com.wix:detox:+')
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
     implementation 'androidx.core:core-ktx:1.16.0'
