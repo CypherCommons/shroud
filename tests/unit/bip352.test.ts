@@ -11,10 +11,18 @@ import {
   getSpendPublicKey,
 } from '../../helpers/silent-payments';
 import { type SilentPaymentUTXO } from '../../helpers/silent-payments/types.ts';
-import { getNetwork } from '../../modules/network';
+import { getNetwork, setActiveNetwork, type NetworkId } from '../../modules/network';
 import { type CreateTransactionUtxo } from '../../class/wallets/types.ts';
 
 const TEST_SEED = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+
+const taggedHash = (tag: string, data: Buffer): Buffer => {
+  const tagHash = crypto.createHash('sha256').update(tag, 'utf-8').digest();
+  return crypto
+    .createHash('sha256')
+    .update(Buffer.concat([tagHash, tagHash, data]))
+    .digest();
+};
 
 /** A synthetic SP UTXO whose output key is `spendPubKey + tweak`, as a real one would be. */
 const buildUtxo = (spendPubKey: Uint8Array, silentPaymentAddress: string, tweakByte: number): SilentPaymentUTXO => {
@@ -366,14 +374,6 @@ describe('BIP-352 Silent Payments', () => {
     const recipientSpAddress =
       'sp1qqvchcnrcqpdutxhpf57ptn3wajj0ymqxwzu9g6vj9uxx3wuvlykhyqh99hyh33y5593802pzw5rtw040zrw9f8re52tgcwngc5974w5evuufdy0m';
 
-    function taggedHash(tag: string, data: Buffer): Buffer {
-      const tagHash = crypto.createHash('sha256').update(tag, 'utf-8').digest();
-      return crypto
-        .createHash('sha256')
-        .update(Buffer.concat([tagHash, tagHash, data]))
-        .digest();
-    }
-
     function makeSpUtxo(wallet: HDSilentPaymentsWallet, tweakLastByte: number, value: number, txidHexChar: string): SilentPaymentUTXO {
       const tweak = new Uint8Array(32);
       tweak[31] = tweakLastByte;
@@ -506,6 +506,79 @@ describe('BIP-352 Silent Payments', () => {
       // regression too.
       expect(result.fee).toBeGreaterThanOrEqual(tx.virtualSize() * feeRate);
       expect(result.fee).toBe(314);
+    });
+  });
+
+  describe('sending to a silent payment address from regular taproot coins', () => {
+    afterEach(() => setActiveNetwork('bitcoin'));
+
+    // The receiver's view, built from chain data alone: the output key behind each spent taproot
+    // address (what the indexer's scan tweak is computed from) and the wallet's scan key. Nothing
+    // here touches the sender's private keys, so it fails if the sender sums the wrong ones.
+    function expectedRecipientOutputKey(networkId: NetworkId, spent: { txid: string; vout: number; address?: string }[]): Buffer {
+      const network = getNetwork(networkId);
+      const seed = bip39.mnemonicToSeedSync(TEST_SEED);
+      const bScan = getScanPrivateKey(seed, network);
+      const BSpend = getSpendPublicKey(seed, network);
+
+      const lifted = spent.map(u =>
+        Buffer.concat([Buffer.from([0x02]), Buffer.from(bitcoin.address.toOutputScript(u.address!, network.bitcoinjs).subarray(2))]),
+      );
+      const A = lifted.slice(1).reduce<Uint8Array>((sum, point) => ecc.pointAdd(sum, point, true)!, lifted[0]);
+
+      const outpoints = spent
+        .map(u => {
+          const vout = Buffer.alloc(4);
+          vout.writeUInt32LE(u.vout);
+          return Buffer.concat([Buffer.from(u.txid, 'hex').reverse(), vout]);
+        })
+        .sort(Buffer.compare);
+      const inputHash = taggedHash('BIP0352/Inputs', Buffer.concat([outpoints[0], Buffer.from(A)]));
+
+      const sharedSecret = ecc.pointMultiply(ecc.pointMultiply(A, inputHash, true)!, bScan, true)!;
+      const t0 = taggedHash('BIP0352/SharedSecret', Buffer.concat([Buffer.from(sharedSecret), Buffer.from([0, 0, 0, 0])]));
+      const P0 = ecc.pointAdd(ecc.pointFromScalar(t0, true)!, BSpend, true)!;
+      return Buffer.from(P0.subarray(1, 33));
+    }
+
+    it.each([
+      { networkId: 'bitcoin', inputCount: 1 },
+      { networkId: 'bitcoin', inputCount: 3 },
+      { networkId: 'signet', inputCount: 1 },
+      { networkId: 'signet', inputCount: 3 },
+    ] as const)('pays an output the recipient finds on $networkId, spending $inputCount input(s)', ({ networkId, inputCount }) => {
+      setActiveNetwork(networkId);
+      const wallet = new HDSilentPaymentsWallet();
+      wallet.setSecret(TEST_SEED);
+
+      const utxos = Array.from({ length: inputCount }, (_, i) => ({
+        txid: String(i + 1).repeat(64),
+        vout: 0,
+        value: 10_000,
+        address: wallet._getExternalAddressByIndex(i),
+        confirmations: 10,
+        height: 1,
+      }));
+      // sized so that coin selection needs every input
+      const amount = inputCount * 10_000 - 1_000;
+
+      const result = wallet.createTransaction(
+        utxos as never[],
+        [{ address: wallet.getSilentPaymentAddress()!, value: amount }],
+        1,
+        wallet._getInternalAddressByIndex(0),
+        0xfffffffd,
+        false,
+        0,
+      );
+
+      const tx = result.tx!;
+      expect(tx.ins).toHaveLength(inputCount);
+
+      const expectedScript = Buffer.concat([Buffer.from([0x51, 0x20]), expectedRecipientOutputKey(networkId, result.inputs)]);
+      const spOut = tx.outs.find(o => Buffer.from(o.script).equals(expectedScript));
+      expect(spOut).toBeDefined();
+      expect(spOut!.value).toBe(BigInt(amount));
     });
   });
 

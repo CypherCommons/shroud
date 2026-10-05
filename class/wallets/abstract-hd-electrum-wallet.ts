@@ -972,7 +972,11 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
       }
       const inputPrivateKeys: PrivateKey[] = inputs.map(u => {
         const wifForInput = u.wif ?? this._getWifForAddress(String(u.address));
-        const keyPair = ECPair.fromWIF(wifForInput, network);
+        let keyPair = ECPair.fromWIF(wifForInput, network);
+        // A taproot input contributes the key behind its on-chain *output* key, which is the
+        // BIP-86 tweak of the derived key. Receivers (and the indexer's scan tweak) work from that
+        // output key, so summing the untweaked key yields an output nobody can ever find.
+        if (isXOnly) keyPair = keyPair.tweak(bitcoin.crypto.taggedHash('TapTweak', keyPair.publicKey.subarray(1, 33)));
         if (!keyPair.privateKey) throw new Error('Internal error: no private key for a silent payment input');
         return { key: Buffer.from(keyPair.privateKey).toString('hex'), isXOnly };
       });
