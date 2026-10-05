@@ -136,7 +136,6 @@
     "react-native-linear-gradient": "2.8.3",
     "react-native-localize": "3.5.2",
     "react-native-permissions": "5.4.2",
-    "react-native-prompt-android": "github:BlueWallet/react-native-prompt-android#ed168d66fed556bc2ed07cf498770f058b78a376",
     "react-native-qrcode-svg": "6.3.15",
     "react-native-reanimated": "3.18.0",
     "react-native-safe-area-context": "5.5.2",

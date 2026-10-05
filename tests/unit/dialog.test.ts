@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 
 import { closeCurrentDialog, DialogRequest, enqueueDialog, resetDialogs, subscribeDialogs } from '../../components/Dialog/dialogStore';
 import presentAlert from '../../components/Alert';
+import prompt from '../../helpers/prompt';
 
 describe('unit - dialog queue', () => {
   let shown: (DialogRequest | null)[];
@@ -58,4 +59,21 @@ describe('unit - dialog queue', () => {
     unsubscribe = subscribeDialogs(current => shown.push(current));
   });
 
+  it('prompt resolves with the typed text', async () => {
+    const result = prompt('Password', 'Enter it', false);
+    const current = shown[shown.length - 1];
+
+    assert.strictEqual(current?.input?.secure, true);
+    assert.strictEqual(current?.buttons.length, 1);
+    current?.buttons[0].onPress?.('hunter2');
+    assert.strictEqual(await result, 'hunter2');
+  });
+
+  it('prompt rejects when cancelled', async () => {
+    const result = prompt('Password', 'Enter it');
+    const cancel = shown[shown.length - 1]?.buttons.find(b => b.style === 'cancel');
+
+    cancel?.onPress?.();
+    await assert.rejects(result);
+  });
 });

@@ -1,56 +1,31 @@
-import { Platform } from 'react-native';
-import prompt from 'react-native-prompt-android';
+import { enqueueDialog } from '../components/Dialog/dialogStore';
 import loc from '../loc';
 
+type PromptInputType = 'plain-text' | 'secure-text' | 'numeric';
+
+/** Asks for a line of text in the app's dialog. Resolves with the text, rejects when cancelled. */
 export default (
   title: string,
   text: string,
   isCancelable = true,
-  type: PromptType | PromptTypeIOS | PromptTypeAndroid = 'secure-text',
+  type: PromptInputType = 'secure-text',
   isOKDestructive = false,
   continueButtonText = loc._.ok,
-): Promise<string> => {
-  const keyboardType = type === 'numeric' ? 'numeric' : 'default';
+): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const cancel = () => reject(new Error('Cancel Pressed'));
+    const confirm = {
+      text: continueButtonText,
+      style: isOKDestructive ? 'destructive' : 'default',
+      onPress: (value = '') => resolve(value),
+    } as const;
 
-  if (Platform.OS === 'ios' && type === 'numeric') {
-    // `react-native-prompt-android` on ios does not support numeric input
-    type = 'plain-text';
-  }
-
-  return new Promise((resolve, reject) => {
-    const buttons: Array<PromptButton> = isCancelable
-      ? [
-          {
-            text: loc._.cancel,
-            onPress: () => {
-              reject(Error('Cancel Pressed'));
-            },
-            style: 'cancel',
-          },
-          {
-            text: continueButtonText,
-            onPress: password => {
-              console.log('OK Pressed');
-              resolve(password);
-            },
-            style: isOKDestructive ? 'destructive' : 'default',
-          },
-        ]
-      : [
-          {
-            text: continueButtonText,
-            onPress: password => {
-              console.log('OK Pressed');
-              resolve(password);
-            },
-          },
-        ];
-
-    prompt(title, text, buttons, {
-      type,
+    enqueueDialog({
+      title,
+      message: text,
+      input: { secure: type === 'secure-text', numeric: type === 'numeric' },
+      buttons: isCancelable ? [{ text: loc._.cancel, style: 'cancel', onPress: cancel }, confirm] : [confirm],
       cancelable: isCancelable,
-      // @ts-ignore suppressed because its supported only on ios and is absent from type definitions
-      keyboardType,
+      onDismiss: cancel,
     });
   });
-};
