@@ -55,7 +55,6 @@ class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
 
-        setupUserDefaultsListener()
         registerNotificationCategories()
 
         let delegate = ReactNativeDelegate()
@@ -95,29 +94,6 @@ class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate {
         )
 
         UNUserNotificationCenter.current().setNotificationCategories([transactionCategory])
-    }
-
-    private func setupUserDefaultsListener() {
-        guard let defaults = userDefaultsGroup else {
-            NSLog("[AppDelegate] Cannot setup UserDefaults listeners: group defaults not available")
-            return
-        }
-        
-        let keys = [
-            "WidgetCommunicationAllWalletsSatoshiBalance",
-            "WidgetCommunicationAllWalletsLatestTransactionTime",
-            "WidgetCommunicationDisplayBalanceAllowed",
-            "WidgetCommunicationLatestTransactionIsUnconfirmed",
-            "preferredCurrency",
-            "preferredCurrencyLocale",
-            "electrum_host",
-            "electrum_tcp_port",
-            "electrum_ssl_port"
-        ]
-
-        for key in keys {
-            defaults.addObserver(self, forKeyPath: key, options: .new, context: nil)
-        }
     }
 
     private func copyDeviceUID() {
@@ -270,22 +246,6 @@ class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate {
             }
             
             copyDeviceUID()
-        }
-
-        let keys = [
-            "WidgetCommunicationAllWalletsSatoshiBalance",
-            "WidgetCommunicationAllWalletsLatestTransactionTime",
-            "WidgetCommunicationDisplayBalanceAllowed",
-            "WidgetCommunicationLatestTransactionIsUnconfirmed",
-            "preferredCurrency",
-            "preferredCurrencyLocale",
-            "electrum_host",
-            "electrum_tcp_port",
-            "electrum_ssl_port"
-        ]
-
-        if keys.contains(keyPath) {
-            WidgetHelper.reloadAllWidgets()
         }
     }
 
