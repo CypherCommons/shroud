@@ -2,6 +2,7 @@ import { Alert as RNAlert, Platform, AlertButton, AlertOptions } from 'react-nat
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../modules/hapticFeedback';
 import loc from '../loc';
 import { navigationRef } from '../NavigationService';
+import { enqueueDialog, isDialogHostMounted } from './Dialog/dialogStore';
 
 const presentAlert = (() => {
   let lastAlertParams: {
@@ -17,6 +18,17 @@ const presentAlert = (() => {
   };
 
   const showAlert = (title: string | undefined, message: string, buttons: AlertButton[], options: AlertOptions) => {
+    // The themed dialog once the app UI is up; the system alert only before that.
+    if (isDialogHostMounted()) {
+      enqueueDialog({
+        title,
+        message,
+        buttons: buttons.map(b => ({ text: b.text ?? '', style: b.style, onPress: b.onPress })),
+        cancelable: options.cancelable,
+        onDismiss: options.onDismiss,
+      });
+      return;
+    }
     if (Platform.OS === 'ios' && navigationRef.isReady()) {
       RNAlert.alert(title ?? message, title && message ? message : undefined, buttons, options);
     } else {
