@@ -12,19 +12,21 @@ import { useLogger } from '@react-navigation/devtools';
 import { StorageProvider } from './components/Context/StorageProvider';
 import { useSettings } from './hooks/context/useSettings';
 import { initializeRustJsiBridge } from './modules/RustJsiBridge';
-import {
-  INDEXER_BASE_URL,
-  INDEXER_BASE_URL_MAINNET,
-  INDEXER_BASE_URL_SIGNET,
-  INDEXER_BASE_URL_TESTNET4,
-  INDEXER_ONION_URL,
-  INDEXER_ONION_URL_SIGNET,
-  INDEXER_ONION_URL_TESTNET4,
-} from '@env';
 import { configureIndexerEndpoints, getNetwork } from './modules/network';
 import { bootActiveNetwork } from './modules/networkPreference';
 import presentAlert from './components/Alert';
 import { useColorScheme } from 'react-native';
+
+// Optional indexer overrides. Expo CLI inlines EXPO_PUBLIC_* variables at bundle time, from .env
+// locally and from the EAS environment in builds and `eas update --environment`. Only direct
+// `process.env.EXPO_PUBLIC_*` reads are inlined.
+const INDEXER_BASE_URL = process.env.EXPO_PUBLIC_INDEXER_BASE_URL;
+const INDEXER_BASE_URL_MAINNET = process.env.EXPO_PUBLIC_INDEXER_BASE_URL_MAINNET;
+const INDEXER_BASE_URL_TESTNET4 = process.env.EXPO_PUBLIC_INDEXER_BASE_URL_TESTNET4;
+const INDEXER_BASE_URL_SIGNET = process.env.EXPO_PUBLIC_INDEXER_BASE_URL_SIGNET;
+const INDEXER_ONION_URL = process.env.EXPO_PUBLIC_INDEXER_ONION_URL;
+const INDEXER_ONION_URL_TESTNET4 = process.env.EXPO_PUBLIC_INDEXER_ONION_URL_TESTNET4;
+const INDEXER_ONION_URL_SIGNET = process.env.EXPO_PUBLIC_INDEXER_ONION_URL_SIGNET;
 
 const ThemedNavigationContainer = () => {
   const colorScheme = useColorScheme();
@@ -49,18 +51,18 @@ const App = () => {
   const [networkReady, setNetworkReady] = useState(false);
 
   useEffect(() => {
-    // The only place that reads `@env`: the network registry is a leaf module so wallet classes
-    // (and their unit tests) can import it without the babel transform for `@env`. Every network
+    // The only place that reads the environment: the network registry is a leaf module so wallet
+    // classes (and their unit tests) can import it without any build-time inlining. Every network
     // ships its own indexer addresses; these are optional overrides, and a blank one is ignored.
     configureIndexerEndpoints(
       {
-        // INDEXER_BASE_URL is the pre-multi-network name, still honoured as the mainnet default.
+        // EXPO_PUBLIC_INDEXER_BASE_URL is the old single-network name, still honoured for mainnet.
         bitcoin: INDEXER_BASE_URL_MAINNET || INDEXER_BASE_URL,
         testnet4: INDEXER_BASE_URL_TESTNET4,
         signet: INDEXER_BASE_URL_SIGNET,
       },
-      // Each chain's own onion address: INDEXER_ONION_URL predates multi-network support and is
-      // mainnet's. A shared one would route test-chain scans to the mainnet indexer over Tor.
+      // Each chain's own onion address; EXPO_PUBLIC_INDEXER_ONION_URL is mainnet's. A shared one
+      // would route test-chain scans to the mainnet indexer over Tor.
       {
         bitcoin: INDEXER_ONION_URL,
         testnet4: INDEXER_ONION_URL_TESTNET4,

@@ -39,21 +39,21 @@ cd shroud
 npm install
 ```
 
-No configuration is needed to run: each network ships its own indexer and Electrum server. To point the app somewhere else (your own indexer, say), copy `.env.example` → `.env`, set only the values you want to override, then reset the Metro cache with `npx expo start --clear`.
+No configuration is needed to run: each network ships its own indexer and Electrum server. To point the app somewhere else (your own indexer, say), copy `.env.example` → `.env`, set only the values you want to override, then reset the Metro cache with `npx expo start --clear`. EAS builds and updates read the same variables from the EAS environment instead of `.env`.
 
 ### Networks
 
 The wallet supports mainnet, testnet4 and signet, switchable at runtime under **Settings → Network → Bitcoin Network**. Testnet4 is currently switched off (`enabled: false` in `modules/network.ts`), so the picker offers mainnet and signet only; wallets already stored on testnet4 are left untouched, and setting the flag back to `true` restores it. Each network has its own silent-payment indexer, with a clearnet and a Tor (`.onion`) address, defined in `modules/network.ts`. To override one, set it in `.env`:
 
 ```
-INDEXER_BASE_URL_MAINNET=...
-INDEXER_BASE_URL_TESTNET4=...
-INDEXER_BASE_URL_SIGNET=...
+EXPO_PUBLIC_INDEXER_BASE_URL_MAINNET=...
+EXPO_PUBLIC_INDEXER_BASE_URL_TESTNET4=...
+EXPO_PUBLIC_INDEXER_BASE_URL_SIGNET=...
 ```
 
-A blank value keeps the shipped default, and `INDEXER_BASE_URL` is still honoured as an alias for `INDEXER_BASE_URL_MAINNET`. A network whose indexer address is empty is shown in the picker but cannot be selected.
+A blank value keeps the shipped default, and `EXPO_PUBLIC_INDEXER_BASE_URL` is still honoured as an alias for `EXPO_PUBLIC_INDEXER_BASE_URL_MAINNET`. A network whose indexer address is empty is shown in the picker but cannot be selected.
 
-The Tor addresses are used when Tor is enabled, and can be overridden the same way: `INDEXER_ONION_URL` (mainnet, its original name), `INDEXER_ONION_URL_TESTNET4` and `INDEXER_ONION_URL_SIGNET`. A network only ever uses its own address, so one with none is reached over clearnet (or not at all in Tor-only mode).
+The Tor addresses are used when Tor is enabled, and can be overridden the same way: `EXPO_PUBLIC_INDEXER_ONION_URL` (mainnet), `EXPO_PUBLIC_INDEXER_ONION_URL_TESTNET4` and `EXPO_PUBLIC_INDEXER_ONION_URL_SIGNET`. A network only ever uses its own address, so one with none is reached over clearnet (or not at all in Tor-only mode).
 
 Each network keeps a completely separate wallet, balance and transaction history; switching does not migrate anything between them.
 
