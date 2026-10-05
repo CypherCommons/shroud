@@ -1,14 +1,14 @@
-import { Alert as RNAlert, Platform, AlertButton, AlertOptions } from 'react-native';
+import { Alert as RNAlert, AlertOptions } from 'react-native';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../modules/hapticFeedback';
 import loc from '../loc';
-import { navigationRef } from '../NavigationService';
+import { DialogButton, enqueueDialog, isDialogHostMounted } from './Dialog/dialogStore';
 
 const presentAlert = (() => {
   let lastAlertParams: {
     title?: string;
     message: string;
     hapticFeedback?: HapticFeedbackTypes;
-    buttons?: AlertButton[];
+    buttons?: DialogButton[];
     options?: AlertOptions;
   } | null = null;
 
@@ -16,12 +16,19 @@ const presentAlert = (() => {
     lastAlertParams = null;
   };
 
-  const showAlert = (title: string | undefined, message: string, buttons: AlertButton[], options: AlertOptions) => {
-    if (Platform.OS === 'ios' && navigationRef.isReady()) {
-      RNAlert.alert(title ?? message, title && message ? message : undefined, buttons, options);
-    } else {
-      RNAlert.alert(title ?? '', message, buttons, options);
+  const showAlert = (title: string | undefined, message: string, buttons: DialogButton[], options: AlertOptions) => {
+    // The themed dialog once the app UI is up; the system alert only before that.
+    if (isDialogHostMounted()) {
+      enqueueDialog({
+        title,
+        message,
+        buttons,
+        cancelable: options.cancelable,
+        onDismiss: options.onDismiss,
+      });
+      return;
     }
+    RNAlert.alert(title ?? '', message, buttons, options);
   };
 
   return ({
@@ -35,7 +42,7 @@ const presentAlert = (() => {
     title?: string;
     message: string;
     hapticFeedback?: HapticFeedbackTypes;
-    buttons?: AlertButton[];
+    buttons?: DialogButton[];
     options?: AlertOptions;
     allowRepeat?: boolean;
   }) => {
@@ -55,7 +62,7 @@ const presentAlert = (() => {
       triggerHapticFeedback(hapticFeedback);
     }
 
-    const wrappedButtons: AlertButton[] = buttons.length > 0 ? buttons : [{ text: loc._.ok, onPress: () => {}, style: 'default' }];
+    const wrappedButtons: DialogButton[] = buttons.length > 0 ? buttons : [{ text: loc._.ok, onPress: () => {}, style: 'default' }];
 
     showAlert(title, message, wrappedButtons, options);
   };
