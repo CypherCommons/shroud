@@ -20,6 +20,13 @@
     "react-native/no-inline-styles": "error",
     "react-native/no-unused-styles": "error",
     "react/no-is-mounted": "off",
+    // React Compiler checks that eslint-plugin-react-hooks 7 (via @react-native/eslint-config 0.86)
+    // turns on. Warnings until the existing violations are cleaned up.
+    "react-hooks/refs": "warn",
+    "react-hooks/set-state-in-effect": "warn",
+    "react-hooks/immutability": "warn",
+    "react-hooks/purity": "warn",
+    "react-hooks/preserve-manual-memoization": "warn",
     "react-native/no-single-element-style-arrays": "error",
     "prettier/prettier": [
       "warn",

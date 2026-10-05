@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only; it replaces the allowlist in src/main. The dev client loads the bundle from
+     Metro over plain HTTP at whatever address Metro advertises: a LAN IP, or 127.0.0.1 through
+     adb reverse. Release builds keep the allowlist. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

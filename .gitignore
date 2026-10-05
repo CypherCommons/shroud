@@ -88,3 +88,14 @@ android/app/src/main/jniLibs
 # rust
 rust_jsi_bridge/target/
 ios/RustJsiBridge.xcframework/
+
+# Expo
+.expo/
+dist/
+
+# Signing credentials (EAS manages these remotely)
+credentials.json
+*.jks
+*.p8
+*.p12
+*.mobileprovision

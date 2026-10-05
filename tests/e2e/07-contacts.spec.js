@@ -138,11 +138,15 @@ describe('Contacts', () => {
         .withTimeout(10_000);
 
       await element(by.id('SendDetailsContactsButton')).tap();
-      await waitFor(element(by.id(`PickContact-${ADDR_A}`)))
+      // TrueSheet reports the sheet's content as children of its host view as well as of the
+      // sheet itself, so Espresso finds every view in the sheet twice. Both matches are the same view.
+      await waitFor(element(by.id(`PickContact-${ADDR_A}`)).atIndex(0))
         .toBeVisible()
         .withTimeout(10_000);
 
-      await element(by.id(`PickContact-${ADDR_A}`)).tap();
+      await element(by.id(`PickContact-${ADDR_A}`))
+        .atIndex(0)
+        .tap();
       await waitFor(element(by.id('AddressInput')))
         .toHaveText(ADDR_A)
         .withTimeout(10_000);

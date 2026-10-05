@@ -1,6 +1,9 @@
 import './gesture-handler';
 import 'react-native-get-random-values';
 import './shim.js';
+// Expo's runtime: installs the winter polyfills (TextDecoder, URL, structuredClone, expo/fetch)
+// that bundled libs such as ecpair expect at module load time.
+import 'expo';
 
 import React, { useEffect } from 'react';
 import { AppRegistry, LogBox } from 'react-native';

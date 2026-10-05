@@ -1,4 +1,6 @@
-import { NativeModules, Platform } from 'react-native';
+import { Platform } from 'react-native';
+
+import NativeRustJsiBridge from './specs/NativeRustJsiBridge';
 
 const LINKING_ERROR =
   `The 'RustJsiBridge' module is not properly linked. ` +
@@ -8,18 +10,7 @@ const LINKING_ERROR =
     android: '- Ensure CMakeLists.txt is properly configured\n',
     default: '',
   }) +
-  `- Rebuild the app (npx react-native run-ios or run-android)`;
-
-const RustJsiBridgeModule = NativeModules.RustJsiBridge
-  ? NativeModules.RustJsiBridge
-  : new Proxy(
-      {},
-      {
-        get() {
-          throw new Error(LINKING_ERROR);
-        },
-      },
-    );
+  `- Rebuild the app (npx expo run:ios or run:android)`;
 
 export interface RustMatchedUTXO {
   txid: string;
@@ -64,7 +55,11 @@ export function initializeRustJsiBridge(): boolean {
   }
 
   try {
-    const result = RustJsiBridgeModule.install();
+    if (!NativeRustJsiBridge) {
+      throw new Error(LINKING_ERROR);
+    }
+    // Loading the TurboModule is what installs the JSI functions, so confirm they actually exist.
+    const result = NativeRustJsiBridge.install() && typeof getGlobal().spScanTransactions === 'function';
     if (result) {
       isInstalled = true;
       console.log('✅ Rust JSI Bridge installed successfully');

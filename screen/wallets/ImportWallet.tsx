@@ -251,7 +251,7 @@ const ImportWallet = () => {
   );
 
   return (
-    <SafeAreaScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="always" automaticallyAdjustKeyboardInsets>
+    <SafeAreaScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="always">
       <View style={styles.body}>
         <TouchableWithoutFeedback accessibilityRole="button" onPress={speedBackdoorTap} testID="SpeedBackdoor">
           <View style={styles.header}>

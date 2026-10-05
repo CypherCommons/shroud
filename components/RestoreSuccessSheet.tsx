@@ -19,7 +19,7 @@ const RestoreSuccessSheet = forwardRef<BottomModalHandle, RestoreSuccessSheetPro
   return (
     <BottomModal
       ref={ref}
-      sizes={['auto']}
+      detents={['auto']}
       // Rounds the top corners only; the native sheet squares off the bottom two.
       cornerRadius={16}
       showCloseButton={false}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RouteProp, useRoute } from '@react-navigation/native';
 import LottieView from 'lottie-react-native';
@@ -45,7 +46,8 @@ const Success = () => {
   });
 
   return (
-    <View style={[styles.overlay, stylesHook.overlay]}>
+    // Lifts the sheet over the keyboard while the save-contact row takes a name.
+    <KeyboardAvoidingView behavior="padding" style={[styles.overlay, stylesHook.overlay]}>
       <View style={[styles.sheet, stylesHook.sheet]}>
         <SuccessBadge />
 
@@ -70,7 +72,7 @@ const Success = () => {
           testID="successDoneButton"
         />
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

@@ -5,9 +5,9 @@ import android.os.Bundle
 import android.util.Log
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
-import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
-import com.facebook.react.defaults.DefaultReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
+import com.facebook.react.defaults.DefaultReactActivityDelegate
+import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
 
@@ -32,10 +32,13 @@ class MainActivity : ReactActivity() {
     }
 
     /**
-     * Returns the instance of the [ReactActivityDelegate]. Here we use a util class [DefaultReactActivityDelegate]
-     * which allows you to easily enable Fabric and Concurrent React (aka React 18) with two boolean flags.
+     * Returns the instance of the [ReactActivityDelegate]. [ReactActivityDelegateWrapper] lets Expo
+     * modules (dev client, updates) hook into the React Native lifecycle.
      */
-
     override fun createReactActivityDelegate(): ReactActivityDelegate =
-        DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
+        ReactActivityDelegateWrapper(
+            this,
+            BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,
+            object : DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled) {}
+        )
 }
