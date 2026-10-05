@@ -83,8 +83,7 @@ const ContactDetail: React.FC = () => {
     setCopied(true);
   };
 
-  // helpers/confirm hardcodes a default-styled "Yes", which is neither destructive nor named. Every
-  // other irreversible action in the app spells the verb out — see hooks/useDeleteWallet.
+  // Like every other irreversible action in the app, the button names the verb — see hooks/useDeleteWallet.
   const onRemove = () =>
     presentAlert({
       title: loc.contacts.remove_confirm_title,

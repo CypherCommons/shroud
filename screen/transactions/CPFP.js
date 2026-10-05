@@ -7,7 +7,7 @@ import * as Electrum from '../../modules/Electrum';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
 import { ShroudCard, ShroudText } from '../../ShroudComponents';
 import { HDSegwitBech32Transaction, HDSilentPaymentsWallet } from '../../class';
-import presentAlert, { AlertType } from '../../components/Alert';
+import presentAlert from '../../components/Alert';
 import Button from '../../components/Button';
 import SafeArea from '../../components/SafeArea';
 import { BlueCurrentTheme } from '../../components/themes';
@@ -87,7 +87,7 @@ export default class CPFP extends Component {
       } catch (error) {
         triggerHapticFeedback(HapticFeedbackTypes.NotificationError);
         this.setState({ isLoading: false });
-        presentAlert({ message: error.message, type: AlertType.Toast });
+        presentAlert({ message: error.message });
       }
     });
   };

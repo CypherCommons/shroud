@@ -7,7 +7,6 @@
         "of": "{number} of {total}",
         "ok": "OK",
         "storage_is_encrypted": "Your storage is encrypted. Password is required to decrypt it.",
-        "yes": "Yes",
         "save": "Save...",
         "invalid_animated_qr_code_fragment": "Invalid animated QR Code fragment. Please try again.",
         "close": "Close",
