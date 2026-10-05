@@ -8,12 +8,16 @@ import loc from '../loc';
 
 interface PinPromptProps {
   subtitle: string;
-  pinAttempt: ReturnType<typeof usePinAttempt>;
+  onSuccess: () => void;
 }
 
-/** Centered PIN entry for a screen that has to confirm the PIN before showing something. */
-const PinPrompt: React.FC<PinPromptProps> = ({ subtitle, pinAttempt }) => {
+/**
+ * Centered PIN entry for a screen that has to confirm the PIN before showing something. Owns the PIN
+ * check, so the lockout is read from the keychain only once the prompt shows.
+ */
+const PinPrompt: React.FC<PinPromptProps> = ({ subtitle, onSuccess }) => {
   const { colors } = useTheme();
+  const pinAttempt = usePinAttempt(onSuccess);
 
   return (
     <View style={styles.root}>

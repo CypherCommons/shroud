@@ -30,7 +30,7 @@ const WalletExport: React.FC = () => {
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const navigation = useNavigation();
-  const { runProtected, isPinPromptVisible, pinAttempt } = useProtectedAction();
+  const { runProtected, isPinPromptVisible, onPinCorrect } = useProtectedAction();
   const [isUnlocked, setIsUnlocked] = useState(false);
 
   // The file holds the seed, so opening this screen takes the same check as revealing the recovery phrase.
@@ -69,7 +69,7 @@ const WalletExport: React.FC = () => {
     }
   };
 
-  if (isPinPromptVisible) return <PinPrompt subtitle={loc.wallets.export_backup_pin_subtitle} pinAttempt={pinAttempt} />;
+  if (isPinPromptVisible) return <PinPrompt subtitle={loc.wallets.export_backup_pin_subtitle} onSuccess={onPinCorrect} />;
   if (!isUnlocked) return null;
 
   return (
