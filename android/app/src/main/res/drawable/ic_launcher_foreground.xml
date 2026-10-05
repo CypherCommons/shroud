@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Figma Android App Icons export. Map its 108-unit preview to Android's
+     72dp visible area, centered in the 108dp adaptive layer (18dp inset).
+     Keep the monochrome layer opaque; Android supplies the theme colors. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.666666667"
+        android:scaleY="0.666666667"
+        android:translateX="18"
+        android:translateY="18">
+        <path android:fillColor="#FFFFFF"
+            android:pathData="M73.8996 37.7285L78.2607 30.9915H39.3271L91.2722 65.2073C89.4497 80.0256 76.8189 91.5013 61.5065 91.5013H46.4902C29.9248 91.5013 16.5 78.0728 16.5 61.51V57.8551L34.0971 70.4016L29.7361 77.1355H68.6697L16.7115 42.9131C18.4787 28.0363 31.1388 16.4987 46.4902 16.4987H61.5065C78.0719 16.4987 91.5 29.9272 91.5 46.49V50.2686L73.9029 37.722L73.8996 37.7285Z" />
+    </group>
+</vector>
