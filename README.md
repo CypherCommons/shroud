@@ -39,7 +39,7 @@ cd shroud
 npm install
 ```
 
-No configuration is needed to run: each network ships its own indexer and Electrum server. To point the app somewhere else (your own indexer, say), copy `.env.example` → `.env`, set only the values you want to override, then reset the Metro cache with `npx expo start --clear`. EAS builds and updates read the same variables from the EAS environment instead of `.env`.
+No configuration is needed to run: each network ships its own indexer and Electrum server. To point the app somewhere else (your own indexer, say), copy `.env.example` → `.env`, set only the values you want to override, then reset the Metro cache with `npx expo start --clear`. EAS builds read the same variables from the EAS environment instead of `.env`, and published updates from the publisher's shell (see `RELEASE.md`).
 
 ### Networks
 

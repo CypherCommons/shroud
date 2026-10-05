@@ -8,7 +8,10 @@
     },
     "updates": {
       "enabled": true,
-      "url": "https://u.expo.dev/eb7a9abe-b873-46b5-961c-88b36cc4d8a0",
+      "url": "https://updates.shroudwallet.com/manifest",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      },
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0,
       "codeSigningCertificate": "./certs/certificate.pem",

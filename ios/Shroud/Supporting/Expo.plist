@@ -39,7 +39,12 @@ d+19T23bSbSZi1dkL6dbOCc=&#xD;
     <true/>
     <key>EXUpdatesRuntimeVersion</key>
     <string>file:fingerprint</string>
+    <key>EXUpdatesRequestHeaders</key>
+    <dict>
+      <key>expo-channel-name</key>
+      <string>production</string>
+    </dict>
     <key>EXUpdatesURL</key>
-    <string>https://u.expo.dev/eb7a9abe-b873-46b5-961c-88b36cc4d8a0</string>
+    <string>https://updates.shroudwallet.com/manifest</string>
   </dict>
 </plist>

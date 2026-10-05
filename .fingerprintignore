@@ -1,5 +1,5 @@
 # Paths inside android/ and ios/ that are generated or machine-local (all gitignored). They must not
-# affect the runtime version fingerprint, or a build and an `eas update` run on different machines
+# affect the runtime version fingerprint, or a build and an OTA update published on different machines
 # would compute different runtime versions. Build outputs, Pods and Gradle caches are ignored by
 # default; see fingerprint.config.js for what is added.
 

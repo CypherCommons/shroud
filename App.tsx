@@ -17,9 +17,9 @@ import { bootActiveNetwork } from './modules/networkPreference';
 import presentAlert from './components/Alert';
 import { useColorScheme } from 'react-native';
 
-// Optional indexer overrides. Expo CLI inlines EXPO_PUBLIC_* variables at bundle time, from .env
-// locally and from the EAS environment in builds and `eas update --environment`. Only direct
-// `process.env.EXPO_PUBLIC_*` reads are inlined.
+// Optional indexer overrides. Expo CLI inlines EXPO_PUBLIC_* variables at bundle time: from .env
+// locally, from the EAS environment in store builds, and from the publisher's shell in OTA updates
+// (RELEASE.md). Only direct `process.env.EXPO_PUBLIC_*` reads are inlined.
 const INDEXER_BASE_URL = process.env.EXPO_PUBLIC_INDEXER_BASE_URL;
 const INDEXER_BASE_URL_MAINNET = process.env.EXPO_PUBLIC_INDEXER_BASE_URL_MAINNET;
 const INDEXER_BASE_URL_TESTNET4 = process.env.EXPO_PUBLIC_INDEXER_BASE_URL_TESTNET4;
