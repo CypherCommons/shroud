@@ -2,5 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <application android:usesCleartextTraffic="true" tools:targetApi="28" tools:ignore="GoogleAppIndexingWarning">
+        <!-- Debug builds leave out the update-signing certificate. With it, the dev client asks
+             Metro for signed manifests, which only works when Metro has the private key. Release
+             builds keep it, so installed apps still reject unsigned updates. -->
+        <meta-data android:name="expo.modules.updates.CODE_SIGNING_CERTIFICATE" tools:node="remove" />
+        <meta-data android:name="expo.modules.updates.CODE_SIGNING_METADATA" tools:node="remove" />
     </application>
 </manifest>

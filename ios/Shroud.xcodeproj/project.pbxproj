@@ -609,6 +609,7 @@
 				4B36CFF6FE55027DCA5CB6E1 /* Upload Bugsnag dSYM */,
 				BFE56A9A22A21E360BF7A1EC /* [CP] Embed Pods Frameworks */,
 				D0E81659D2FBFDD27024CF05 /* [CP] Copy Pods Resources */,
+				EA678E26C21C4C9AECC1390A /* Leave update signing out of Debug builds */,
 			);
 			buildRules = (
 			);
@@ -906,6 +907,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Shroud/Pods-Shroud-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		EA678E26C21C4C9AECC1390A /* Leave update signing out of Debug builds */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Leave update signing out of Debug builds";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# With the certificate in Expo.plist, the dev client asks Metro for signed manifests, which only\n# works when Metro has the private key. Release builds keep it, so installed apps still reject\n# unsigned updates. (Android does the same in src/debug/AndroidManifest.xml.)\nif [ \"$CONFIGURATION\" = \"Debug\" ]; then\n  PLIST=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Expo.plist\"\n  /usr/libexec/PlistBuddy -c \"Delete :EXUpdatesCodeSigningCertificate\" \"$PLIST\" 2>/dev/null || true\n  /usr/libexec/PlistBuddy -c \"Delete :EXUpdatesCodeSigningMetadata\" \"$PLIST\" 2>/dev/null || true\nfi\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
