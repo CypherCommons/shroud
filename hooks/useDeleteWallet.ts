@@ -22,7 +22,7 @@ export const useDeleteWallet = () => {
 
     presentAlert({
       title: loc.wallets.details_delete_wallet,
-      message: loc.wallets.details_are_you_sure,
+      message: loc.wallets.details_delete_wallet_message,
       buttons: [
         { text: loc._.cancel, style: 'cancel' },
         {

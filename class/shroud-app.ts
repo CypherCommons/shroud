@@ -10,6 +10,7 @@ import * as encryption from '../modules/encryption';
 import { encryptBackup } from '../modules/backupEncryption';
 import { GROUP_IO_SHROUD } from '../modules/currency';
 import presentAlert from '../components/Alert';
+import loc from '../loc';
 import { randomBytes } from './rng';
 import { ExtendedTransaction, Transaction, TWallet } from './wallets/types';
 import { HDSilentPaymentsWallet } from './wallets/hd-bip352-wallet.ts';
@@ -586,7 +587,7 @@ export class ShroudApp {
   async saveToDisk(): Promise<void> {
     if (savingInProgress) {
       console.warn('saveToDisk is in progress');
-      if (++savingInProgress > 10) presentAlert({ message: 'Critical error. Last actions were not saved' }); // should never happen
+      if (++savingInProgress > 10) presentAlert({ message: loc.errors.save_stuck }); // should never happen
       await new Promise(resolve => setTimeout(resolve, 1000 * savingInProgress)); // sleep
       return this.saveToDisk();
     }
@@ -657,7 +658,7 @@ export class ShroudApp {
       realmkeyValue.close();
     } catch (error: any) {
       console.error('save to disk exception:', error.message);
-      presentAlert({ message: 'save to disk exception: ' + error.message });
+      presentAlert({ message: loc.formatString(loc.errors.save_failed, { message: error.message }) });
       if (error.message.includes('Realm file decryption failed')) {
         console.warn('purging realm key-value database file');
         this.purgeRealmKeyValueFile();
