@@ -3,38 +3,34 @@
 
 import { createHash, createPublicKey, sign, verify, X509Certificate, constants } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { access, appendFile, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { appendFile, chmod, copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-export const CHANNEL = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-export const RUNTIME_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-export const PLATFORMS = ['ios', 'android'];
+import { ASSET_NAME, CHANNEL, PLATFORMS, RUNTIME_VERSION, contentTypeFor } from '../../update-server/protocol.mjs';
+
+export { CHANNEL, PLATFORMS, RUNTIME_VERSION };
+export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const SIGNING_ALGORITHM = 'rsa-v1_5-sha256';
 export const DEFAULT_BASE_URL = 'https://updates.shroudwallet.com';
 
-const CONTENT_TYPES = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  svg: 'image/svg+xml',
-  json: 'application/json',
-  ttf: 'font/ttf',
-  otf: 'font/otf',
-  woff: 'font/woff',
-  woff2: 'font/woff2',
-};
-
-export function contentTypeFor(ext) {
-  return CONTENT_TYPES[ext.toLowerCase()] ?? 'application/octet-stream';
+/**
+ * The server's URL without a trailing slash, or null unless it is https (plain http only for this
+ * machine or the Android emulator).
+ */
+export function parseBaseUrl(value) {
+  const baseUrl = value.replace(/\/+$/, '');
+  const allowed = /^https:\/\//.test(baseUrl) || /^http:\/\/(localhost|127\.0\.0\.1|10\.0\.2\.2)(:\d+)?$/.test(baseUrl);
+  return allowed ? baseUrl : null;
 }
 
 export function digests(bytes) {
+  const sha256 = createHash('sha256').update(bytes).digest();
   return {
-    sha256Hex: createHash('sha256').update(bytes).digest('hex'),
+    sha256Hex: sha256.toString('hex'),
     // What expo-updates checks a downloaded file against: base64url, no padding.
-    sha256Base64Url: createHash('sha256').update(bytes).digest('base64url'),
+    sha256Base64Url: sha256.toString('base64url'),
     md5Hex: createHash('md5').update(bytes).digest('hex'),
   };
 }
@@ -75,21 +71,22 @@ export function assertKeyMatchesCertificate(privateKeyPem, certificatePem, now =
 
 /**
  * The manifest for one platform of an `expo export`, plus the files it points at. `body` is the
- * exact JSON that gets signed and served.
+ * exact JSON that gets signed and served. `metadata` holds strings only, and is signed with it.
  */
-export async function buildManifest({ exportDir, platformMetadata, id, createdAt, runtimeVersion, baseUrl, expoConfig }) {
+export async function buildManifest({ exportDir, platformMetadata, id, createdAt, runtimeVersion, baseUrl, expoConfig, metadata = {} }) {
   const files = new Map();
   const describe = async (relativePath, ext, isLaunchAsset) => {
     const source = path.join(exportDir, relativePath);
     const bytes = await readFile(source);
     const { sha256Hex, sha256Base64Url, md5Hex } = digests(bytes);
-    const fileExtension = isLaunchAsset ? '.bundle' : `.${ext}`;
+    const fileExtension = isLaunchAsset ? '.bundle' : `.${ext.toLowerCase()}`;
     const name = `${sha256Hex}${fileExtension}`;
+    if (!ASSET_NAME.test(name)) throw new Error(`The update server cannot serve ${relativePath} (extension ${ext})`);
     files.set(name, source);
     return {
       hash: sha256Base64Url,
       key: md5Hex,
-      contentType: isLaunchAsset ? 'application/javascript' : contentTypeFor(ext),
+      contentType: contentTypeFor(fileExtension),
       fileExtension,
       url: `${baseUrl}/assets/${name}`,
     };
@@ -101,7 +98,7 @@ export async function buildManifest({ exportDir, platformMetadata, id, createdAt
     runtimeVersion,
     launchAsset: await describe(platformMetadata.bundle, null, true),
     assets: await Promise.all(platformMetadata.assets.map(asset => describe(asset.path, asset.ext, false))),
-    metadata: {},
+    metadata,
     extra: { expoClient: expoConfig },
   };
   return { manifest, body: JSON.stringify(manifest), files: [...files].map(([name, source]) => ({ name, source })) };
@@ -118,21 +115,12 @@ function pointerFile(stageDir, channel, runtimeVersion, platform) {
   return path.join(stageDir, 'channels', channel, runtimeVersion, `${platform}.json`);
 }
 
-async function exists(file) {
-  try {
-    await access(file);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** Lays an update out the way update-server reads it, under `stageDir`. */
 export async function stageUpdate({ stageDir, channel, runtimeVersion, platform, id, body, signature, files, pointer }) {
   await mkdir(path.join(stageDir, 'assets'), { recursive: true });
   for (const { name, source } of files) {
     const target = path.join(stageDir, 'assets', name);
-    if (!(await exists(target))) await copyFile(source, target);
+    if (!existsSync(target)) await copyFile(source, target);
   }
   const dir = path.join(stageDir, 'updates', id);
   await mkdir(dir, { recursive: true });
@@ -158,6 +146,7 @@ export async function stageRollback({ stageDir, channel, runtimeVersion, platfor
 
 export function run(command, args, { env, capture = true } = {}) {
   const result = spawnSync(command, args, {
+    cwd: PROJECT_ROOT,
     encoding: 'utf8',
     stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     env: { ...process.env, ...env },
@@ -168,9 +157,10 @@ export function run(command, args, { env, capture = true } = {}) {
   return result.stdout;
 }
 
-// .env files stay out of published updates. Expo CLI would otherwise inline whatever
-// EXPO_PUBLIC_* values sit on the publisher's machine into the bundle every user downloads,
-// while store builds use the shipped defaults.
+// .env files stay out of published updates: Expo CLI would otherwise inline whatever
+// EXPO_PUBLIC_* values sit in the publisher's checkout into the bundle every user downloads.
+// Store builds take those variables from their EAS environment, so an update gets the same
+// values only when it is published under `eas env:exec <environment>` (see RELEASE.md).
 export const EXPO_ENV = { EXPO_NO_DOTENV: '1' };
 
 export function fingerprint(platform) {
@@ -198,16 +188,90 @@ export function gitState(projectRoot) {
   return { commit, dirty };
 }
 
+/** Makes the staged tree readable by the server's container, whatever the publisher's umask is. */
+async function makeReadable(dir) {
+  await chmod(dir, 0o755);
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) await makeReadable(entryPath);
+    else await chmod(entryPath, 0o644);
+  }
+}
+
 /**
  * Copies the staged tree to the server with rsync over SSH: files first, the channel pointers
- * last, so a client never sees a pointer to an update that isn't fully there yet.
+ * last, so a client never sees a pointer to an update that isn't fully there yet. `target` is
+ * `user@host:/path`, or `user@host:` when the key is restricted to the directory with rrsync.
  */
-export function upload(stageDir, target) {
-  const base = ['-rt', '--chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r'];
-  const content = ['assets', 'updates', 'directives'].filter(dir => spawnSync('test', ['-d', path.join(stageDir, dir)]).status === 0);
+export async function upload(stageDir, target) {
+  // -p keeps the modes set here. Without it the server's umask decides, and may leave the files
+  // unreadable to the container. (--chmod would do instead, but macOS's openrsync ignores it.)
+  await makeReadable(stageDir);
+  const base = ['-rtp'];
+  const destination = /[:/]$/.test(target) ? target : `${target}/`;
+  const content = ['assets', 'updates', 'directives'].filter(dir => existsSync(path.join(stageDir, dir)));
   if (content.length)
-    run('rsync', [...base, '--ignore-existing', ...content.map(dir => path.join(stageDir, dir)), `${target}/`], { capture: false });
-  run('rsync', [...base, path.join(stageDir, 'channels'), `${target}/`], { capture: false });
+    run('rsync', [...base, '--ignore-existing', ...content.map(dir => path.join(stageDir, dir)), destination], { capture: false });
+  run('rsync', [...base, path.join(stageDir, 'channels'), destination], { capture: false });
+}
+
+/** Splits a multipart/mixed response from the update server into its named parts. */
+export function parseMultipart(contentType, body) {
+  const boundary = /boundary=([^;]+)/.exec(contentType ?? '')?.[1];
+  if (!boundary) throw new Error(`Expected a multipart response, got ${contentType}`);
+  return body
+    .split(`--${boundary}`)
+    .slice(1, -1)
+    .map(chunk => {
+      const [head, ...rest] = chunk.replace(/^\r\n/, '').split('\r\n\r\n');
+      const headers = Object.fromEntries(
+        head.split('\r\n').map(line => [line.slice(0, line.indexOf(':')).toLowerCase(), line.slice(line.indexOf(':') + 1).trim()]),
+      );
+      return {
+        name: /name="([^"]+)"/.exec(headers['content-disposition'])?.[1],
+        headers,
+        body: rest.join('\r\n\r\n').replace(/\r\n$/, ''),
+      };
+    });
+}
+
+/**
+ * What the server hands a build of `runtimeVersion` on `channel` right now: null when nothing is
+ * published for it, otherwise the update or roll-back directive with its time.
+ */
+export async function fetchLive({ baseUrl, channel, runtimeVersion, platform }) {
+  const response = await fetch(`${baseUrl}/manifest`, {
+    headers: {
+      'expo-protocol-version': '1',
+      'expo-platform': platform,
+      'expo-runtime-version': runtimeVersion,
+      'expo-channel-name': channel,
+    },
+  });
+  if (response.status === 204) return null;
+  if (response.status !== 200) throw new Error(`${baseUrl}/manifest answered ${response.status} for ${platform} on ${channel}`);
+  const parts = parseMultipart(response.headers.get('content-type'), await response.text());
+  const manifest = parts.find(part => part.name === 'manifest');
+  if (manifest) {
+    const { id, createdAt } = JSON.parse(manifest.body);
+    return { kind: 'update', id, createdAt };
+  }
+  const directive = parts.find(part => part.name === 'directive');
+  if (directive) return { kind: 'rollBackToEmbedded', createdAt: JSON.parse(directive.body).parameters.commitTime };
+  throw new Error(`${baseUrl}/manifest sent neither a manifest nor a directive`);
+}
+
+/**
+ * Apps ignore an update or roll-back that is not newer than the update they run, so a clock
+ * behind the one that made the live update would publish something that changes nothing.
+ */
+export function assertNewerThanLive(live, createdAt, what) {
+  if (live && !(Date.parse(live.createdAt) < Date.parse(createdAt))) {
+    throw new Error(
+      `${what} would be dated ${createdAt}, but the live ${live.kind === 'update' ? 'update' : 'roll-back'} is dated ${live.createdAt}. ` +
+        "Apps would ignore it; check this machine's clock.",
+    );
+  }
 }
 
 export async function appendHistory(outDir, entry) {

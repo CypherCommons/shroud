@@ -1,9 +1,10 @@
 // Read-only server for expo-updates (Expo Updates protocol v1).
 //
 // It never signs anything. Each update's manifest and signature are made on a publisher's
-// machine by scripts/ota/publish.mjs and copied into DATA_DIR. A compromised server can
-// withhold updates, but it cannot produce one the app would accept. It also keeps no
-// request logs: an update check reveals a user's IP address, and nothing here records it.
+// machine by scripts/ota/publish.mjs and copied into DATA_DIR. A compromised server can't
+// produce an update the app would accept, but it can withhold updates or resend anything
+// signed earlier for the same runtime version (see README.md). It also keeps no request
+// logs: an update check reveals a user's IP address, and nothing here records it.
 //
 // DATA_DIR layout (written only by the publish and rollback scripts):
 //   assets/<sha256 hex><ext>                         update files, content-addressed
@@ -12,32 +13,14 @@
 //   channels/<channel>/<runtime version>/<platform>.json
 //       the current pointer: {"kind":"update","id":…} or {"kind":"rollBackToEmbedded","id":…}
 
-import { createReadStream } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { open, readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { pathToFileURL } from 'node:url';
 
-const CHANNEL = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-const RUNTIME_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const ASSET_NAME = /^[0-9a-f]{64}(\.[a-z0-9]{1,10})?$/;
-
-const ASSET_CONTENT_TYPES = {
-  '.bundle': 'application/javascript',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.json': 'application/json',
-  '.ttf': 'font/ttf',
-  '.otf': 'font/otf',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-};
+import { ASSET_NAME, CHANNEL, RUNTIME_VERSION, UUID, contentTypeFor } from './protocol.mjs';
 
 export function createUpdateServer({ dataDir }) {
   const root = path.resolve(dataDir);
@@ -60,8 +43,8 @@ async function handle(req, res, root) {
 }
 
 async function serveManifest(req, res, root) {
-  // Repeated headers arrive as arrays; none of these may repeat.
-  const header = name => (typeof req.headers[name] === 'string' ? req.headers[name] : undefined);
+  // Node joins a repeated header into one comma-separated value, which none of the checks below accept.
+  const header = name => req.headers[name];
 
   if (header('expo-protocol-version') !== '1') return sendJson(res, 400, { error: 'Expected expo-protocol-version: 1' });
   const platform = header('expo-platform');
@@ -102,21 +85,29 @@ async function serveManifest(req, res, root) {
 
 async function serveAsset(res, root, name) {
   if (!ASSET_NAME.test(name)) return sendJson(res, 404, { error: 'Not found' });
-  const file = path.join(root, 'assets', name);
-  let info;
+  let file;
   try {
-    info = await stat(file);
+    file = await open(path.join(root, 'assets', name));
   } catch (error) {
     if (error.code === 'ENOENT') return sendJson(res, 404, { error: 'Not found' });
     throw error;
   }
-  res.writeHead(200, {
-    'content-type': ASSET_CONTENT_TYPES[path.extname(name)] ?? 'application/octet-stream',
-    'content-length': info.size,
-    // The name is the file's hash, so its bytes never change.
-    'cache-control': 'public, max-age=31536000, immutable',
-  });
-  createReadStream(file).pipe(res);
+  try {
+    const info = await file.stat();
+    if (!info.isFile()) return sendJson(res, 404, { error: 'Not found' });
+    res.writeHead(200, {
+      'content-type': contentTypeFor(path.extname(name)),
+      'content-length': info.size,
+      // The name is the file's hash, so its bytes never change.
+      'cache-control': 'public, max-age=31536000, immutable',
+    });
+    await pipeline(file.createReadStream({ autoClose: false }), res);
+  } catch (error) {
+    // The client went away mid-download; there is nothing to answer.
+    if (error.code !== 'ERR_STREAM_PREMATURE_CLOSE') throw error;
+  } finally {
+    await file.close();
+  }
 }
 
 async function readSignature(dir) {

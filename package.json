@@ -10,6 +10,7 @@
     "@babel/core": "^7.26.0",
     "@babel/runtime": "^7.26.0",
     "@bugsnag/source-maps": "^2.3.3",
+    "@expo/code-signing-certificates": "^0.0.6",
     "@jest/reporters": "^27.5.1",
     "@react-native/eslint-config": "0.86.3",
     "@react-native/jest-preset": "^0.86.3",

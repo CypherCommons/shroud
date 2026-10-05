@@ -2,7 +2,9 @@
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { readdirSync } from 'node:fs';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { get } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
@@ -13,7 +15,10 @@ import certs from '@expo/code-signing-certificates';
 import { createUpdateServer } from '../server.mjs';
 import {
   assertKeyMatchesCertificate,
+  assertNewerThanLive,
   buildManifest,
+  fetchLive,
+  parseMultipart,
   rollBackToEmbeddedDirective,
   signBody,
   signatureHeader,
@@ -50,20 +55,6 @@ async function fakeExport(dir) {
   return { bundle: '_expo/static/js/android/index-abc.hbc', assets: [{ path: 'assets/f00d', ext: 'png' }] };
 }
 
-function parseMultipart(contentType, body) {
-  const boundary = /boundary=([^;]+)/.exec(contentType)[1];
-  return body
-    .split(`--${boundary}`)
-    .slice(1, -1)
-    .map(chunk => {
-      const [head, ...rest] = chunk.replace(/^\r\n/, '').split('\r\n\r\n');
-      const headers = Object.fromEntries(
-        head.split('\r\n').map(line => [line.slice(0, line.indexOf(':')).toLowerCase(), line.slice(line.indexOf(':') + 1).trim()]),
-      );
-      return { name: /name="([^"]+)"/.exec(headers['content-disposition'])[1], headers, body: rest.join('\r\n\r\n').replace(/\r\n$/, '') };
-    });
-}
-
 function signatureOf(header) {
   return Object.fromEntries([...header.matchAll(/(\w+)="([^"]*)"/g)].map(([, key, value]) => [key, value]));
 }
@@ -96,6 +87,7 @@ before(async () => {
     runtimeVersion: 'rt1',
     baseUrl,
     expoConfig: { name: 'Shroud' },
+    metadata: { commit: 'abc123', message: 'Fix fee rounding' },
   });
   manifestBody = built.body;
   await stageUpdate({
@@ -136,6 +128,31 @@ describe('signing', () => {
   test('signature header is an Expo structured-field dictionary', () => {
     assert.equal(signatureHeader('YWJj', 'main'), 'sig="YWJj", keyid="main"');
     assert.throws(() => signatureHeader('YWJj', 'ma"in'), /key id/);
+  });
+
+  test('signs the commit and message into the manifest', () => {
+    assert.deepEqual(JSON.parse(manifestBody).metadata, { commit: 'abc123', message: 'Fix fee rounding' });
+  });
+
+  test('names assets the way the server serves them', async () => {
+    const exportDir = path.join(workDir, 'export-names');
+    await mkdir(path.join(exportDir, 'assets'), { recursive: true });
+    await writeFile(path.join(exportDir, 'bundle'), 'x');
+    await writeFile(path.join(exportDir, 'assets/a'), 'a');
+    const build = assets =>
+      buildManifest({
+        exportDir,
+        platformMetadata: { bundle: 'bundle', assets },
+        id: ID,
+        createdAt: '2026-10-05T12:00:00.000Z',
+        runtimeVersion: 'rt1',
+        baseUrl,
+        expoConfig: {},
+      });
+    const { manifest } = await build([{ path: 'assets/a', ext: 'PNG' }]);
+    assert.equal(manifest.assets[0].fileExtension, '.png');
+    assert.equal(manifest.assets[0].contentType, 'image/png');
+    await assert.rejects(build([{ path: 'assets/a', ext: 'p/ng' }]), /cannot serve/);
   });
 
   test('stage paths reject traversal', async () => {
@@ -216,6 +233,18 @@ describe('manifest endpoint', () => {
     assert.equal((await fetch(`${baseUrl}/updates/${ID}/manifest.json`)).status, 404);
   });
 
+  test('reports what is live, for the publish and rollback checks', async () => {
+    const live = await fetchLive({ baseUrl, channel: 'production', runtimeVersion: 'rt1', platform: 'android' });
+    assert.deepEqual(live, { kind: 'update', id: ID, createdAt: '2026-10-05T12:00:00.000Z' });
+    assert.equal(await fetchLive({ baseUrl, channel: 'production', runtimeVersion: 'rt2', platform: 'android' }), null);
+    assert.equal(await fetchLive({ baseUrl, channel: 'preview', runtimeVersion: 'rt1', platform: 'android' }), null);
+
+    assert.doesNotThrow(() => assertNewerThanLive(live, '2026-10-05T12:00:01.000Z', 'The update'));
+    assert.doesNotThrow(() => assertNewerThanLive(null, '2026-10-05T11:00:00.000Z', 'The update'));
+    assert.throws(() => assertNewerThanLive(live, '2026-10-05T12:00:00.000Z', 'The update'), /check this machine's clock/);
+    assert.throws(() => assertNewerThanLive(live, '2026-10-05T11:59:00.000Z', 'The update'), /check this machine's clock/);
+  });
+
   test('serves a signed rollBackToEmbedded directive once a rollback is staged', async () => {
     const body = rollBackToEmbeddedDirective('2026-10-05T13:00:00.000Z');
     await stageRollback({
@@ -239,6 +268,51 @@ describe('manifest endpoint', () => {
       updateHeaders({ 'expo-current-update-id': EMBEDDED_ID, 'expo-embedded-update-id': EMBEDDED_ID }),
     );
     assert.equal(alreadyEmbedded.status, 204);
+
+    const live = await fetchLive({ baseUrl, channel: 'production', runtimeVersion: 'rt1', platform: 'android' });
+    assert.deepEqual(live, { kind: 'rollBackToEmbedded', createdAt: '2026-10-05T13:00:00.000Z' });
+  });
+
+  test(
+    'answers 500 for an asset it cannot read, and keeps serving',
+    { skip: process.getuid?.() === 0 && 'root reads anything' },
+    async () => {
+      const name = `${'c'.repeat(64)}.png`;
+      await writeFile(path.join(dataDir, 'assets', name), 'x');
+      await chmod(path.join(dataDir, 'assets', name), 0o000);
+      assert.equal((await fetch(`${baseUrl}/assets/${name}`)).status, 500);
+      assert.equal((await fetch(`${baseUrl}/health`)).status, 200);
+    },
+  );
+
+  test('does not serve a directory as an asset', async () => {
+    const name = `${'d'.repeat(64)}.png`;
+    await mkdir(path.join(dataDir, 'assets', name));
+    assert.equal((await fetch(`${baseUrl}/assets/${name}`)).status, 404);
+    assert.equal((await fetch(`${baseUrl}/health`)).status, 200);
+  });
+
+  test('closes the file when a client hangs up mid-download', async () => {
+    // Larger than the socket buffers, so the server is still sending when the client leaves.
+    const name = `${'e'.repeat(64)}.bundle`;
+    await writeFile(path.join(dataDir, 'assets', name), Buffer.alloc(32 * 1024 * 1024));
+    const openFiles = () => readdirSync('/dev/fd').length;
+    const before = openFiles();
+    for (let i = 0; i < 20; i++) {
+      await new Promise((resolve, reject) => {
+        const request = get(`${baseUrl}/assets/${name}`, { agent: false }, response => {
+          response.once('data', () => {
+            request.destroy();
+            resolve();
+          });
+        });
+        request.on('error', reject);
+      });
+    }
+    // The server notices each hang-up on its own schedule.
+    for (let waited = 0; openFiles() > before && waited < 3000; waited += 50) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.ok(openFiles() <= before, `${openFiles() - before} more files open than before the downloads`);
+    assert.equal((await fetch(`${baseUrl}/health`)).status, 200);
   });
 
   test('health check', async () => {

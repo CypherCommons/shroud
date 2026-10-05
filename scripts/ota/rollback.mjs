@@ -6,22 +6,28 @@
 //
 // The runtime version defaults to the native fingerprint of the current checkout. That must
 // match the installed builds, so check out the commit they were built from, or pass
-// --runtime-version-ios / --runtime-version-android. To go back to an earlier update instead,
-// check out its commit and publish it again.
+// --runtime-version-ios / --runtime-version-android. With --upload it first asks the server what
+// is live for that runtime version, and refuses when nothing is (a wrong runtime version) or
+// when the roll-back would not be newer than it. To go back to an earlier update instead, check
+// out its commit and publish it again.
 
 import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { fileURLToPath } from 'node:url';
 
 import {
   CHANNEL,
+  DEFAULT_BASE_URL,
   PLATFORMS,
+  PROJECT_ROOT as projectRoot,
   RUNTIME_VERSION,
   appendHistory,
+  assertNewerThanLive,
+  fetchLive,
   fingerprint,
   loadSigning,
+  parseBaseUrl,
   rollBackToEmbeddedDirective,
   signBody,
   signatureHeader,
@@ -30,8 +36,6 @@ import {
   verifyBody,
 } from './lib.mjs';
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-
 const { values } = parseArgs({
   options: {
     channel: { type: 'string' },
@@ -39,6 +43,7 @@ const { values } = parseArgs({
     'private-key': { type: 'string' },
     'runtime-version-ios': { type: 'string' },
     'runtime-version-android': { type: 'string' },
+    'base-url': { type: 'string', default: DEFAULT_BASE_URL },
     out: { type: 'string', default: path.join(projectRoot, 'build', 'ota') },
     upload: { type: 'string' },
   },
@@ -53,6 +58,8 @@ if (!values.channel || !CHANNEL.test(values.channel)) fail('--channel is require
 if (!values['private-key']) fail('--private-key is required: the update-signing key from the vault');
 const platforms = values.platform === 'all' ? PLATFORMS : [values.platform];
 if (!platforms.every(p => PLATFORMS.includes(p))) fail('--platform must be ios, android or all');
+const baseUrl = parseBaseUrl(values['base-url']);
+if (!baseUrl) fail('--base-url must be https (plain http only for localhost or the Android emulator)');
 
 const signing = await loadSigning({ projectRoot, privateKeyPath: values['private-key'] });
 const stageDir = path.join(values.out, 'stage');
@@ -80,7 +87,20 @@ for (const platform of platforms) {
   staged.push({ platform, id, runtimeVersion });
 }
 
-if (values.upload) upload(stageDir, values.upload);
+if (values.upload) {
+  for (const { platform, runtimeVersion } of staged) {
+    const live = await fetchLive({ baseUrl, channel: values.channel, runtimeVersion, platform });
+    if (!live) {
+      fail(
+        `nothing is published on ${values.channel} for ${platform} runtime ${runtimeVersion}, so there is nothing to roll back. ` +
+          `Check out the commit the builds were made from, or pass --runtime-version-${platform}.`,
+      );
+    }
+    if (live.kind === 'rollBackToEmbedded') fail(`${platform} runtime ${runtimeVersion} on ${values.channel} is already rolled back`);
+    assertNewerThanLive(live, commitTime, `The ${platform} roll-back`);
+  }
+  await upload(stageDir, values.upload);
+}
 for (const entry of staged) {
   await appendHistory(values.out, {
     ...entry,
