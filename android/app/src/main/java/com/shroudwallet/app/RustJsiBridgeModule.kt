@@ -1,4 +1,4 @@
-package org.bitshala.shroud
+package com.shroudwallet.app
 
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.module.annotations.ReactModule

@@ -18,7 +18,7 @@ jest.mock('../../modules/clipboard', () => ({
   setReadClipboardAllowed: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../../modules/currency', () => ({
-  GROUP_IO_SHROUD: 'group.org.bitshala.shroud',
+  GROUP_IO_SHROUD: 'group.com.shroudwallet.app',
   initCurrencyDaemon: jest.fn().mockResolvedValue(undefined),
   getPreferredCurrency: jest.fn().mockResolvedValue('USD'),
   setPreferredCurrency: jest.fn().mockResolvedValue(undefined),
@@ -53,7 +53,7 @@ describe('unit - SettingsProvider', () => {
   });
 
   it('falls back themePreference to system when a stale/invalid value is persisted', async () => {
-    await DefaultPreference.setName('group.org.bitshala.shroud');
+    await DefaultPreference.setName('group.com.shroudwallet.app');
     await DefaultPreference.set('ThemePreference', 'not-a-real-theme');
 
     const { result } = renderHook(() => useSettings(), { wrapper });

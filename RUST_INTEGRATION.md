@@ -12,7 +12,7 @@ JSI Layer (C++ in android/app/src/main/cpp)
 Rust FFI (rust_jsi_bridge/src/lib.rs)
 ```
 
-Key package namespace: `org.bitshala.shroud` (Android `applicationId` and Java package).
+Key package namespace: `com.shroudwallet.app` (Android `applicationId` and Java package).
 
 ## Prerequisites
 
@@ -72,11 +72,11 @@ npm run android:rust
 
 ## Android Integration Details
 
-- Java module: `RustJsiBridgeModule.java` (package `org.bitshala.shroud`). Loads `System.loadLibrary("rust-jsi-bridge")` and calls native install.
+- Java module: `RustJsiBridgeModule.java` (package `com.shroudwallet.app`). Loads `System.loadLibrary("rust-jsi-bridge")` and calls native install.
 - JNI entry (C++): `android/app/src/main/cpp/rust-jsi-bridge-jni.cpp` must export the symbol:
    ```cpp
    extern "C" JNIEXPORT void JNICALL
-   Java_org_bitshala_shroud_RustJsiBridgeModule_nativeInstall(
+   Java_com_shroudwallet_app_RustJsiBridgeModule_nativeInstall(
          JNIEnv* env,
          jobject thiz,
          jlong jsiRuntimePtr
@@ -86,7 +86,7 @@ npm run android:rust
    }
    ```
 - CMake links the Rust static lib at `${ANDROID_ABI}/librust_jsi_bridge.a` and produces `librust-jsi-bridge.so`.
-- Gradle `namespace` and `applicationId` are `org.bitshala.shroud`.
+- Gradle `namespace` and `applicationId` are `com.shroudwallet.app`.
 
 ## Using from TypeScript
 

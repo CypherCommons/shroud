@@ -1,4 +1,4 @@
-package org.bitshala.shroud
+package com.shroudwallet.app
 
 import android.content.pm.ActivityInfo
 import android.os.Bundle

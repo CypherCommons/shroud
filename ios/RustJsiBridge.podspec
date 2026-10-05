@@ -6,9 +6,9 @@ Pod::Spec.new do |s|
   s.name         = "RustJsiBridge"
   s.version      = package["version"]
   s.summary      = "Rust JSI bridge for silent-pay-wallet"
-  s.homepage     = "https://github.com/Bitshala-Incubator/silent-pay-wallet"
+  s.homepage     = "https://github.com/CypherCommons/shroud"
   s.license      = package["license"] || "MIT"
-  s.authors      = { "bitshala" => "dev@bitshala.org" }
+  s.authors      = "Cypher Commons LLC"
 
   s.platforms    = { :ios => "16.4" }
   s.source       = { :git => ".git", :tag => "#{s.version}" }
