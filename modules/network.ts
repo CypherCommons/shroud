@@ -22,8 +22,8 @@ import { BIP352_ACTIVATION_HEIGHT } from './constants';
  *
  * This module is intentionally a leaf: no react-native imports, no `@env`, no storage access.
  * Wallet classes call `getActiveNetwork()` from synchronous code paths, and unit tests import
- * those classes without any mocking. Persistence lives in the settings layer; endpoint
- * configuration is injected at startup via `configureIndexerEndpoints`.
+ * those classes without any mocking. Persistence lives in the settings layer. Each network ships
+ * its own indexer addresses; `configureIndexerEndpoints` lets `.env` override them at startup.
  */
 
 export type NetworkId = 'bitcoin' | 'testnet4' | 'signet';
@@ -62,7 +62,7 @@ export interface NetworkConfig {
    * about a remote service, and too high a floor silently skips payments. The cost is that a
    * fresh wallet scans from genesis, with progress and ETA reported over the whole range: ~3,100
    * sequential 50-block requests on testnet4 today (the live indexer returns nothing below block
-   * 4403, so ~90 of them are wasted) and ~5,200 on signet (~260k blocks). If that becomes a
+   * 4403, so ~90 of them are wasted) and ~6,500 on signet (~325k blocks). If that becomes a
    * problem, the fix is an indexer endpoint reporting its index start, not a number here.
    */
   bip352ActivationHeight: number;
@@ -73,12 +73,17 @@ export interface NetworkConfig {
    */
   electrumPeers: Peer[];
   explorerTxUrl: (txid: string) => string;
-  /** Injected at startup by `configureIndexerEndpoints`; empty string until then. */
+  /**
+   * This chain's silent-payment indexer. Shipped here as the default; `.env` can override it via
+   * `configureIndexerEndpoints`. Empty means none, and the network cannot be switched to. Kept
+   * without a trailing slash.
+   */
   indexerBaseUrl: string;
   /**
    * This chain's indexer as a .onion address, used when Tor is enabled. Per network on purpose: a
-   * single onion address would send test-chain scans to the mainnet indexer over Tor. Empty when
-   * none is configured.
+   * single onion address would send test-chain scans to the mainnet indexer over Tor. Plain
+   * `http://` (onion services carry their own encryption, and the Tor client rejects https).
+   * Empty when none is configured.
    */
   indexerOnionUrl: string;
 }
@@ -94,9 +99,12 @@ const MAINNET_ELECTRUM_PEERS: Peer[] = [
 // testnet.aranguren.org's public Fulcrum server, protocol 1.4 over TLS (self-signed certificate,
 // which the Electrum client accepts). The host serves several chains on different ports and only
 // 52002 is testnet4: 51002 is testnet3, whose scripthashes come back empty here and whose
-// broadcasts a testnet4 transaction would never survive. Signet has no verified server, so it
-// still ships empty and relies on manual entry.
+// broadcasts a testnet4 transaction would never survive.
 const TESTNET4_ELECTRUM_PEERS: Peer[] = [{ host: 'testnet.aranguren.org', ssl: 52002 }];
+
+// The project's own signet Fulcrum, protocol 1.4 over TLS (self-signed certificate, which the
+// Electrum client accepts). Its server.features reports the signet genesis hash.
+const SIGNET_ELECTRUM_PEERS: Peer[] = [{ host: 'electrum.signet.shroudwallet.com', ssl: 50002 }];
 
 const NETWORKS: Record<NetworkId, NetworkConfig> = {
   bitcoin: {
@@ -109,8 +117,8 @@ const NETWORKS: Record<NetworkId, NetworkConfig> = {
     bip352ActivationHeight: BIP352_ACTIVATION_HEIGHT,
     electrumPeers: MAINNET_ELECTRUM_PEERS,
     explorerTxUrl: txid => `https://mempool.space/tx/${txid}`,
-    indexerBaseUrl: '',
-    indexerOnionUrl: '',
+    indexerBaseUrl: 'https://indexer.shroudwallet.com',
+    indexerOnionUrl: 'http://o35owjo2xm7dgow27qsgpdxfss3sgr3m5npwzqp75xl43pvsqfqgnqqd.onion',
   },
   testnet4: {
     id: 'testnet4',
@@ -123,8 +131,9 @@ const NETWORKS: Record<NetworkId, NetworkConfig> = {
     bip352ActivationHeight: 0,
     electrumPeers: TESTNET4_ELECTRUM_PEERS,
     explorerTxUrl: txid => `https://mempool.space/testnet4/tx/${txid}`,
-    indexerBaseUrl: '',
-    indexerOnionUrl: '',
+    // Listed even while the network is switched off, so re-enabling it is one flag.
+    indexerBaseUrl: 'https://indexer.testnet.shroudwallet.com',
+    indexerOnionUrl: 'http://jtkkqmdbbpybbt2dwa5rxv6j2bh4swnlyoxg2r6xmxhse7ys4a3um2ad.onion',
   },
   signet: {
     id: 'signet',
@@ -134,10 +143,10 @@ const NETWORKS: Record<NetworkId, NetworkConfig> = {
     coinType: 1,
     isTestnet: true,
     bip352ActivationHeight: 0,
-    electrumPeers: [],
+    electrumPeers: SIGNET_ELECTRUM_PEERS,
     explorerTxUrl: txid => `https://mempool.space/signet/tx/${txid}`,
-    indexerBaseUrl: '',
-    indexerOnionUrl: '',
+    indexerBaseUrl: 'https://indexer.signet.shroudwallet.com',
+    indexerOnionUrl: 'http://ixvamjnrnsdddttgoomf5bhr2kowkuyxifc6ojqllspdg5xz2cgr3iid.onion',
   },
 };
 
@@ -182,9 +191,10 @@ export function setActiveNetwork(id: NetworkId): void {
 }
 
 /**
- * Point each network at its silent-payment indexer. Called once from App startup, which is the
- * only place that reads `@env` — keeping this module importable from tests without a babel
- * transform for the virtual `@env` module.
+ * Override the shipped indexer addresses from the environment. A missing or empty value keeps the
+ * default, so a blank `.env` entry is harmless. Called once from App startup, which is the only
+ * place that reads `@env` — keeping this module importable from tests without a babel transform
+ * for the virtual `@env` module.
  */
 export function configureIndexerEndpoints(
   urls: Partial<Record<NetworkId, string | undefined>>,

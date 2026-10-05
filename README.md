@@ -38,11 +38,11 @@ cd shroud
 npm install
 ```
 
-make sure to copy .env.example → .env, set at least one indexer URL in `.env`, then reset metro cache with `npx react-native start --reset-cache`.
+No configuration is needed to run: each network ships its own indexer and Electrum server. To point the app somewhere else (your own indexer, say), copy `.env.example` → `.env`, set only the values you want to override, then reset the metro cache with `npx react-native start --reset-cache`.
 
 ### Networks
 
-The wallet supports mainnet, testnet4 and signet, switchable at runtime under **Settings → Network → Bitcoin Network**. Testnet4 is currently switched off (`enabled: false` in `modules/network.ts`), so the picker offers mainnet and signet only; wallets already stored on testnet4 are left untouched, and setting the flag back to `true` restores it. Each network needs its own silent-payment indexer:
+The wallet supports mainnet, testnet4 and signet, switchable at runtime under **Settings → Network → Bitcoin Network**. Testnet4 is currently switched off (`enabled: false` in `modules/network.ts`), so the picker offers mainnet and signet only; wallets already stored on testnet4 are left untouched, and setting the flag back to `true` restores it. Each network has its own silent-payment indexer, with a clearnet and a Tor (`.onion`) address, defined in `modules/network.ts`. To override one, set it in `.env`:
 
 ```
 INDEXER_BASE_URL_MAINNET=...
@@ -50,13 +50,13 @@ INDEXER_BASE_URL_TESTNET4=...
 INDEXER_BASE_URL_SIGNET=...
 ```
 
-`INDEXER_BASE_URL` is still honoured as an alias for `INDEXER_BASE_URL_MAINNET`. Networks with no indexer configured are shown in the picker but cannot be selected without one.
+A blank value keeps the shipped default, and `INDEXER_BASE_URL` is still honoured as an alias for `INDEXER_BASE_URL_MAINNET`. A network whose indexer address is empty is shown in the picker but cannot be selected.
 
-To reach an indexer over Tor, give each network its own `.onion` address: `INDEXER_ONION_URL` (mainnet, its original name), `INDEXER_ONION_URL_TESTNET4` and `INDEXER_ONION_URL_SIGNET`. A network only ever uses its own address, so one with none is reached over clearnet (or not at all in Tor-only mode).
+The Tor addresses are used when Tor is enabled, and can be overridden the same way: `INDEXER_ONION_URL` (mainnet, its original name), `INDEXER_ONION_URL_TESTNET4` and `INDEXER_ONION_URL_SIGNET`. A network only ever uses its own address, so one with none is reached over clearnet (or not at all in Tor-only mode).
 
 Each network keeps a completely separate wallet, balance and transaction history; switching does not migrate anything between them.
 
-Electrum only powers the regular-output branch, since silent payments go through the indexer. Default servers ship for mainnet and for testnet4 (`testnet.aranguren.org:52002`, TLS). Signet has none, so add one by hand under **Settings → Network → Change server** if you need the regular-output branch there. The server you pick is remembered per network.
+Electrum only powers the regular-output branch, since silent payments go through the indexer. Default servers ship for every network: mainnet, testnet4 (`testnet.aranguren.org:52002`, TLS) and signet (`electrum.signet.shroudwallet.com:50002`, TLS). To use another, pick it under **Settings → Network → Change server**; the server you pick is remembered per network.
 
 Please make sure that your console is running the most stable versions of npm and node (even-numbered versions).
 

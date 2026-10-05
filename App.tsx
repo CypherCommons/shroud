@@ -49,7 +49,8 @@ const App = () => {
 
   useEffect(() => {
     // The only place that reads `@env`: the network registry is a leaf module so wallet classes
-    // (and their unit tests) can import it without the babel transform for `@env`.
+    // (and their unit tests) can import it without the babel transform for `@env`. Every network
+    // ships its own indexer addresses; these are optional overrides, and a blank one is ignored.
     configureIndexerEndpoints(
       {
         // INDEXER_BASE_URL is the pre-multi-network name, still honoured as the mainnet default.

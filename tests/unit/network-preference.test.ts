@@ -29,6 +29,9 @@ const TESTNET4_ONION = 'http://testnet4-indexer.onion';
 // itself is covered in network-enabled.test.ts.
 beforeAll(() => {
   getNetwork('testnet4').enabled = true;
+  // Signet is the chain with no indexer in these tests, but the registry now ships a default for
+  // it, so blank it explicitly.
+  getNetwork('signet').indexerBaseUrl = '';
 });
 afterAll(() => {
   getNetwork('testnet4').enabled = false;
@@ -36,7 +39,7 @@ afterAll(() => {
 
 describe('network switch sequencing', () => {
   beforeAll(() => {
-    // Signet is deliberately left unconfigured: it is the chain with no indexer.
+    // Signet is deliberately left without an indexer (blanked above).
     configureIndexerEndpoints(
       { bitcoin: MAINNET_INDEXER, testnet4: TESTNET4_INDEXER },
       { bitcoin: MAINNET_ONION, testnet4: TESTNET4_ONION },

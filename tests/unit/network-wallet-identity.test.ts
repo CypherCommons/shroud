@@ -191,12 +191,17 @@ describe('wallet identity across networks', () => {
       expect(getHardcodedPeers()).toEqual([{ host: 'testnet.aranguren.org', ssl: 52002 }]);
     });
 
-    // Not an oversight: testnet.aranguren.org serves testnet4 on 52002, and no signet endpoint on
-    // that host has been verified. Electrum only powers the regular-output branch, so an empty list
-    // degrades to manual entry rather than breaking silent payments.
-    it('is empty on signet, leaving manual entry as the only option', () => {
+    it('ships the signet server on signet, and never a peer from another chain', () => {
       setActiveNetwork('signet');
-      expect(getHardcodedPeers()).toEqual([]);
+      expect(getHardcodedPeers()).toEqual([{ host: 'electrum.signet.shroudwallet.com', ssl: 50002 }]);
+
+      // Each chain's list must stay its own: a mainnet or testnet4 server answering for signet
+      // would read empty scripthashes as a zero balance.
+      const hosts = (id: 'bitcoin' | 'testnet4' | 'signet') => {
+        setActiveNetwork(id);
+        return getHardcodedPeers().map(peer => peer.host);
+      };
+      expect(hosts('signet').filter(host => hosts('bitcoin').includes(host) || hosts('testnet4').includes(host))).toEqual([]);
     });
 
     it('never hands back an SSL-less peer, since connectMain picks the transport from it', () => {
