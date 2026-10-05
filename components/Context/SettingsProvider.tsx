@@ -1,5 +1,6 @@
 import * as Electrum from '../../modules/Electrum';
 import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
+import { Appearance, ColorSchemeName } from 'react-native';
 import DefaultPreference from 'react-native-default-preference';
 import { isReadClipboardAllowed, setReadClipboardAllowed } from '../../modules/clipboard';
 import { getPreferredCurrency, GROUP_IO_SHROUD, initCurrencyDaemon, setPreferredCurrency } from '../../modules/currency';
@@ -75,6 +76,8 @@ interface SettingsContextType {
   setTotalBalancePreferredUnitStorage: (unit: BitcoinUnit) => Promise<void>;
   themePreference: ThemePreference;
   setThemePreferenceStorage: (value: ThemePreference) => Promise<void>;
+  /** The phone's own scheme. useColorScheme() reports the app's forced one while light/dark is picked. */
+  systemColorScheme: ColorSchemeName;
   settingsLoaded: boolean;
   isTorEnabled: boolean;
   setIsTorEnabled: (value: boolean) => Promise<void>;
@@ -103,6 +106,7 @@ const defaultSettingsContext: SettingsContextType = {
   setTotalBalancePreferredUnitStorage: async () => {},
   themePreference: 'system',
   setThemePreferenceStorage: async () => {},
+  systemColorScheme: null,
   settingsLoaded: false,
   isTorEnabled: false,
   setIsTorEnabled: async () => {},
@@ -129,6 +133,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
   const [isTotalBalanceEnabled, setIsTotalBalanceEnabled] = useState<boolean>(true);
   const [totalBalancePreferredUnit, setTotalBalancePreferredUnit] = useState<BitcoinUnit>(BitcoinUnit.BTC);
   const [themePreference, setThemePreference] = useState<ThemePreference>('system');
+  const [systemColorScheme, setSystemColorScheme] = useState<ColorSchemeName>(Appearance.getColorScheme());
   const [settingsLoaded, setSettingsLoaded] = useState<boolean>(false);
   const [isTorEnabled, setIsTorEnabledState] = useState<boolean>(false);
   const [isTorOnly, setIsTorOnlyState] = useState<boolean>(false);
@@ -245,6 +250,16 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
     }
   }, []);
 
+  // Pushes the theme choice to the OS so native UI (alerts, menus, keyboard) matches the app. While light or
+  // dark is forced, Appearance reports the forced scheme, so the phone's own scheme is only tracked under 'system'.
+  useEffect(() => {
+    Appearance.setColorScheme(themePreference === 'system' ? null : themePreference);
+    if (themePreference !== 'system') return;
+    setSystemColorScheme(Appearance.getColorScheme());
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => setSystemColorScheme(colorScheme));
+    return () => subscription.remove();
+  }, [themePreference]);
+
   const setThemePreferenceStorage = useCallback(async (value: ThemePreference): Promise<void> => {
     try {
       await persistThemePreference(value);
@@ -326,6 +341,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       setTotalBalancePreferredUnitStorage,
       themePreference,
       setThemePreferenceStorage,
+      systemColorScheme,
       settingsLoaded,
       isTorEnabled,
       setIsTorEnabled,
@@ -352,6 +368,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       setTotalBalancePreferredUnitStorage,
       themePreference,
       setThemePreferenceStorage,
+      systemColorScheme,
       settingsLoaded,
       isTorEnabled,
       setIsTorEnabled,

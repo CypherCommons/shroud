@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import SafeAreaScrollView from '../../components/SafeAreaScrollView';
 import CheckmarkIcon from '../../components/icons/CheckmarkIcon';
 import { ShroudDarkTheme, ShroudDefaultTheme, useTheme } from '../../components/themes';
@@ -53,8 +53,7 @@ const ThemeCard: React.FC<ThemeCardProps> = ({ variant, label, selected, onPress
 
 const ThemeSettings: React.FC = () => {
   const { colors } = useTheme();
-  const { themePreference, setThemePreferenceStorage } = useSettings();
-  const systemColorScheme = useColorScheme();
+  const { themePreference, setThemePreferenceStorage, systemColorScheme } = useSettings();
 
   const description = useMemo(() => {
     switch (themePreference) {
