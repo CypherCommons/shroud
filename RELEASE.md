@@ -22,11 +22,13 @@ with `npx eas-cli@latest` (or a global `eas`).
 OTA updates are signed; builds reject any update that is not.
 
 - The certificate is committed at `certs/certificate.pem` (valid until 2036-09-27) and compiled into
-  every build.
+  every release build.
 - The private key is **not** in the repository. It must be kept in the team's password manager or
   vault. Anyone with the key can push code to every install, and a lost key means no more updates
   until a new build with a new certificate is in users' hands.
 - Signed commands take `--private-key-path <path to private-key.pem>`.
+- Only release builds carry the certificate. Debug builds (development clients) leave it out, so they
+  load unsigned manifests from Metro and nobody needs the key to develop.
 
 ## Store builds
 
