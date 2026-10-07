@@ -272,7 +272,7 @@ describe('BIP-352 Silent Payments', () => {
       wallet.setSecret(TEST_SEED);
 
       const utxo = buildUtxo(wallet.getSpendPublicKey(), wallet.getSilentPaymentAddress()!, 0x07);
-      (wallet as any)._utxo = [utxo];
+      (wallet as any)._spUtxos = [utxo];
 
       const { tx } = wallet.createTransaction(
         [utxo as never],
@@ -287,7 +287,7 @@ describe('BIP-352 Silent Payments', () => {
 
       (wallet as any).scanBroadcastedTxForOurOutputs(tx!, tx!.getId());
 
-      const found = (wallet as any)._utxo.filter((u: SilentPaymentUTXO) => u.txid === tx!.getId());
+      const found = (wallet as any)._spUtxos.filter((u: SilentPaymentUTXO) => u.txid === tx!.getId());
       expect(found).toHaveLength(1);
 
       // The scan is only useful if the coin it records can actually be spent again.
@@ -319,7 +319,7 @@ describe('BIP-352 Silent Payments', () => {
       wallet.setSecret(TEST_SEED);
 
       const utxo = buildUtxo(wallet.getSpendPublicKey(), wallet.getSilentPaymentAddress()!, 0x07);
-      (wallet as any)._utxo = [utxo];
+      (wallet as any)._spUtxos = [utxo];
 
       const { tx } = wallet.createTransaction(
         [utxo as never],
@@ -333,11 +333,11 @@ describe('BIP-352 Silent Payments', () => {
 
       // Same transaction, but now we no longer hold the input: the input hash would be
       // computed over a key we don't have, so any tweak derived from it is wrong.
-      (wallet as any)._utxo = [];
+      (wallet as any)._spUtxos = [];
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
       (wallet as any).scanBroadcastedTxForOurOutputs(tx!, tx!.getId());
 
-      expect((wallet as any)._utxo).toHaveLength(0);
+      expect((wallet as any)._spUtxos).toHaveLength(0);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('not one of our SP UTXOs'));
       warn.mockRestore();
     });
@@ -591,7 +591,7 @@ describe('BIP-352 Silent Payments', () => {
       const send = (w: HDSilentPaymentsWallet) =>
         w.createTransaction([utxo as never], [{ address: targetAddress, value: 50_000 }], 2, utxo.address, 0xfffffffd, false, 0);
 
-      (wallet as any)._utxo = [utxo];
+      (wallet as any)._spUtxos = [utxo];
       (wallet as any).lastScannedBlock = 900_000;
       send(wallet); // fills spendKeyCandidates with real Uint8Arrays
       (wallet as any).isPollingActive = true;
@@ -603,14 +603,14 @@ describe('BIP-352 Silent Payments', () => {
       wallet.prepareForSerialization();
       const loaded = HDSilentPaymentsWallet.fromJson(JSON.stringify({ ...wallet }));
 
-      // _utxo is rebuilt from _utxos_serializable, so it isn't expected to match a fresh wallet
+      // _spUtxos is rebuilt from _utxos_serializable, so it isn't expected to match a fresh wallet
       const fresh = new HDSilentPaymentsWallet();
       for (const k of (HDSilentPaymentsWallet as any).NON_PERSISTED_KEYS) {
         expect(k in fresh).toBe(true);
-        if (k !== '_utxo') expect((loaded as any)[k]).toEqual((fresh as any)[k]);
+        if (k !== '_spUtxos') expect((loaded as any)[k]).toEqual((fresh as any)[k]);
       }
       expect((loaded as any).lastScannedBlock).toBe(900_000);
-      expect((loaded as any)._utxo[0].tweak).toBeInstanceOf(Uint8Array);
+      expect((loaded as any)._spUtxos[0].tweak).toBeInstanceOf(Uint8Array);
 
       expect(send(loaded).tx).toBeDefined();
       expect(() => loaded.clearCache()).not.toThrow();
@@ -620,13 +620,13 @@ describe('BIP-352 Silent Payments', () => {
     it('keeps the seed, key cache and runtime state out of the persisted blob', () => {
       const wallet = HDSilentPaymentsWallet.fromMnemonic(TEST_SEED);
       const utxo = buildUtxo(wallet.getSpendPublicKey(), wallet.getSilentPaymentAddress()!, 0x07);
-      (wallet as any)._utxo = [utxo];
+      (wallet as any)._spUtxos = [utxo];
       wallet.createTransaction([utxo as never], [{ address: utxo.address, value: 50_000 }], 2, utxo.address, 0xfffffffd, false, 0);
       (wallet as any).getSeed(); // fills cachedSeed
 
       wallet.prepareForSerialization();
       const blob = JSON.parse(JSON.stringify(wallet.toPersistable()));
-      for (const k of ['cachedSeed', 'spendKeyCandidates', 'transactionProcessor', '_utxo']) expect(blob).not.toHaveProperty(k);
+      for (const k of ['cachedSeed', 'spendKeyCandidates', 'transactionProcessor', '_utxo', '_spUtxos']) expect(blob).not.toHaveProperty(k);
       wallet.clearCache();
     });
 

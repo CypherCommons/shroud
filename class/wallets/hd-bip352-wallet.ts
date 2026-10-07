@@ -105,7 +105,8 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   private _birthHeight: number = 0;
   private _birthTimestamp: number | null = null; // set when indexer is unreachable, resolved to height on next scan
   private _birthResolutionFailures: number = 0; // consecutive failed attempts to resolve _birthTimestamp
-  private spUTXOsCache: SilentPaymentUTXO[] | null = null;
+  // kept out of _utxo: the parent's fetchUtxo() replaces that array on every call
+  private _spUtxos: SilentPaymentUTXO[] = [];
   private activeScanPromise: Promise<number> | null = null;
   private cancelScanCallbackScan: boolean = false;
   private pollingIntervalId: NodeJS.Timeout | null = null;
@@ -125,13 +126,13 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   private _scanStartTime: number = 0;
   private _onScanStateChangeCallback: ((state: ScanStateInfo) => void) | null = null;
 
-  // never written to disk and ignored by fromJson. _utxo is rebuilt from _utxos_serializable,
+  // never written to disk and ignored by fromJson. _spUtxos is rebuilt from _utxos_serializable,
   // everything else is in-memory only
   private static readonly NON_PERSISTED_KEYS: ReadonlySet<string> = new Set([
     'cachedSeed',
     'spendKeyCandidates',
     'transactionProcessor',
-    'spUTXOsCache',
+    '_spUtxos',
     'activeScanPromise',
     'cancelScanCallbackScan',
     'pollingIntervalId',
@@ -225,7 +226,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     for (const key of Object.keys(data)) {
       if (key === '_utxos_serializable') {
         const serializable = data[key] || [];
-        wallet._utxo = serializable.map((utxo: SilentPaymentUTXOSerializable) => ({
+        wallet._spUtxos = serializable.map((utxo: SilentPaymentUTXOSerializable) => ({
           ...utxo,
           tweak: new Uint8Array(Buffer.from(utxo.tweakHex, 'hex')),
         }));
@@ -270,9 +271,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
     // IMPORTANT: serialize ALL SP UTXOs (both spent and unspent)
     // we need spent UTXOs for transaction history and value calculations
-    const allSpUtxos = this._utxo.filter((u): u is SilentPaymentUTXO => 'tweak' in u && u.tweak instanceof Uint8Array);
-
-    (this as any)._utxos_serializable = allSpUtxos.map((utxo): SilentPaymentUTXOSerializable => {
+    (this as any)._utxos_serializable = this._spUtxos.map((utxo): SilentPaymentUTXOSerializable => {
       const { tweak, ...rest } = utxo;
       return {
         ...rest,
@@ -287,23 +286,9 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     (this as any)._sp_pending_inputs = Array.from(this._sp_pending_inputs);
   }
 
-  private getSilentPaymentUTXOs(): SilentPaymentUTXO[] {
-    if (this.spUTXOsCache !== null) {
-      return this.spUTXOsCache;
-    }
-
-    this.spUTXOsCache = this._utxo.filter((u): u is SilentPaymentUTXO => 'tweak' in u && u.tweak instanceof Uint8Array);
-
-    return this.spUTXOsCache;
-  }
-
-  private invalidateUTXOCache(): void {
-    this.spUTXOsCache = null;
-  }
-
   private addUTXO(utxo: SilentPaymentUTXO): boolean {
     const key = `${utxo.txid}:${utxo.vout}`;
-    const existing = this._utxo.find(u => `${u.txid}:${u.vout}` === key) as SilentPaymentUTXO | undefined;
+    const existing = this._spUtxos.find(u => `${u.txid}:${u.vout}` === key);
 
     if (existing) {
       // The post-broadcast scan stores a placeholder with height 0 and no block hash.
@@ -313,26 +298,19 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         existing.height = utxo.height;
         existing.blockHash = utxo.blockHash;
         existing.blockTime = utxo.blockTime;
-        this.invalidateUTXOCache();
       }
       return false;
     }
 
-    this._utxo.push(utxo);
-    this.invalidateUTXOCache();
+    this._spUtxos.push(utxo);
     return true;
   }
 
   private markUTXOAsSpent(txid: string, vout: number): boolean {
-    const utxo = this._utxo.find(u => u.txid === txid && u.vout === vout) as SilentPaymentUTXO | undefined;
+    const utxo = this._spUtxos.find(u => u.txid === txid && u.vout === vout);
 
     if (!utxo) {
       console.warn(`[SP] markUTXOAsSpent: UTXO not found ${txid}:${vout}`);
-      return false;
-    }
-
-    if (!('tweak' in utxo)) {
-      console.warn(`[SP] markUTXOAsSpent: Not an SP UTXO ${txid}:${vout}`);
       return false;
     }
 
@@ -341,7 +319,6 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     }
 
     utxo.isSpent = true;
-    this.invalidateUTXOCache();
 
     this.onBalanceChangeCallback?.();
     this.onPersistCallback?.();
@@ -782,9 +759,6 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     let regularConfirmations: number | null = null;
     let regularFailed = false;
     try {
-      // Sequential on purpose: this only calls fetchUtxo() (via ingestRegularOutputs) after the
-      // SP branch above has finished committing, so its snapshot-restore of SP UTXOs can't race
-      // a concurrent SP write.
       const detected = await this.detectRegularOutputs(txid);
       if (detected) {
         regularConfirmations = detected.confirmations;
@@ -907,28 +881,10 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   }
 
   async fetchUtxo(): Promise<void> {
-    const spUtxos = this.getSilentPaymentUTXOs();
-
     try {
       await super.fetchUtxo();
     } catch (error) {
       console.warn('[SP] super.fetchUtxo failed:', error);
-    } finally {
-      // Restore SP UTXOs
-      const existingKeys = new Set(this._utxo.map(u => `${u.txid}:${u.vout}`));
-      let restoredCount = 0;
-
-      for (const utxo of spUtxos) {
-        const key = `${utxo.txid}:${utxo.vout}`;
-        if (!existingKeys.has(key)) {
-          this._utxo.push(utxo);
-          restoredCount++;
-        }
-      }
-
-      if (restoredCount > 0) {
-        this.invalidateUTXOCache();
-      }
     }
   }
 
@@ -961,31 +917,20 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   }
 
   getUTXOs(): SilentPaymentUTXO[] {
-    const allSpUtxos = this.getSilentPaymentUTXOs();
-    const unspentUtxos = allSpUtxos.filter(u => !u.isSpent);
-    return unspentUtxos;
-  }
-
-  /**
-   * Get only regular (non-SP) UTXOs from the wallet.
-   * Filters out Silent Payment UTXOs to avoid duplicates.
-   */
-  private getRegularUtxos(): Utxo[] {
-    if (this._utxo.length === 0) {
-      return this.getDerivedUtxoFromOurTransaction();
-    }
-    // Filter out SP UTXOs - they have a 'tweak' property
-    return this._utxo.filter(u => !('tweak' in u));
+    return this._spUtxos.filter(u => !u.isSpent);
   }
 
   /**
    * override parent's getUtxo() to include both regular UTXOs and SP UTXOs.
    * ensures coin control and transaction creation have access to all available UTXOs.
-   * IMPORTANT: We separate regular and SP UTXOs to avoid duplicates.
    */
   getUtxo(respectFrozen = false): Utxo[] {
     const spUtxos = this.getUTXOs(); // unspent SP UTXOs only
-    let regularUtxos = this.getRegularUtxos();
+    // _utxo only ever holds what the parent fetched from electrum, so it's regular-only.
+    // only derive from stored txs for a wallet with no utxos at all: the derived path reads
+    // _sp_spending_txs outputs as BTC and brings back coins electrum already reported as spent
+    const nothingFetched = this._utxo.length === 0 && this._spUtxos.length === 0;
+    let regularUtxos: Utxo[] = nothingFetched ? this.getDerivedUtxoFromOurTransaction() : this._utxo;
 
     if (!respectFrozen) {
       regularUtxos = regularUtxos.filter(({ txid, vout }) => !this.getUTXOMetadata(txid, vout).frozen);
@@ -1082,7 +1027,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     const regularTransactions = super.getTransactions();
 
     // Include ALL UTXOs (both spent and unspent) so incoming SP transactions appear in the list
-    const utxos = this.getSilentPaymentUTXOs();
+    const utxos = this._spUtxos;
 
     const txMap = new Map<string, SilentPaymentUTXO[]>();
 
@@ -1343,8 +1288,8 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
     const inputPrivKeys: PrivateKey[] = [];
     for (const { txid, vout } of ourInputs) {
-      const spUtxo = this._utxo.find(u => u.txid === txid && u.vout === vout) as SilentPaymentUTXO | undefined;
-      if (!spUtxo || !('tweak' in spUtxo)) {
+      const spUtxo = this._spUtxos.find(u => u.txid === txid && u.vout === vout);
+      if (!spUtxo) {
         console.warn(`[SP] Skipping instant change scan: input ${txid}:${vout} is not one of our SP UTXOs`);
         return;
       }
@@ -1428,7 +1373,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         const inputKey = `${txid}:${vout}`;
 
         // check if it's in pending inputs OR if it's one of our SP UTXOs
-        const isSpUtxo = this._utxo.some(u => u.txid === txid && u.vout === vout && 'tweak' in u);
+        const isSpUtxo = this._spUtxos.some(u => u.txid === txid && u.vout === vout);
 
         if (this._sp_pending_inputs.has(inputKey) || isSpUtxo) {
           spInputs.push({ txid, vout });
@@ -1459,7 +1404,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
         // subtract all SP inputs (money leaving our wallet)
         for (const { txid: inputTxid, vout } of spInputs) {
-          const utxo = this._utxo.find(u => u.txid === inputTxid && u.vout === vout);
+          const utxo = this._spUtxos.find(u => u.txid === inputTxid && u.vout === vout);
           if (utxo) {
             value -= utxo.value;
           } else {
@@ -1473,7 +1418,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
           // Any SP output of this tx that our scan claimed is ours — change *or* a
           // self-payment to the main address, both of which `weOwnAddress` cannot see.
-          const isSpOutputOfOurs = this._utxo.some(u => u.txid === broadcastedTxid && u.vout === idx && 'tweak' in u);
+          const isSpOutputOfOurs = this._spUtxos.some(u => u.txid === broadcastedTxid && u.vout === idx);
           if (isSpOutputOfOurs) {
             value += Number(output.value);
             continue;
@@ -1511,7 +1456,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
             txinwitness: [],
             sequence: tx.ins[idx]?.sequence || 0xfffffffd,
             addresses: [this.getSilentPaymentAddress() || ''],
-            value: this._utxo.find(u => u.txid === input.txid && u.vout === input.vout)?.value || 0,
+            value: this._spUtxos.find(u => u.txid === input.txid && u.vout === input.vout)?.value || 0,
           })),
           outputs: tx.outs.map((output, n) => {
             // Decode the address from the output script
@@ -1580,7 +1525,6 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     }
 
     this.stopPolling();
-    this.invalidateUTXOCache();
     this._sp_pending_inputs = new Set();
     this.onBalanceChangeCallback = null;
     this.onPersistCallback = null;
