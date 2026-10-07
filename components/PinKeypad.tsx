@@ -4,6 +4,7 @@ import { useTheme } from './themes';
 import { ClashFont } from '../constants/fonts';
 import { PIN_LENGTH } from '../helpers/pinLock';
 import BackspaceIcon from './icons/BackspaceIcon';
+import loc from '../loc';
 
 const shuffledDigits = (): string[] => {
   const digits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
@@ -132,7 +133,7 @@ const PinKeypad: React.FC<PinKeypadProps> = ({ scrambled, onComplete, error, onE
                 onPress={handleBackspace}
                 disabled={isLocked}
                 accessibilityRole="button"
-                accessibilityLabel="backspace"
+                accessibilityLabel={loc.settings.pin_backspace}
                 testID="PinBackspace"
               >
                 <BackspaceIcon size={22} color={colors.iconSecondary} />

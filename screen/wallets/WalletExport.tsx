@@ -55,7 +55,8 @@ const WalletExport: React.FC = () => {
     try {
       const encrypted = await exportEncryptedBackup(password);
       const fileName = `Shroud-Export-${dayjs().format('YYYY-MM-DD')}.backup`;
-      await writeFileAndExport(fileName, encrypted);
+      // Cancelled: the file is already deleted, so keep the form for another try.
+      if (!(await writeFileAndExport(fileName, encrypted))) return;
       setPassword('');
       setConfirmPassword('');
       setIsConfirmed(false);

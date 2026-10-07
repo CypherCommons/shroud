@@ -55,7 +55,7 @@ export type DetailViewStackParamList = {
   NetworkSettings: undefined;
   BitcoinNetworkSettings: undefined;
   Security: undefined;
-  ChangePin: undefined;
+  ChangePin: { remove?: boolean } | undefined;
   ViewRecoveryPhrase: undefined;
   PlausibleDeniability: undefined;
   ReceiveDetails: {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, AppStateStatus, Image, Modal, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, AppStateStatus, Image, Modal, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PinEntry from './PinEntry';
 import Button from './Button';
@@ -13,6 +13,10 @@ import triggerHapticFeedback, { HapticFeedbackTypes } from '../modules/hapticFee
 import loc from '../loc';
 
 type LockMethod = 'biometrics' | 'pin' | null;
+
+// Android reports `background` whenever another activity covers the app, such as the share sheet or a
+// permission dialog. Coming back within this window drops the lock instead of asking again.
+const ANDROID_RELOCK_GRACE_MS = 30 * 1000;
 
 /**
  * Re-locks an already-unlocked app when it comes back from the background, using the same method
@@ -29,6 +33,19 @@ const AppLock: React.FC = () => {
   // Kept fresh while the app is in the foreground, so going to the background can lock synchronously
   // (JS may be suspended soon after, and an async check could land after the app is shown again).
   const nextLockMethodRef = useRef<LockMethod>(null);
+  const lockMethodRef = useRef<LockMethod>(lockMethod);
+  useEffect(() => {
+    lockMethodRef.current = lockMethod;
+  }, [lockMethod]);
+  // When an unlocked app last went to the background on Android. Both clocks: the wall clock keeps
+  // counting while the device sleeps, and the monotonic one can't be set back.
+  const leftUnlockedAtRef = useRef<{ wall: number; mono: number } | null>(null);
+
+  const isGraceReturn = useCallback((): boolean => {
+    const left = leftUnlockedAtRef.current;
+    if (!left) return false;
+    return Math.max(Date.now() - left.wall, performance.now() - left.mono) < ANDROID_RELOCK_GRACE_MS;
+  }, []);
 
   const resolveLockMethod = useCallback(async (): Promise<LockMethod> => {
     if (await isBiometricUseCapableAndEnabled()) return 'biometrics';
@@ -50,6 +67,8 @@ const AppLock: React.FC = () => {
 
     const subscription = AppState.addEventListener('change', async (state: AppStateStatus) => {
       if (state === 'background') {
+        leftUnlockedAtRef.current =
+          Platform.OS === 'android' && !lockMethodRef.current ? { wall: Date.now(), mono: performance.now() } : null;
         if (nextLockMethodRef.current) {
           setLockMethod(nextLockMethodRef.current);
         } else {
@@ -58,11 +77,12 @@ const AppLock: React.FC = () => {
           if (method) setLockMethod(method);
         }
       } else {
+        if (state === 'active' && isGraceReturn()) setLockMethod(null);
         refreshNextLockMethod();
       }
     });
     return () => subscription.remove();
-  }, [walletsInitialized, refreshNextLockMethod, resolveLockMethod]);
+  }, [walletsInitialized, refreshNextLockMethod, resolveLockMethod, isGraceReturn]);
 
   const unlock = useCallback(() => setLockMethod(null), []);
 
@@ -91,11 +111,11 @@ const AppLock: React.FC = () => {
         wasBackgrounded = true;
       } else if (state === 'active' && wasBackgrounded) {
         wasBackgrounded = false;
-        unlockUsingBiometrics();
+        if (!isGraceReturn()) unlockUsingBiometrics();
       }
     });
     return () => subscription.remove();
-  }, [lockMethod, unlockUsingBiometrics]);
+  }, [lockMethod, unlockUsingBiometrics, isGraceReturn]);
 
   const pinAttempt = usePinAttempt(() => {
     triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);

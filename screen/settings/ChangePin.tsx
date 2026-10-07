@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { RouteProp, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SafeAreaScrollView from '../../components/SafeAreaScrollView';
 import PinKeypad from '../../components/PinKeypad';
@@ -10,10 +11,11 @@ import presentAlert from '../../components/Alert';
 import { useTheme } from '../../components/themes';
 import { useSettings } from '../../hooks/context/useSettings';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
-import { hasPinSet, PIN_LENGTH, setPin as persistPin } from '../../helpers/pinLock';
+import { clearPin, hasPinSet, PIN_LENGTH, setPin as persistPin } from '../../helpers/pinLock';
 import { usePinAttempt } from '../../hooks/usePinAttempt';
 import { ClashFont } from '../../constants/fonts';
 import loc from '../../loc';
+import { DetailViewStackParamList } from '../../navigation/DetailViewStackParamList';
 
 type Step = 'checking' | 'current' | 'new' | 'confirm' | 'success';
 
@@ -21,7 +23,9 @@ const ChangePin: React.FC = () => {
   const { colors } = useTheme();
   const navigation = useExtendedNavigation();
   const insets = useSafeAreaInsets();
-  const { isPinLayoutScrambled } = useSettings();
+  // Remove mode: only the current-PIN step, then the PIN is cleared.
+  const isRemoving = useRoute<RouteProp<DetailViewStackParamList, 'ChangePin'>>().params?.remove === true;
+  const { isPinLayoutScrambled, setIsPinLayoutScrambledStorage } = useSettings();
   const [step, setStep] = useState<Step>('checking');
   const [hasVerifyStep, setHasVerifyStep] = useState(false);
   const [error, setError] = useState(false);
@@ -36,6 +40,13 @@ const ChangePin: React.FC = () => {
     hasPinSet()
       .catch(() => true)
       .then(exists => {
+        if (isRemoving) {
+          if (!exists) {
+            navigation.goBack();
+            return;
+          }
+          navigation.setOptions({ title: loc.settings.security_remove_pin });
+        }
         setHasVerifyStep(exists);
         setStep(exists ? 'current' : 'new');
         if (!exists) navigation.setOptions({ title: loc.settings.security_set_pin });
@@ -43,7 +54,7 @@ const ChangePin: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const totalSteps = hasVerifyStep ? 3 : 2;
+  const totalSteps = isRemoving ? 1 : hasVerifyStep ? 3 : 2;
 
   // How many progress-bar segments are filled for the step currently on screen: 'current' only
   // exists when verifying first, so it always takes segment 1; 'new'/'confirm' shift up by one in
@@ -75,13 +86,13 @@ const ChangePin: React.FC = () => {
   const stepSubtitle = useCallback(() => {
     switch (step) {
       case 'current':
-        return loc.settings.pin_enter_current_subtitle;
+        return isRemoving ? loc.settings.pin_remove_subtitle : loc.settings.pin_enter_current_subtitle;
       case 'confirm':
         return loc.settings.pin_confirm_new_subtitle;
       default:
         return loc.formatString(loc.settings.pin_enter_new_subtitle, { count: PIN_LENGTH });
     }
-  }, [step]);
+  }, [step, isRemoving]);
 
   const goToStep = (next: Step) => {
     setShowMismatch(false);
@@ -96,7 +107,16 @@ const ChangePin: React.FC = () => {
     clearPinError: clearCurrentPinError,
     isLockedOut,
     lockoutMessage,
-  } = usePinAttempt(() => goToStep('new'));
+  } = usePinAttempt(async () => {
+    if (!isRemoving) {
+      goToStep('new');
+      return;
+    }
+    await clearPin();
+    // Scrambling only applies to a PIN, and its switch can't be turned on without one.
+    await setIsPinLayoutScrambledStorage(false);
+    setStep('success');
+  });
 
   const handleComplete = async (pin: string) => {
     try {
@@ -155,8 +175,12 @@ const ChangePin: React.FC = () => {
           <View style={[styles.checkCircle, { backgroundColor: colors.surfaceSubtle }]}>
             <CheckmarkIcon size={32} color={colors.brandPrimary} />
           </View>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.settings.pin_set_success}</Text>
-          <Text style={[styles.successSubtitle, { color: colors.textMuted }]}>{loc.settings.pin_updated_subtitle}</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            {isRemoving ? loc.settings.pin_removed : loc.settings.pin_set_success}
+          </Text>
+          <Text style={[styles.successSubtitle, { color: colors.textMuted }]}>
+            {isRemoving ? loc.settings.pin_removed_subtitle : loc.settings.pin_updated_subtitle}
+          </Text>
         </View>
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 32) }]}>
           <ActionButton

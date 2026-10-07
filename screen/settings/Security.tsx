@@ -155,6 +155,13 @@ const Security: React.FC = () => {
           onPress={() => navigation.navigate('ChangePin')}
           testID="ChangePinRow"
         />
+        {pinIsSet && (
+          <SettingsNavRow
+            title={loc.settings.security_remove_pin}
+            onPress={() => navigation.navigate('ChangePin', { remove: true })}
+            testID="RemovePinRow"
+          />
+        )}
         <SettingsToggleRow
           title={loc.settings.security_scramble_pin}
           value={isPinLayoutScrambled}

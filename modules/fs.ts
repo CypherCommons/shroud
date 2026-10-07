@@ -17,18 +17,21 @@ const isCancel = (err: any): boolean => {
   return err.code && err.code === errorCodes.OPERATION_CANCELED;
 };
 
-const _shareOpen = async (filePath: string, showShareDialog: boolean = false) => {
+// Resolves false when the user dismissed the dialog without sharing or saving.
+const _shareOpen = async (filePath: string, showShareDialog: boolean = false): Promise<boolean> => {
   try {
-    await Share.open({
+    const result = await Share.open({
       url: 'file://' + filePath,
       saveToFiles: isDesktop || !showShareDialog,
       // @ts-ignore: Website claims this propertie exists, but TS cant find it. Send anyways.
       useInternalStorage: Platform.OS === 'android',
       failOnCancel: false,
     });
+    return result.success !== false;
   } catch (error: any) {
     // If user cancels sharing, we dont want to show an error. for some reason we get 'CANCELLED' string as error
     if (error.message !== 'CANCELLED') throw error;
+    return false;
   } finally {
     await RNFS.unlink(filePath);
   }
@@ -38,23 +41,23 @@ const _shareOpen = async (filePath: string, showShareDialog: boolean = false) =>
  * Writes a file to fs, and triggers an OS sharing dialog, so user can decide where to put this file (share to cloud
  * or perhaps messaging app). Provided filename should be just a file name, NOT a path.
  * Throws on failure so the caller can report it; cancelling the share dialog is not a failure.
+ * Resolves false when the user cancelled, since the file is deleted once the dialog closes.
  */
 
-export const writeFileAndExport = async function (fileName: string, contents: string, showShareDialog: boolean = true) {
+export const writeFileAndExport = async function (fileName: string, contents: string, showShareDialog: boolean = true): Promise<boolean> {
   const sanitizedFileName = _sanitizeFileName(fileName);
   if (Platform.OS === 'ios') {
     const filePath = `${RNFS.TemporaryDirectoryPath}/${sanitizedFileName}`;
     await RNFS.writeFile(filePath, contents);
-    await _shareOpen(filePath, showShareDialog);
+    return _shareOpen(filePath, showShareDialog);
   } else if (Platform.OS === 'android') {
     const filePath = `${RNFS.DownloadDirectoryPath}/${sanitizedFileName}`;
     await RNFS.writeFile(filePath, contents);
-    if (showShareDialog) {
-      await _shareOpen(filePath);
-    } else {
-      presentAlert({ message: loc.formatString(loc.send.file_saved_at_path, { filePath }) });
-    }
+    if (showShareDialog) return _shareOpen(filePath);
+    presentAlert({ message: loc.formatString(loc.send.file_saved_at_path, { filePath }) });
+    return true;
   }
+  return false;
 };
 
 const _readPsbtFileIntoBase64 = async function (uri: string): Promise<string> {
