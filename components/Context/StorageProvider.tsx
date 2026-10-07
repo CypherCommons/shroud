@@ -13,6 +13,7 @@ import { navigationRef } from '../../NavigationService';
 import { type ScanStateInfo, IDLE_SCAN_STATE, isScannable } from '../../helpers/silent-payments';
 import { getActiveNetworkId, type NetworkId } from '../../modules/network';
 import { assertNetworkSwitchable, rollbackNetworkSwitch, switchNetworkBackends } from '../../modules/networkPreference';
+import { clearPin } from '../../helpers/pinLock';
 
 const shroudApp = ShroudApp.getInstance();
 
@@ -33,6 +34,7 @@ interface StorageContextType {
   setWalletsInitialized: (initialized: boolean) => void;
   refreshAllWalletTransactions: (lastSnappedTo?: number, showUpdateStatusIndicator?: boolean) => Promise<void>;
   resetWallets: () => void;
+  wipeDevice: () => Promise<void>;
   walletTransactionUpdateStatus: WalletTransactionsStatus | string;
   setWalletTransactionUpdateStatus: (status: WalletTransactionsStatus | string) => void;
   getTransactions: typeof shroudApp.getTransactions;
@@ -42,6 +44,7 @@ interface StorageContextType {
   isStorageEncrypted: typeof shroudApp.storageIsEncrypted;
   startAndDecrypt: typeof startAndDecrypt;
   encryptStorage: typeof shroudApp.encryptStorage;
+  exportEncryptedBackup: typeof shroudApp.exportEncryptedBackup;
   sleep: typeof shroudApp.sleep;
   createFakeStorage: typeof shroudApp.createFakeStorage;
   decryptStorage: typeof shroudApp.decryptStorage;
@@ -283,6 +286,19 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
 
   const resetWallets = useCallback(() => {
     setWallets(shroudApp.getWallets());
+  }, []);
+
+  // Forgot-PIN reset: wipes the wallet data and the PIN. The queued save is cancelled and txMetadata
+  // cleared first, since saveToDisk() copies it back into the singleton on every save.
+  const wipeDevice = useCallback(async () => {
+    if (persistTimeoutRef.current) {
+      clearTimeout(persistTimeoutRef.current);
+      persistTimeoutRef.current = null;
+    }
+    txMetadata.current = {};
+    await shroudApp.wipeAllData();
+    await clearPin();
+    setWallets([]);
   }, []);
 
   const attachWalletCallbacks = useCallback(
@@ -534,6 +550,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       fetchAndSaveWalletTransactions,
       isStorageEncrypted: shroudApp.storageIsEncrypted,
       encryptStorage: shroudApp.encryptStorage,
+      exportEncryptedBackup: shroudApp.exportEncryptedBackup,
       startAndDecrypt,
       cachedPassword: shroudApp.cachedPassword,
       getBalance: shroudApp.getBalance,
@@ -543,6 +560,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       sleep: shroudApp.sleep,
       createFakeStorage: shroudApp.createFakeStorage,
       resetWallets,
+      wipeDevice,
       decryptStorage: shroudApp.decryptStorage,
       isPasswordInUse: shroudApp.isPasswordInUse,
       walletTransactionUpdateStatus,
@@ -565,6 +583,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       setWalletsInitialized,
       refreshAllWalletTransactions,
       resetWallets,
+      wipeDevice,
       walletTransactionUpdateStatus,
       handleWalletDeletion,
       scanState,
