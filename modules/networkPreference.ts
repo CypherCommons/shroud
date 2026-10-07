@@ -143,8 +143,7 @@ export async function bootActiveNetwork(): Promise<{
  * Tear down the current chain's connections and bring up the next one's.
  *
  * Deliberately does not touch wallet objects: they cache derived xpubs, nodes, seeds, spend keys
- * and UTXO views, and chasing every one of those is how state leaks across chains. The caller
- * reloads wallets from storage instead.
+ * and UTXO views, and chasing every one of those is how state leaks across chains.
  *
  * Ordered so a failure cannot commit a half-switch: the target is validated before anything is
  * torn down, and the preference is written last, after the indexer has actually started. If this
