@@ -532,6 +532,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     return addedCount;
   }
 
+  /** Stop scanning and polling. Lasts until `allowScanning()`, not just for the current scan. */
   cancelScan(): void {
     this.cancelScanCallbackScan = true;
     // unblock any pending pause so the scan loop can exit cleanly
@@ -548,6 +549,14 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     // flag below; it must not tear down the shared indexer.
     this.stopPolling();
     this._emitScanState('idle', IDLE_SCAN_STATE);
+  }
+
+  /**
+   * Undo `cancelScan` so the wallet scans again. A cancel is otherwise permanent for the life of
+   * the object, and a network switch keeps the object, so switching back must call this.
+   */
+  allowScanning(): void {
+    this.cancelScanCallbackScan = false;
   }
 
   isScanActive(): boolean {
@@ -615,7 +624,6 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       return this.activeScanPromise;
     }
 
-    this.cancelScanCallbackScan = false;
     this.activeScanPromise = this.performScan(onProgress, forceFullScan);
 
     try {
@@ -624,7 +632,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     } finally {
       this.activeScanPromise = null;
       // don't cancelScanCallbackScan here — if cancelScan() was called during this scan,
-      // the flag must stay true so subsequent calls to scanForPayments() exit early.
+      // the flag must stay true so later calls exit early until allowScanning().
     }
   }
 

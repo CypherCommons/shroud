@@ -19,6 +19,14 @@ const shroudApp = ShroudApp.getInstance();
 // hashmap of timestamps we _started_ refetching some wallet
 const _lastTimeTriedToRefetchWallet: { [walletID: string]: number } = {};
 
+/** Undo a network switch's cancel and restart the scan, without making the switch wait for it. */
+const restartScans = (walletsToRestart: TWallet[]) => {
+  walletsToRestart.filter(isScannable).forEach(wallet => {
+    wallet.allowScanning();
+    wallet.scanForPayments().catch(error => console.warn('[StorageProvider] Restarting the scan failed:', error));
+  });
+};
+
 interface StorageContextType {
   wallets: TWallet[];
   txMetadata: TTXMetadata;
@@ -327,8 +335,9 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
    * `networkId`, so its cached xpub, derived nodes, addresses and UTXO view were computed with
    * that chain's parameters and stay valid — there is nothing to invalidate. What does have to
    * happen, in order: stop any in-flight scan (and *wait* for it, or a late batch commits the old
-   * chain's UTXOs), flush pending writes, repoint the indexer and Electrum, then re-wire
-   * callbacks and swap the visible wallet list.
+   * chain's UTXOs), flush pending writes, repoint the indexer and Electrum, re-wire callbacks,
+   * swap the visible wallet list, then undo the incoming wallets' earlier cancel and restart
+   * their scans.
    *
    * The module-level network (`getActiveNetworkId`) and this provider's `activeNetworkId` state
    * must never disagree, so a failure after the module has moved puts it back.
@@ -366,11 +375,14 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
         attachWalletCallbacks(incomingWallets);
         setActiveNetworkIdState(next);
         setWallets([...incomingWallets]);
+        // These were cancelled if the user was on this chain before.
+        restartScans(incomingWallets);
       } catch (error) {
         // Stay on the chain the UI is still showing: restore the module (and the stored
-        // preference), then hand the outgoing wallets their callbacks back.
+        // preference), then hand the outgoing wallets their callbacks and scan back.
         if (backendsTouched) await rollbackNetworkSwitch(previous);
         attachWalletCallbacks(outgoingWallets);
+        restartScans(outgoingWallets);
         throw error;
       } finally {
         setIsSwitchingNetwork(false);
