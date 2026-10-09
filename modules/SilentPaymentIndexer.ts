@@ -8,14 +8,26 @@ import type {
   SilentPaymentIndexerConfig,
   ScanProgressCallback,
   TransactionByTxidResponse,
+  SpentIndexBlock,
+  SpentIndexResponse,
 } from '../helpers/silent-payments/types';
 
 // Small metadata lookups a user is actively waiting on. The configured timeout is sized for bulk
 // range queries; inheriting it here makes create/import/track hang for minutes on a dead indexer.
 const FAST_LOOKUP = { timeout: 8000, retries: 1 };
 
-/** Invoked once per scanned range, empty or not, so the caller can track progress. */
-export type RangeProcessedCallback = (transactions: IndexerTransaction[], rangeEnd: number) => Promise<number>;
+export const RANGE_BATCH_SIZE = 50;
+
+/**
+ * Invoked once per scanned range, empty or not, so the caller can track progress. `spentBlocks` is
+ * null when the spent index could not be fetched (e.g. an indexer without it), so the caller knows
+ * that range was not checked for spends.
+ */
+export type RangeProcessedCallback = (
+  transactions: IndexerTransaction[],
+  rangeEnd: number,
+  spentBlocks: SpentIndexBlock[] | null,
+) => Promise<number>;
 
 export class SilentPaymentIndexer {
   private httpClient: IndexerHttpClient;
@@ -45,6 +57,13 @@ export class SilentPaymentIndexer {
     return this.httpClient.get<TransactionResponse>(
       `/transactions/range?startHeight=${startHeight}&endHeight=${endHeight}`,
       `Error fetching transactions by range ${startHeight}-${endHeight}`,
+    );
+  }
+
+  async getSpentIndexByRange(startHeight: number, endHeight: number): Promise<SpentIndexResponse> {
+    return this.httpClient.get<SpentIndexResponse>(
+      `/silent-block/spent-index/range?startHeight=${startHeight}&endHeight=${endHeight}`,
+      `Error fetching spent index by range ${startHeight}-${endHeight}`,
     );
   }
 
@@ -94,7 +113,6 @@ export class SilentPaymentIndexer {
     onProgress?: ScanProgressCallback,
     cancelCallback?: () => boolean,
   ): Promise<void> {
-    const RANGE_BATCH_SIZE = 50;
     const totalBlocks = endHeight - startHeight + 1;
     let blocksScanned = 0;
     let utxosFound = 0;
@@ -116,9 +134,19 @@ export class SilentPaymentIndexer {
         throw new Error(`Failed to fetch range ${rangeStart}-${rangeEnd}: ${error?.message ?? error}`);
       }
 
+      // after the transactions, not alongside them, so a range costs one request at a time against
+      // the indexer's rate limit. a failure here only skips spend detection for the range: receiving
+      // must keep working against an indexer that has no spent index yet
+      let spentBlocks: SpentIndexBlock[] | null = null;
+      try {
+        spentBlocks = (await this.getSpentIndexByRange(rangeStart, rangeEnd)).blocks;
+      } catch (error: any) {
+        console.warn(`[SP] No spent index for range ${rangeStart}-${rangeEnd}: ${error?.message ?? error}`);
+      }
+
       // called for empty ranges too, so the caller can advance its scan watermark past them
       if (onRangeProcessed) {
-        utxosFound += await onRangeProcessed(response.transactions, rangeEnd);
+        utxosFound += await onRangeProcessed(response.transactions, rangeEnd, spentBlocks);
       }
 
       blocksScanned += rangeSize;

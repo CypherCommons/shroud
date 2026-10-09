@@ -137,10 +137,10 @@ const TransactionDetails = () => {
 
           <DetailRow
             label="Transaction ID"
-            value={tx.hash}
-            mono
+            value={tx.external ? 'Unknown (spent from another wallet)' : tx.hash}
+            mono={!tx.external}
             copied={copiedTxid}
-            onCopy={() => handleCopy(tx.hash, setCopiedTxid)}
+            onCopy={tx.external ? undefined : () => handleCopy(tx.hash, setCopiedTxid)}
             accessibilityLabel={loc.transactions.details_copy_txid}
           />
         </View>
@@ -164,13 +164,15 @@ const TransactionDetails = () => {
           </View>
         </View>
 
-        {/* Block Explorer Button */}
-        <View style={styles.actionContainer}>
-          <Pressable accessibilityRole="button" style={[styles.explorerButton, stylesHooks.explorerButton]} onPress={viewInBlockExplorer}>
-            <ExternalLinkIcon size={24} color={colors.textSecondary} />
-            <Text style={[styles.explorerButtonText, { color: colors.textSecondary }]}>View In Block Explorer</Text>
-          </Pressable>
-        </View>
+        {/* Block Explorer Button: an external spend has no txid to look up */}
+        {!tx.external && (
+          <View style={styles.actionContainer}>
+            <Pressable accessibilityRole="button" style={[styles.explorerButton, stylesHooks.explorerButton]} onPress={viewInBlockExplorer}>
+              <ExternalLinkIcon size={24} color={colors.textSecondary} />
+              <Text style={[styles.explorerButtonText, { color: colors.textSecondary }]}>View In Block Explorer</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     </SafeAreaScrollView>
   );

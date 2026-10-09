@@ -649,6 +649,7 @@ describe('BIP-352 Silent Payments', () => {
         '_lastTxFetch',
         '_sp_pending_inputs',
         '_sp_spending_txs',
+        '_spentCheckedHeight',
         '_txs_by_external_index',
         '_txs_by_internal_index',
         '_utxoMetadata',
