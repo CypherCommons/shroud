@@ -5,7 +5,7 @@ import { ECPairFactory } from 'ecpair';
 import { AbstractHDElectrumWallet } from './abstract-hd-electrum-wallet.ts';
 import * as Electrum from '../../modules/Electrum';
 import { getDefaultIndexer, RANGE_BATCH_SIZE, SilentPaymentIndexer } from '../../modules/SilentPaymentIndexer';
-import { matchSpent } from '../../helpers/silent-payments/spentIndex';
+import { checkedThrough, matchSpent } from '../../helpers/silent-payments/spentIndex';
 import type { SpentIndexBlock } from '../../helpers/silent-payments/types';
 import ecc from '../../modules/noble_ecc';
 import { calculateSumOfPrivateKeys, createInputHash, scanOutputs, type PrivateKey } from '@silent-pay/core';
@@ -58,6 +58,8 @@ const SCAN_ETA_ROLLING_WINDOW = 10;
 // Consecutive failed birth-height lookups before we stop deferring and scan from the fallback height.
 const BIRTH_RESOLUTION_MAX_ATTEMPTS = 3;
 const POLLING_INTERVAL_MS = 30000;
+// Already-checked blocks whose spent index is read again on every sync, in case a reorg replaced them.
+const SPENT_RECHECK_DEPTH = 6;
 
 type UpdateBirthHeightOptions = { resetScan?: boolean; pendingTimestamp?: number | null };
 
@@ -670,6 +672,8 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         }
       } else {
         startHeight = effectiveBirthHeight;
+        // this scan re-reads the spent index from the start, so it is the one that checks it
+        this._spentCheckedHeight = startHeight - 1;
       }
 
       if (startHeight > endHeight) {
@@ -739,9 +743,10 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
           totalUTXOsAdded += addedCount;
 
           // after commitUTXOs, so a coin received and spent inside this range is caught
-          this.applySpentIndex(spentBlocks, latestHeight);
-          this._spentCheckedHeight = rangeEnd;
-          this.onPersistCallback?.();
+          if (spentBlocks) {
+            this.applySpentIndex(spentBlocks, latestHeight);
+            this.advanceSpentChecked(spentBlocks, rangeEnd);
+          }
 
           return addedCount;
         },
@@ -850,35 +855,64 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   }
 
   /**
-   * One-off spent-index-only pass for wallets whose history predates spend detection (or whose
-   * last catch-up was interrupted). A full rescan never needs it: it re-reads the spent index for
-   * every range it scans.
+   * Moves `_spentCheckedHeight` forward over the heights `blocks` covers without a gap. A range
+   * that does not start right after it, or a height the indexer has no entry for, leaves it where
+   * it is, so the catch-up pass checks those blocks on a later sync instead of skipping them.
+   */
+  private advanceSpentChecked(blocks: SpentIndexBlock[], upTo: number): boolean {
+    const from = (this._spentCheckedHeight ?? upTo) + 1;
+    const checked = checkedThrough(blocks, from, upTo);
+    if (checked < from) return false;
+    this._spentCheckedHeight = checked;
+    this.onPersistCallback?.();
+    return checked === upTo;
+  }
+
+  /**
+   * Spent-index-only pass over blocks the forward scan has already passed but whose spends were
+   * not checked: wallets from before spend detection, and ranges the indexer had no spent index
+   * for. Stops at the first gap and picks up from there on the next sync. Runs on every sync, so it
+   * also re-reads the last SPENT_RECHECK_DEPTH checked blocks.
    */
   private async catchUpSpentIndex(indexer: SilentPaymentIndexer, upTo: number, tipHeight: number): Promise<void> {
-    let from: number;
     if (this._spentCheckedHeight !== null) {
-      from = this._spentCheckedHeight + 1;
+      // a reorg can replace a checked block with one that spends our coins, and nothing else reads
+      // a checked block again. a block that did not change matches nothing new
+      const checked = this._spentCheckedHeight;
+      const recheckFrom = Math.max(checked - SPENT_RECHECK_DEPTH + 1, 1);
+      if (recheckFrom <= checked) {
+        try {
+          const { blocks } = await indexer.getSpentIndexByRange(recheckFrom, checked);
+          this.applySpentIndex(blocks, tipHeight);
+        } catch (error: any) {
+          console.warn(`[SP] Spent index recheck of ${recheckFrom}-${checked} failed: ${error?.message ?? error}`);
+        }
+      }
     } else {
+      // nothing was ever checked: start at the oldest coin that could still be unspent
       const heights = this.spentCheckOutpoints()
         .map(u => u.height)
         .filter(h => h > 0);
-      from = heights.length > 0 ? Math.min(...heights) : upTo + 1;
+      this._spentCheckedHeight = (heights.length > 0 ? Math.min(...heights) : upTo + 1) - 1;
+      this.onPersistCallback?.();
     }
 
-    for (let rangeStart = from; rangeStart <= upTo; rangeStart += RANGE_BATCH_SIZE) {
+    while (this._spentCheckedHeight < upTo) {
       await this._waitIfPaused();
       if (this.cancelScanCallbackScan) throw new Error('SCAN_CANCELLED');
 
+      const rangeStart = this._spentCheckedHeight + 1;
       const rangeEnd = Math.min(rangeStart + RANGE_BATCH_SIZE - 1, upTo);
-      const { blocks } = await indexer.getSpentIndexByRange(rangeStart, rangeEnd);
-      this.applySpentIndex(blocks, tipHeight);
-      this._spentCheckedHeight = rangeEnd;
-      this.onPersistCallback?.();
-    }
+      let blocks: SpentIndexBlock[];
+      try {
+        ({ blocks } = await indexer.getSpentIndexByRange(rangeStart, rangeEnd));
+      } catch (error: any) {
+        console.warn(`[SP] Spent index catch-up stopped at ${rangeStart}: ${error?.message ?? error}`);
+        return;
+      }
 
-    if (this._spentCheckedHeight === null || this._spentCheckedHeight < upTo) {
-      this._spentCheckedHeight = upTo;
-      this.onPersistCallback?.();
+      this.applySpentIndex(blocks, tipHeight);
+      if (!this.advanceSpentChecked(blocks, rangeEnd)) return;
     }
   }
 

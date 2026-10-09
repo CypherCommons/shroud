@@ -2,7 +2,8 @@ import { crypto } from 'bitcoinjs-lib';
 
 import type { SpentIndexBlock } from './types';
 
-export type Outpoint = { txid: string; vout: number };
+/** height: the block that created it, 0 if not confirmed yet. */
+export type Outpoint = { txid: string; vout: number; height: number };
 
 /**
  * BlindBit/spdk spent index entry: sha256(txid || vout || blockhash)[:8], txid and blockhash in
@@ -25,8 +26,21 @@ export function matchSpent<T extends Outpoint>(outpoints: T[], blocks: SpentInde
     const spent = new Set<string>();
     for (let i = 0; i < block.hashes.length; i += 16) spent.add(block.hashes.slice(i, i + 16));
 
-    const hits = outpoints.filter(o => spent.has(outpointShortHash(o.txid, o.vout, block.blockHash)));
+    // a coin can only be spent in the block that created it or a later one
+    const hits = outpoints.filter(o => o.height <= block.height && spent.has(outpointShortHash(o.txid, o.vout, block.blockHash)));
     if (hits.length > 0) matches.set(block.height, hits);
   }
   return matches;
+}
+
+/**
+ * The last height of `from..to` up to which the indexer returned an entry for every block. The
+ * indexer writes one for each block it indexed with the spent index, so a missing height was not
+ * checked and must not be skipped over.
+ */
+export function checkedThrough(blocks: SpentIndexBlock[], from: number, to: number): number {
+  const heights = new Set(blocks.map(b => b.height));
+  let h = from;
+  while (h <= to && heights.has(h)) h++;
+  return h - 1;
 }

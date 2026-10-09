@@ -18,11 +18,15 @@ const FAST_LOOKUP = { timeout: 8000, retries: 1 };
 
 export const RANGE_BATCH_SIZE = 50;
 
-/** Invoked once per scanned range, empty or not, so the caller can track progress. */
+/**
+ * Invoked once per scanned range, empty or not, so the caller can track progress. `spentBlocks` is
+ * null when the spent index could not be fetched (e.g. an indexer without it), so the caller knows
+ * that range was not checked for spends.
+ */
 export type RangeProcessedCallback = (
   transactions: IndexerTransaction[],
   rangeEnd: number,
-  spentBlocks: SpentIndexBlock[],
+  spentBlocks: SpentIndexBlock[] | null,
 ) => Promise<number>;
 
 export class SilentPaymentIndexer {
@@ -122,21 +126,27 @@ export class SilentPaymentIndexer {
       const rangeSize = rangeEnd - rangeStart + 1;
 
       let response: TransactionResponse;
-      let spent: SpentIndexResponse;
       try {
-        [response, spent] = await Promise.all([
-          this.getTransactionsByRange(rangeStart, rangeEnd),
-          this.getSpentIndexByRange(rangeStart, rangeEnd),
-        ]);
+        response = await this.getTransactionsByRange(rangeStart, rangeEnd);
       } catch (error: any) {
         // abort instead of logging, or else this will flood the log with errors when indexer is down.
         // only the fetch is wrapped: a bug in the caller's callbacks must not masquerade as a fetch failure.
         throw new Error(`Failed to fetch range ${rangeStart}-${rangeEnd}: ${error?.message ?? error}`);
       }
 
+      // after the transactions, not alongside them, so a range costs one request at a time against
+      // the indexer's rate limit. a failure here only skips spend detection for the range: receiving
+      // must keep working against an indexer that has no spent index yet
+      let spentBlocks: SpentIndexBlock[] | null = null;
+      try {
+        spentBlocks = (await this.getSpentIndexByRange(rangeStart, rangeEnd)).blocks;
+      } catch (error: any) {
+        console.warn(`[SP] No spent index for range ${rangeStart}-${rangeEnd}: ${error?.message ?? error}`);
+      }
+
       // called for empty ranges too, so the caller can advance its scan watermark past them
       if (onRangeProcessed) {
-        utxosFound += await onRangeProcessed(response.transactions, rangeEnd, spent.blocks);
+        utxosFound += await onRangeProcessed(response.transactions, rangeEnd, spentBlocks);
       }
 
       blocksScanned += rangeSize;
