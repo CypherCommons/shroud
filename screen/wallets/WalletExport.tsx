@@ -15,6 +15,7 @@ import { useSettings } from '../../hooks/context/useSettings';
 import { useStorage } from '../../hooks/context/useStorage';
 import useAppState from '../../hooks/useAppState';
 import loc from '../../loc';
+import InfoBanner from '../../components/InfoBanner';
 import { WalletExportStackParamList } from '../../navigation/WalletExportStack';
 
 type RouteProps = RouteProp<WalletExportStackParamList, 'WalletExport'>;
@@ -144,6 +145,13 @@ const WalletExport: React.FC = () => {
             <ShroudText style={styles.writeText}>{loc.wallets.write_down}</ShroudText>
           </View>
           <SeedWords word={secret} index={0} />
+          {wallet.passphraseFingerprint ? (
+            <InfoBanner
+              variant="caution"
+              title={loc.passphrase.backup_title}
+              text={loc.formatString(loc.passphrase.export_text, { fingerprint: wallet.passphraseFingerprint }) as string}
+            />
+          ) : null}
         </>
       ) : (
         <>

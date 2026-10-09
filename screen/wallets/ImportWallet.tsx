@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { RouteProp, useRoute } from '@react-navigation/native';
 import Clipboard from '@react-native-clipboard/clipboard';
-import { ActivityIndicator, Keyboard, Platform, StyleSheet, Text, TouchableWithoutFeedback, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ActionButton from '../../components/ActionButton';
 import {
@@ -21,6 +21,7 @@ import SafeAreaScrollView from '../../components/SafeAreaScrollView';
 import { FieldMnemonicInput } from '../../components/FieldTextInput';
 import LabeledField from '../../components/LabeledField';
 import InfoBanner from '../../components/InfoBanner';
+import PassphraseField, { UsePassphraseToggle } from '../../components/PassphraseField';
 import ClipboardIcon from '../../components/icons/ClipboardIcon';
 import RestoreSuccessSheet from '../../components/RestoreSuccessSheet';
 import { BottomModalHandle } from '../../components/BottomModal';
@@ -85,8 +86,10 @@ const ImportWallet = () => {
   const triggerImport = route?.params?.triggerImport ?? false;
   const [importText, setImportText] = useState<string>(label);
   const [birthDate, setBirthDate] = useState<string>('');
+  const [usePassphrase, setUsePassphrase] = useState<boolean>(false);
+  const [passphrase, setPassphrase] = useState<string>('');
+  const [restoredFingerprint, setRestoredFingerprint] = useState<string | undefined>();
   const [isToolbarVisibleForAndroid, setIsToolbarVisibleForAndroid] = useState<boolean>(false);
-  const [, setSpeedBackdoor] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const { isScreenCaptureAllowed, isClipboardGetContentEnabled } = useSettings();
   const { enableScreenProtect, disableScreenProtect } = useScreenProtect();
@@ -128,7 +131,15 @@ const ImportWallet = () => {
           return;
         }
 
-        const wallet = HDSilentPaymentsWallet.fromMnemonic(text);
+        // Without this a restore would quietly open the wallet that has no passphrase.
+        if (usePassphrase && !passphrase) {
+          presentAlert({ title: loc.errors.error, message: loc.passphrase.restore_passphrase_empty });
+          return;
+        }
+
+        // Lets the spinner render before key derivation blocks the JS thread.
+        if (usePassphrase && passphrase) await new Promise(resolve => setTimeout(resolve, 0));
+        const wallet = HDSilentPaymentsWallet.fromMnemonic(text, usePassphrase ? passphrase : undefined);
 
         if (!wallet.validateMnemonic()) {
           presentAlert({ title: loc.errors.error, message: loc.wallet_birth.error_invalid_mnemonic });
@@ -151,6 +162,7 @@ const ImportWallet = () => {
         });
 
         await addAndSaveWallet(wallet);
+        setRestoredFingerprint(wallet.passphraseFingerprint);
         restored = true;
       } catch (error: any) {
         console.error('Import error:', error);
@@ -166,11 +178,12 @@ const ImportWallet = () => {
       // Outside the try: the wallet is saved by now, so a sheet failure must not read as a failed restore.
       if (restored) {
         setImportText('');
+        setPassphrase('');
         triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
         await successSheetRef.current?.present();
       }
     },
-    [birthDate, addAndSaveWallet],
+    [birthDate, usePassphrase, passphrase, addAndSaveWallet],
   );
 
   const handleImport = useCallback(() => {
@@ -186,9 +199,10 @@ const ImportWallet = () => {
       // no objects here, only strings
       const newValue: string = typeof value !== 'string' ? value.data + '' : value;
       setImportText(newValue);
-      setTimeout(() => importMnemonic(newValue), 500);
+      // With a passphrase to enter, the scan only fills in the words; the user restores when ready.
+      if (!usePassphrase) setTimeout(() => importMnemonic(newValue), 500);
     },
-    [importMnemonic],
+    [importMnemonic, usePassphrase],
   );
 
   useEffect(() => {
@@ -198,15 +212,6 @@ const ImportWallet = () => {
       navigation.setParams({ onBarScanned: undefined });
     }
   }, [route.name, onBarScanned, route.params?.onBarScanned, navigation]);
-
-  const speedBackdoorTap = () => {
-    setSpeedBackdoor(v => {
-      v += 1;
-      if (v < 5) return v;
-      navigation.navigate('ImportSpeed');
-      return 0;
-    });
-  };
 
   useEffect(() => {
     if (!isScreenCaptureAllowed) {
@@ -234,7 +239,7 @@ const ImportWallet = () => {
     navigation.navigateToWalletsList();
   }, [navigation]);
 
-  const canImport = importText.trim().length > 0 && !isLoading;
+  const canImport = importText.trim().length > 0 && (!usePassphrase || passphrase.length > 0) && !isLoading;
 
   const footer = (
     <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 32) }]}>
@@ -253,12 +258,10 @@ const ImportWallet = () => {
   return (
     <SafeAreaScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="always">
       <View style={styles.body}>
-        <TouchableWithoutFeedback accessibilityRole="button" onPress={speedBackdoorTap} testID="SpeedBackdoor">
-          <View style={styles.header}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.wallets.restore_headline}</Text>
-            <Text style={[styles.subtitle, { color: colors.textMuted }]}>{loc.wallets.restore_subtitle}</Text>
-          </View>
-        </TouchableWithoutFeedback>
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.wallets.restore_headline}</Text>
+          <Text style={[styles.subtitle, { color: colors.textMuted }]}>{loc.wallets.restore_subtitle}</Text>
+        </View>
 
         <LabeledField>
           <FieldMnemonicInput
@@ -287,6 +290,20 @@ const ImportWallet = () => {
 
         <WalletBirthSection birthDate={birthDate} setBirthDate={setBirthDate} />
 
+        <UsePassphraseToggle
+          value={usePassphrase}
+          onValueChange={value => {
+            setUsePassphrase(value);
+            if (!value) setPassphrase('');
+          }}
+        />
+        {usePassphrase && (
+          <>
+            <PassphraseField value={passphrase} onChangeText={setPassphrase} testID="RestorePassphraseInput" />
+            <InfoBanner variant="caution" text={loc.passphrase.restore_warning} emphasis={loc.passphrase.restore_warning_emphasis} />
+          </>
+        )}
+
         <InfoBanner text={loc.wallets.restore_history_notice} emphasis={loc.wallets.restore_history_notice_emphasis} />
 
         {isLoading && <ActivityIndicator size="large" color={colors.brandPrimary} style={styles.activityIndicator} />}
@@ -314,7 +331,7 @@ const ImportWallet = () => {
         default: null,
       })}
 
-      <RestoreSuccessSheet ref={successSheetRef} onDone={onDoneFromSuccessSheet} />
+      <RestoreSuccessSheet ref={successSheetRef} onDone={onDoneFromSuccessSheet} fingerprint={restoredFingerprint} />
     </SafeAreaScrollView>
   );
 };

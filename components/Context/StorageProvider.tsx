@@ -50,6 +50,17 @@ interface StorageContextType {
   getItem: typeof shroudApp.getItem;
   setItem: typeof shroudApp.setItem;
   handleWalletDeletion: (walletID: string) => Promise<boolean>;
+  hasLockedWallet: typeof shroudApp.hasLockedWallet;
+  // Resolves false, changing nothing, when the passphrase is wrong.
+  unlockWallet: (passphrase: string) => Promise<boolean>;
+  forgetLockedWallet: () => Promise<void>;
+  // A newly generated wallet, saved as a draft (outside the wallet list) until its backup is done, so
+  // a restart brings back the same words and the passphrase can still be chosen. Resolves once saved.
+  setPendingWallet: (wallet: TWallet) => Promise<void>;
+  getPendingWallet: () => TWallet | null;
+  // Turns the draft `wallet` into a real wallet, in one save. Rejects with a user-facing message,
+  // without applying the passphrase, when it isn't the current draft or can't be added.
+  commitPendingWallet: (wallet: TWallet, passphrase?: string) => Promise<void>;
   scanState: ScanStateInfo;
   activeNetworkId: NetworkId;
   switchNetwork: (next: NetworkId) => Promise<void>;
@@ -190,8 +201,9 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
   const addWallet = useCallback(
     (wallet: TWallet): boolean => {
       // Single-wallet mode is *per chain*: checking every network's wallets here would make it
-      // impossible to create a wallet on signet once one exists on mainnet.
-      if (shroudApp.getWallets().length > 0) {
+      // impossible to create a wallet on signet once one exists on mainnet. A wallet waiting for
+      // its passphrase still occupies its chain.
+      if (shroudApp.getWallets().length > 0 || shroudApp.hasLockedWallet()) {
         console.warn('[StorageProvider] Single-wallet mode: refusing to add a second wallet on this network');
         return false;
       }
@@ -319,6 +331,58 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       }
     });
   }, []);
+
+  // Awaited directly, unlike `saveToDisk`, which hands its work to InteractionManager: the draft has
+  // to be on disk before its words are shown.
+  const persistNow = useCallback(async () => {
+    shroudApp.tx_metadata = txMetadata.current;
+    await shroudApp.saveToDisk();
+  }, []);
+
+  const setPendingWallet = useCallback(
+    async (wallet: TWallet) => {
+      shroudApp.setPendingWallet(wallet);
+      await persistNow();
+    },
+    [persistNow],
+  );
+
+  const commitPendingWallet = useCallback(
+    async (wallet: TWallet, passphrase?: string) => {
+      // The caller names the wallet it showed, so a newer draft can't be saved in its place.
+      if (shroudApp.getPendingWallet() !== wallet) throw new Error(loc.wallets.pending_wallet_gone);
+      // Checked before the passphrase is applied, so a refusal leaves the wallet as it was. The
+      // chain already has a wallet, so the draft can never be used and goes too.
+      if (shroudApp.getWallets().length > 0 || shroudApp.hasLockedWallet()) {
+        shroudApp.clearPendingWallet();
+        await persistNow();
+        throw new Error(loc.wallets.single_wallet_limit);
+      }
+      if (passphrase) wallet.setPassphrase(passphrase);
+      addWallet(wallet);
+      // One write: the wallet arrives and the draft leaves together.
+      shroudApp.clearPendingWallet();
+      await persistNow();
+    },
+    [addWallet, persistNow],
+  );
+
+  const unlockWallet = useCallback(
+    async (passphrase: string): Promise<boolean> => {
+      const wallet = await shroudApp.unlockWallet(passphrase);
+      if (!wallet) return false;
+      attachWalletCallbacks([wallet]);
+      setWallets([...shroudApp.getWallets()]);
+      return true;
+    },
+    [attachWalletCallbacks],
+  );
+
+  // Awaited write, so the wallet is gone from disk before the caller leaves the unlock screen.
+  const forgetLockedWallet = useCallback(async () => {
+    await shroudApp.forgetLockedWallet();
+    await persistNow();
+  }, [persistNow]);
 
   /**
    * Move the app to another chain.
@@ -505,6 +569,8 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       if (w.getLabel() === emptyWalletLabel) w.setLabel(loc.wallets.import_imported + ' ' + w.typeReadable);
       w.setUserHasSavedExport(true);
       if (!addWallet(w)) throw new Error(loc.wallets.single_wallet_limit);
+      // A restore replaces any wallet whose creation was left unfinished on this chain.
+      shroudApp.clearPendingWallet();
       await saveToDisk();
       A(A.ENUM.CREATED_WALLET);
 
@@ -548,6 +614,12 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       walletTransactionUpdateStatus,
       setWalletTransactionUpdateStatus,
       handleWalletDeletion,
+      hasLockedWallet: shroudApp.hasLockedWallet,
+      unlockWallet,
+      forgetLockedWallet,
+      setPendingWallet,
+      getPendingWallet: shroudApp.getPendingWallet,
+      commitPendingWallet,
       scanState,
       activeNetworkId,
       switchNetwork,
@@ -567,6 +639,10 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       resetWallets,
       walletTransactionUpdateStatus,
       handleWalletDeletion,
+      unlockWallet,
+      forgetLockedWallet,
+      setPendingWallet,
+      commitPendingWallet,
       scanState,
       activeNetworkId,
       switchNetwork,

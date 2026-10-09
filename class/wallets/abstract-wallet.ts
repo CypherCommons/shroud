@@ -5,7 +5,7 @@ import { BitcoinUnit, Chain } from '../../models/bitcoinUnits';
 import { DEFAULT_NETWORK_ID, getActiveNetworkId, getNetwork, isNetworkId, NetworkConfig, NetworkId } from '../../modules/network';
 import { CreateTransactionResult, CreateTransactionUtxo, Transaction, Utxo } from './types';
 
-type WalletWithPassphrase = AbstractWallet & { getPassphrase: () => string };
+type WalletWithPassphrase = AbstractWallet & { getPassphrase: () => string; passphraseFingerprint?: string };
 type UtxoMetadata = {
   frozen?: boolean;
   memo?: string;
@@ -109,7 +109,12 @@ export class AbstractWallet {
 
   getID(): string {
     const thisWithPassphrase = this as unknown as WalletWithPassphrase;
-    const passphrase = thisWithPassphrase.getPassphrase ? thisWithPassphrase.getPassphrase() : '';
+    // A passphrase wallet is identified by its fingerprint, not the passphrase itself: the ID is
+    // stored next to the secret (Realm rows), and hashing the passphrase in would let anyone with
+    // that storage test passphrase guesses with one SHA-256 each. Wallets without a passphrase have
+    // no fingerprint and keep their original ID.
+    const passphrase =
+      thisWithPassphrase.passphraseFingerprint ?? (thisWithPassphrase.getPassphrase ? thisWithPassphrase.getPassphrase() : '');
     const path = this._derivationPath ?? '';
     // Mainnet contributes an empty suffix, so every ID minted before multi-network support is
     // byte-identical — existing Realm transaction rows and the stored selected-wallet id stay

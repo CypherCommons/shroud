@@ -1,4 +1,4 @@
-import { RouteProp, useFocusEffect, useRoute } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
@@ -13,11 +13,11 @@ import {
   InteractionManager,
 } from 'react-native';
 import { BlurView } from '@react-native-community/blur';
+import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSettings } from '../../hooks/context/useSettings';
 import { useStorage } from '../../hooks/context/useStorage';
 import { useScreenProtect } from '../../hooks/useScreenProtect';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation.ts';
-import { AddWalletStackParamList } from '../../navigation/AddWalletStack';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import loc from '../../loc';
 import presentAlert from '../../components/Alert';
@@ -28,16 +28,19 @@ import { ClashFont } from '../../constants/fonts';
 import BackupStepHeader from '../../components/BackupStepHeader';
 import Button from '../../components/Button';
 import KeyIcon from '../../components/icons/KeyIcon';
+import InfoIcon from '../../components/icons/InfoIcon';
 import WritePaperIcon from '../../components/icons/WritePaperIcon';
 import OfflineIcon from '../../components/icons/OfflineIcon';
 import NoShareIcon from '../../components/icons/NoShareIcon';
 import EyeIcon from '../../components/icons/EyeIcon';
 import CameraOffIcon from '../../components/icons/CameraOffIcon';
-import CheckboxUncheckedIcon from '../../components/icons/CheckboxUncheckedIcon';
-import CheckboxCheckedIcon from '../../components/icons/CheckboxCheckedIcon';
 import RevealEyeIcon from '../../components/icons/RevealEyeIcon';
-
-type RouteProps = RouteProp<AddWalletStackParamList, 'PleaseBackup'>;
+import CheckboxRow from '../../components/CheckboxRow';
+import TipCard from '../../components/TipCard';
+import BackupNotice from '../../components/BackupNotice';
+import NewPassphraseForm, { chosenPassphrase, EMPTY_NEW_PASSPHRASE, NewPassphraseState } from '../../components/NewPassphraseForm';
+import { KEYBOARD_BOTTOM_OFFSET } from '../../components/SafeAreaScrollView';
+import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
 
 type Rect = { top: number; left: number; width: number; height: number };
 
@@ -59,10 +62,10 @@ const SKIP_VERIFY_TAP_THRESHOLD = 5;
 const GRID_BLUR_AMOUNT = Platform.select({ android: 8, default: 20 });
 
 const PleaseBackup: React.FC = () => {
-  const { wallets } = useStorage();
-  const { walletID } = useRoute<RouteProps>().params;
-  const wallet = wallets.find(w => w.getID() === walletID)!;
-  const seedPhrase = wallet.getSecret();
+  const { getPendingWallet, commitPendingWallet } = useStorage();
+  // The wallet is a draft, outside the wallet list, until the backup is done or skipped.
+  const [pendingWallet] = useState(getPendingWallet);
+  const seedPhrase = pendingWallet?.getSecret() ?? '';
   // Stable identity: SeedVerification re-shuffles whenever its `seed` prop identity changes, so a
   // fresh array on every PleaseBackup render (a wallets/settings/theme update while VERIFY is on
   // screen) would silently reshuffle mid-verification and desync the selection state from it.
@@ -75,6 +78,19 @@ const PleaseBackup: React.FC = () => {
   const [isRevealed, setIsRevealed] = useState(false);
   const [hasConfirmedWritten, setHasConfirmedWritten] = useState(false);
   const [skipVerifyTaps, setSkipVerifyTaps] = useState(0);
+  // Kept here, not in the seed step, so it survives going back from verification or the intro.
+  const [newPassphrase, setNewPassphrase] = useState<NewPassphraseState>(EMPTY_NEW_PASSPHRASE);
+  // What Continue was last pressed with. Any edit to the form clears it, so the wallet only ever
+  // gets a passphrase the user confirmed and then didn't change.
+  const [applied, setApplied] = useState<{ passphrase?: string; fingerprint?: string }>({});
+  const [footerHeight, setFooterHeight] = useState(0);
+  const [isPreparing, setIsPreparing] = useState(false);
+  const passphrase = chosenPassphrase(newPassphrase);
+
+  const onPassphraseFormChange = useCallback((next: NewPassphraseState) => {
+    setNewPassphrase(next);
+    setApplied({});
+  }, []);
 
   // BlurView's Android capture root is the whole Activity content view, not its own bounds
   // (hardcoded natively, not a prop) — rendered as a position-matched sibling overlay to keep the
@@ -138,18 +154,53 @@ const PleaseBackup: React.FC = () => {
         indexBorder: colors.borderDefault,
       };
 
+  // The one place a draft becomes a real wallet, with the passphrase confirmed on the seed step. If
+  // that's refused, this screen is left: back is blocked here and retrying can't help.
+  // Runs once: saving rebuilds `navigation`, which re-fires the 5-tap shortcut's effect.
+  const hasCommittedRef = useRef(false);
+  const commitAndExit = useCallback(
+    async (exit: () => void) => {
+      if (!pendingWallet || hasCommittedRef.current) return;
+      hasCommittedRef.current = true;
+      try {
+        await commitPendingWallet(pendingWallet, applied.passphrase);
+      } catch (error: any) {
+        presentAlert({ message: error.message });
+        navigation.goBack();
+        return;
+      }
+      exit();
+    },
+    [commitPendingWallet, pendingWallet, applied.passphrase, navigation],
+  );
+
   const handleVerifyComplete = useCallback(() => {
-    InteractionManager.runAfterInteractions(() => {
-      navigation.navigateToWalletsList();
+    commitAndExit(() => {
+      InteractionManager.runAfterInteractions(() => {
+        navigation.navigateToWalletsList();
+      });
     });
     return true;
-  }, [navigation]);
+  }, [commitAndExit, navigation]);
 
   useEffect(() => {
     if (skipVerifyTaps >= SKIP_VERIFY_TAP_THRESHOLD) handleVerifyComplete();
   }, [skipVerifyTaps, handleVerifyComplete]);
 
-  const handleProceedToVerification = () => {
+  const handleProceedToVerification = async () => {
+    if (passphrase === null || isPreparing) return;
+    if (passphrase) {
+      setIsPreparing(true);
+      // Lets the spinner render before key derivation blocks the JS thread.
+      await new Promise(resolve => setTimeout(resolve, 0));
+      // A throwaway wallet, only to show which wallet the passphrase opens.
+      const preview = HDSilentPaymentsWallet.fromMnemonic(seedPhrase, passphrase);
+      setApplied({ passphrase, fingerprint: preview.passphraseFingerprint });
+      preview.clearCache();
+      setIsPreparing(false);
+    } else {
+      setApplied({});
+    }
     setCurrentStep(BackupStep.VERIFY);
   };
 
@@ -163,10 +214,14 @@ const PleaseBackup: React.FC = () => {
   const handleSkipBackup = () => {
     presentAlert({
       title: loc.pleasebackup.skip_title,
-      message: loc.pleasebackup.skip_message,
+      // A passphrase only counts once Continue was pressed with it, so say so if one was typed but not.
+      message:
+        newPassphrase.enabled && !applied.passphrase
+          ? `${loc.pleasebackup.skip_message}\n\n${loc.passphrase.skip_not_added}`
+          : loc.pleasebackup.skip_message,
       buttons: [
         { text: loc._.cancel, style: 'cancel' },
-        { text: loc.pleasebackup.skip_confirm, style: 'destructive', onPress: () => navigation.goBack() },
+        { text: loc.pleasebackup.skip_confirm, style: 'destructive', onPress: () => commitAndExit(() => navigation.goBack()) },
       ],
       options: { cancelable: false },
     });
@@ -216,6 +271,17 @@ const PleaseBackup: React.FC = () => {
     }, [disableScreenProtect, enableScreenProtect, isScreenCaptureAllowed]),
   );
 
+  // Nothing to back up (e.g. the screen remounted after the wallet was committed). Back is blocked here,
+  // so leave rather than show an empty screen.
+  const hasLeftRef = useRef(false);
+  useEffect(() => {
+    if (pendingWallet || hasLeftRef.current) return;
+    hasLeftRef.current = true;
+    navigation.goBack();
+  }, [pendingWallet, navigation]);
+
+  if (!pendingWallet) return null;
+
   return (
     <>
       <SafeAreaView style={styles.safeArea}>
@@ -225,21 +291,13 @@ const PleaseBackup: React.FC = () => {
 
             <ScrollView contentContainerStyle={styles.introScrollContent}>
               <View style={[styles.iconBadge, { backgroundColor: colors.surfaceSubtle, borderColor: colors.accentSubtle }]}>
-                <KeyIcon size={64} color={colors.brandPrimary} />
+                <KeyIcon size={26.4} color={colors.brandPrimary} />
               </View>
               <Text style={[styles.introTitle, { color: colors.textPrimary }]}>{loc.pleasebackup.intro_title}</Text>
               <Text style={[styles.introSubtitle, { color: colors.textMuted }]}>{loc.pleasebackup.intro_subtitle}</Text>
 
               {BACKUP_TIPS.map(tip => (
-                <View key={tip.bold} style={[styles.tipCard, { borderColor: colors.accentSubtle }]}>
-                  <View style={styles.tipIconBadge}>
-                    <tip.Icon size={20} color={colors.tipIconColor} />
-                  </View>
-                  <Text style={styles.tipText}>
-                    <Text style={[styles.tipBold, { color: colors.textPrimary }]}>{tip.bold}</Text>
-                    <Text style={[styles.tipBody, { color: colors.textSecondary }]}>{tip.body}</Text>
-                  </Text>
-                </View>
+                <TipCard key={tip.bold} Icon={tip.Icon} bold={tip.bold} body={tip.body} style={styles.tipCard} />
               ))}
             </ScrollView>
 
@@ -260,22 +318,22 @@ const PleaseBackup: React.FC = () => {
           <View style={styles.stepRoot}>
             <BackupStepHeader onBack={handleBackToIntro} filledSteps={2} totalSteps={3} testID="RevealBackButton" />
 
-            <ScrollView
+            <KeyboardAwareScrollView
               contentContainerStyle={styles.revealScrollContent}
               onScroll={handleGridLayout}
-              scrollEventThrottle={16}
+              bottomOffset={KEYBOARD_BOTTOM_OFFSET + footerHeight}
+              keyboardShouldPersistTaps="handled"
               testID="PleaseBackupScrollView"
             >
               <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.pleasebackup.title}</Text>
               <Text style={[styles.subtitle, { color: colors.textMuted }]}>{loc.pleasebackup.text}</Text>
 
-              <View style={[styles.warningBanner, { backgroundColor: colors.surfaceSubtle, borderColor: colors.accentSubtle }]}>
-                <CameraOffIcon size={20} color={colors.brandPrimary} />
-                <Text style={styles.warningText}>
-                  <Text style={{ color: colors.warningBannerPrefixText }}>{loc.pleasebackup.screenshot_warning_prefix}</Text>
-                  <Text style={[styles.warningEmphasis, { color: colors.textBrand }]}>{loc.pleasebackup.screenshot_warning_emphasis}</Text>
-                </Text>
-              </View>
+              <BackupNotice
+                Icon={CameraOffIcon}
+                prefix={loc.pleasebackup.screenshot_warning_prefix}
+                emphasis={loc.pleasebackup.screenshot_warning_emphasis}
+                style={styles.warningBanner}
+              />
 
               <View
                 style={[styles.wordGridWrapper, !isRevealed && { backgroundColor: colors.gridContainerBackground }]}
@@ -303,22 +361,18 @@ const PleaseBackup: React.FC = () => {
                 </View>
               </View>
 
-              <TouchableOpacity
+              <CheckboxRow
+                label={loc.pleasebackup.confirm_written_down}
+                checked={hasConfirmedWritten}
+                onToggle={() => setHasConfirmedWritten(c => !c)}
                 style={styles.checkboxRow}
-                onPress={() => setHasConfirmedWritten(c => !c)}
                 testID="ConfirmWrittenDown"
-                activeOpacity={0.7}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: hasConfirmedWritten }}
-              >
-                {hasConfirmedWritten ? (
-                  <CheckboxCheckedIcon size={20} color={colors.brandPrimary} />
-                ) : (
-                  <CheckboxUncheckedIcon size={20} color={colors.checkboxUncheckedColor} />
-                )}
-                <Text style={[styles.checkboxText, { color: colors.textPrimary }]}>{loc.pleasebackup.confirm_written_down}</Text>
-              </TouchableOpacity>
-            </ScrollView>
+              />
+
+              <View style={styles.passphraseForm}>
+                <NewPassphraseForm state={newPassphrase} onChange={onPassphraseFormChange} />
+              </View>
+            </KeyboardAwareScrollView>
 
             {!isRevealed && gridOverlayLayout && (
               <View style={[styles.gridRevealOverlay, gridOverlayLayout]} pointerEvents="box-none">
@@ -349,21 +403,26 @@ const PleaseBackup: React.FC = () => {
                 </Modal>
               ))}
 
-            <View style={styles.footer}>
-              <Button
-                title={loc.pleasebackup.continue}
-                onPress={handleProceedToVerification}
-                testID="ContinueToVerify"
-                borderRadius={16}
-                disabled={!hasConfirmedWritten}
-                disabledBackgroundColor={colors.backupContinueDisabledBackground}
-                // Button's default disabled text (alternativeTextColor) is ~identical to this
-                // background in light mode and ~1:1 contrast in dark — colors.black is the only
-                // token here that clears 4.5:1 against both backupContinueDisabledBackground shades.
-                disabledTextColor={colors.black}
-                style={styles.footerButton}
-              />
-            </View>
+            {/* Rides on top of the keyboard. The keyboard covers SafeArea's bottom padding, so the open
+                offset hands that back. */}
+            <KeyboardStickyView offset={{ opened: insets.bottom }}>
+              <View style={styles.footer} onLayout={e => setFooterHeight(e.nativeEvent.layout.height)}>
+                <Button
+                  title={loc.pleasebackup.continue}
+                  onPress={handleProceedToVerification}
+                  testID="ContinueToVerify"
+                  borderRadius={16}
+                  disabled={!hasConfirmedWritten || passphrase === null || isPreparing}
+                  showActivityIndicator={isPreparing}
+                  disabledBackgroundColor={colors.backupContinueDisabledBackground}
+                  // Button's default disabled text (alternativeTextColor) is ~identical to this
+                  // background in light mode and ~1:1 contrast in dark — colors.black is the only
+                  // token here that clears 4.5:1 against both backupContinueDisabledBackground shades.
+                  disabledTextColor={colors.black}
+                  style={styles.footerButton}
+                />
+              </View>
+            </KeyboardStickyView>
 
             {isE2E() && (
               <TouchableWithoutFeedback
@@ -379,7 +438,16 @@ const PleaseBackup: React.FC = () => {
         )}
 
         {currentStep === BackupStep.VERIFY && (
-          <SeedVerification seed={seedWords} onSuccess={handleVerifyComplete} onBack={handleBackToSeed} />
+          <SeedVerification
+            seed={seedWords}
+            onSuccess={handleVerifyComplete}
+            onBack={handleBackToSeed}
+            notice={
+              applied.fingerprint ? (
+                <BackupNotice Icon={InfoIcon} prefix={loc.passphrase.backup_notice} emphasis={applied.fingerprint} />
+              ) : undefined
+            }
+          />
         )}
       </SafeAreaView>
     </>
@@ -412,41 +480,13 @@ const styles = StyleSheet.create({
   },
   introTitle: { fontFamily: ClashFont.medium, fontSize: 32, lineHeight: 40, letterSpacing: -1.2, marginBottom: 12 },
   introSubtitle: { fontFamily: ClashFont.regular, fontSize: 15, lineHeight: 22.5, marginBottom: 24 },
-  tipCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 17,
-    gap: 12,
-    marginBottom: 16,
-  },
-  tipIconBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tipText: { flex: 1, fontSize: 14, lineHeight: 20 },
-  tipBold: { fontFamily: ClashFont.medium },
-  tipBody: { fontFamily: ClashFont.regular },
+  tipCard: { marginBottom: 16 },
   revealScrollContent: {
     paddingHorizontal: 24,
   },
   title: { fontFamily: ClashFont.medium, fontSize: 32, lineHeight: 40, letterSpacing: -1.2, marginBottom: 12 },
   subtitle: { fontFamily: ClashFont.regular, fontSize: 15, lineHeight: 22.5, marginBottom: 20 },
-  warningBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    marginBottom: 20,
-  },
-  warningText: { flex: 1, fontFamily: ClashFont.regular, fontSize: 14, lineHeight: 20 },
-  warningEmphasis: { fontFamily: ClashFont.medium },
+  warningBanner: { marginBottom: 20 },
   wordGridWrapper: {
     marginBottom: 20,
     borderRadius: 20,
@@ -543,13 +583,8 @@ const styles = StyleSheet.create({
   },
   revealTitle: { fontFamily: ClashFont.semibold, fontSize: 16, marginBottom: 6 },
   revealCaption: { fontFamily: ClashFont.regular, fontSize: 13 },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginTop: 4,
-  },
-  checkboxText: { flex: 1, fontFamily: ClashFont.regular, fontSize: 15, lineHeight: 22.5 },
+  checkboxRow: { marginTop: 4 },
+  passphraseForm: { marginTop: 12, marginBottom: 24 },
   skipVerifyBackdoor: {
     position: 'absolute',
     width: 1,

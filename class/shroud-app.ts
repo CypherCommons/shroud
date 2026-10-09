@@ -13,7 +13,8 @@ import { randomBytes } from './rng';
 import { ExtendedTransaction, Transaction, TWallet } from './wallets/types';
 import { HDSilentPaymentsWallet } from './wallets/hd-bip352-wallet.ts';
 import { readContacts, TContacts } from './contacts';
-import { getActiveNetworkId } from '../modules/network';
+import { getActiveNetworkId, type NetworkId } from '../modules/network';
+import { normaliseStoredNetworkId } from './wallets/abstract-wallet';
 
 let usedBucketNum: boolean | number = false;
 let savingInProgress = 0; // its both a flag and a counter of attempts to write to disk
@@ -30,8 +31,18 @@ type TRealmTransaction = {
   tx: string;
 };
 
+// A passphrase wallet as it was read from storage. It stays serialized until the user enters the
+// passphrase, since without it no key or ID can be derived.
+type TLockedWallet = {
+  networkId: NetworkId;
+  fingerprint: string;
+  blob: string;
+};
+
 type TBucketStorage = {
   wallets: string[]; // array of serialized wallets, not actual wallet objects
+  // Created wallets whose backup isn't finished yet, at most one per chain. Absent in older buckets.
+  pendingWallets?: string[];
   tx_metadata: TTXMetadata;
   contacts: TContacts;
 };
@@ -49,10 +60,16 @@ export class ShroudApp {
   public cachedPassword?: false | string;
   public tx_metadata: TTXMetadata;
   public wallets: TWallet[];
+  public lockedWallets: TLockedWallet[];
+  // Saved so that a restart during backup brings back the same words; never in `wallets`, and
+  // never with a passphrase, which is only applied when the wallet is committed.
+  public pendingWallets: TWallet[];
   public contacts: TContacts;
 
   constructor() {
     this.wallets = [];
+    this.lockedWallets = [];
+    this.pendingWallets = [];
     this.tx_metadata = {};
     this.contacts = {};
     this.cachedPassword = false;
@@ -174,7 +191,11 @@ export class ShroudApp {
     if (password === this.cachedPassword) {
       this.cachedPassword = undefined;
       await this.saveToDisk();
-      this.wallets = [];
+      // Open passphrase wallets stay open: the reload can't reopen them without the passphrase, and
+      // it skips their stored copies because they're already here.
+      this.wallets = this.wallets.filter(w => w.passphraseFingerprint);
+      this.lockedWallets = [];
+      this.pendingWallets = [];
       this.tx_metadata = {};
       this.contacts = {};
       return this.loadFromDisk();
@@ -205,6 +226,8 @@ export class ShroudApp {
   createFakeStorage = async (fakePassword: string): Promise<boolean> => {
     usedBucketNum = false; // resetting currently used bucket so we wont overwrite it
     this.wallets = [];
+    this.lockedWallets = [];
+    this.pendingWallets = [];
     this.tx_metadata = {};
     this.contacts = {};
 
@@ -351,7 +374,7 @@ export class ShroudApp {
       this.contacts = readContacts(data.contacts);
       const wallets = data.wallets;
       for (const key of wallets) {
-        let parsedWallet: { type?: string } | undefined;
+        let parsedWallet: { type?: string; networkId?: unknown; passphraseFingerprint?: string } | undefined;
         try {
           parsedWallet = JSON.parse(key);
         } catch (error) {
@@ -363,6 +386,19 @@ export class ShroudApp {
           presentAlert({
             message: `A wallet of type "${parsedWallet?.type ?? 'unknown'}" was found in storage but is no longer supported. Please restore it using its seed phrase before continuing. It will not be loaded.`,
           });
+          continue;
+        }
+
+        const fingerprint = parsedWallet.passphraseFingerprint;
+        if (fingerprint) {
+          const networkId = normaliseStoredNetworkId(parsedWallet.networkId);
+          // Matched on chain + fingerprint, not the blob: saving an unlocked wallet rewrites its blob,
+          // and a reload must not lock it again next to the open copy.
+          const isOpen = this.wallets.some(w => w.networkId === networkId && w.passphraseFingerprint === fingerprint);
+          const isLocked = this.lockedWallets.some(l => l.networkId === networkId && l.fingerprint === fingerprint);
+          if (!isOpen && !isLocked) {
+            this.lockedWallets.push({ networkId, fingerprint, blob: key });
+          }
           continue;
         }
 
@@ -381,11 +417,93 @@ export class ShroudApp {
         }
       }
       if (realm) realm.close();
+
+      for (const draft of data.pendingWallets ?? []) {
+        const wallet = HDSilentPaymentsWallet.fromJson(draft);
+        const chainTaken =
+          this.wallets.some(w => w.networkId === wallet.networkId) ||
+          this.lockedWallets.some(l => l.networkId === wallet.networkId) ||
+          this.pendingWallets.some(w => w.networkId === wallet.networkId);
+        if (!chainTaken) this.pendingWallets.push(wallet);
+      }
       return true;
     } else {
       return false; // failed loading data or loading/decryption data
     }
   }
+
+  /** The selected chain's created-but-not-backed-up wallet, if any. */
+  getPendingWallet = (): TWallet | null => {
+    const activeNetworkId = getActiveNetworkId();
+    return this.pendingWallets.find(w => w.networkId === activeNetworkId) ?? null;
+  };
+
+  /** Replaces the draft for `wallet`'s chain. The caller saves. */
+  setPendingWallet = (wallet: TWallet): void => {
+    this.pendingWallets = [...this.pendingWallets.filter(w => w.networkId !== wallet.networkId), wallet];
+  };
+
+  /** Drops the selected chain's draft. The caller saves. */
+  clearPendingWallet = (): void => {
+    const activeNetworkId = getActiveNetworkId();
+    this.pendingWallets = this.pendingWallets.filter(w => w.networkId !== activeNetworkId);
+  };
+
+  /** Whether the selected chain's wallet is waiting for its passphrase. */
+  hasLockedWallet = (): boolean => {
+    const activeNetworkId = getActiveNetworkId();
+    return this.lockedWallets.some(locked => locked.networkId === activeNetworkId);
+  };
+
+  /**
+   * Opens the selected chain's passphrase wallet and moves it into `this.wallets`. Returns null,
+   * changing nothing, when the passphrase is wrong.
+   */
+  unlockWallet = async (passphrase: string): Promise<TWallet | null> => {
+    const activeNetworkId = getActiveNetworkId();
+    const locked = this.lockedWallets.find(l => l.networkId === activeNetworkId);
+    if (!locked) return null;
+
+    const wallet = HDSilentPaymentsWallet.unlockFromJson(locked.blob, passphrase);
+    if (!wallet) return null;
+
+    let realm;
+    try {
+      realm = await this.getRealmForTransactions();
+      this.inflateWalletFromRealm(realm, wallet);
+    } catch (error: any) {
+      presentAlert({ message: error.message });
+    } finally {
+      realm?.close();
+    }
+
+    this.lockedWallets = this.lockedWallets.filter(l => l !== locked);
+    this.wallets.push(wallet);
+    return wallet;
+  };
+
+  /**
+   * Drops the selected chain's passphrase wallet without opening it, with its cached transactions.
+   * Its ID needs only the stored fingerprint, not the passphrase. The caller saves.
+   */
+  forgetLockedWallet = async (): Promise<void> => {
+    const activeNetworkId = getActiveNetworkId();
+    const forgotten = this.lockedWallets.filter(l => l.networkId === activeNetworkId);
+    this.lockedWallets = this.lockedWallets.filter(l => l.networkId !== activeNetworkId);
+
+    let realm;
+    try {
+      realm = await this.getRealmForTransactions();
+      for (const locked of forgotten) {
+        const id = HDSilentPaymentsWallet.fromJson(locked.blob).getID();
+        realm.write(() => realm!.delete(realm!.objects('WalletTransactions').filtered(`walletid = '${id}'`)));
+      }
+    } catch (error: any) {
+      console.warn('[ShroudApp] Could not clear cached transactions of a forgotten wallet:', error.message);
+    } finally {
+      realm?.close();
+    }
+  };
 
   /**
    * Lookup wallet in list by it's secret and
@@ -549,9 +667,17 @@ export class ShroudApp {
         walletsToSave.push(JSON.stringify({ ...keyCloned, type: keyCloned.type }));
       }
       if (realm) realm.close();
+      // Written back as read: dropping them here would delete every wallet still waiting for its passphrase.
+      for (const locked of this.lockedWallets) walletsToSave.push(locked.blob);
+
+      const pendingToSave = this.pendingWallets.map(draft => {
+        draft.prepareForSerialization();
+        return JSON.stringify({ ...draft.toPersistable(), type: draft.type });
+      });
 
       let data: TBucketStorage | string[] /* either a bucket, or an array of encrypted buckets */ = {
         wallets: walletsToSave,
+        pendingWallets: pendingToSave,
         tx_metadata: this.tx_metadata,
         contacts: this.contacts,
       };

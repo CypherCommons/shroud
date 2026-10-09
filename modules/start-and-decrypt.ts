@@ -11,7 +11,7 @@ let unlockAttempt = 0;
 
 export const startAndDecrypt = async (retry?: boolean): Promise<boolean> => {
   console.log('startAndDecrypt');
-  if (shroudApp.getWallets().length > 0) {
+  if (shroudApp.getWallets().length > 0 || shroudApp.hasLockedWallet()) {
     console.log('App already has some wallets, so we are in already started state, exiting startAndDecrypt');
     return true;
   }

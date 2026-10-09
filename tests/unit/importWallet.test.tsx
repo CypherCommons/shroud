@@ -30,9 +30,10 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
   useSafeAreaFrame: () => ({ x: 0, y: 0, width: 320, height: 640 }),
 }));
+let mockRouteParams: Record<string, unknown> = {};
 jest.mock('@react-navigation/native', () => ({
   ...jest.requireActual('@react-navigation/native'),
-  useRoute: () => ({ params: {} }),
+  useRoute: () => ({ params: mockRouteParams }),
 }));
 
 const mockUseStorage = useStorage as jest.Mock;
@@ -59,6 +60,7 @@ describe('unit - ImportWallet', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRouteParams = {};
 
     addAndSaveWallet = jest.fn().mockResolvedValue(undefined);
     navigateToWalletsList = jest.fn();
@@ -127,6 +129,54 @@ describe('unit - ImportWallet', () => {
         ),
       );
       assert.strictEqual(queryByTestId('RestoreSuccessSheet'), null);
+    });
+  });
+
+  describe('passphrase', () => {
+    it('restores with the passphrase and shows the wallet fingerprint', async () => {
+      const { getByTestId } = renderScreen();
+
+      fireEvent.changeText(getByTestId('MnemonicInput'), VALID_MNEMONIC);
+      fireEvent(getByTestId('UsePassphraseToggle'), 'press');
+      fireEvent.changeText(getByTestId('RestorePassphraseInput'), 'TREZOR');
+      fireEvent.press(getByTestId('DoImport'));
+
+      await waitFor(() => assert.strictEqual(addAndSaveWallet.mock.calls.length, 1));
+      const [savedWallet] = addAndSaveWallet.mock.calls[0];
+      assert.strictEqual(savedWallet.getPassphrase(), 'TREZOR');
+      assert.ok(savedWallet.passphraseFingerprint);
+
+      await waitFor(() => getByTestId('RestoreSuccessFingerprint'));
+    });
+
+    it('only fills in scanned words while a passphrase is switched on', async () => {
+      jest.useFakeTimers();
+      const { getByTestId, rerender } = renderScreen();
+      fireEvent(getByTestId('UsePassphraseToggle'), 'press');
+
+      mockRouteParams = { onBarScanned: VALID_MNEMONIC };
+      rerender(
+        <SafeAreaProvider>
+          <NavigationContainer>
+            <ImportWallet />
+          </NavigationContainer>
+        </SafeAreaProvider>,
+      );
+      jest.advanceTimersByTime(1000);
+      jest.useRealTimers();
+
+      await waitFor(() => assert.strictEqual(getByTestId('MnemonicInput').props.value, VALID_MNEMONIC));
+      assert.strictEqual(addAndSaveWallet.mock.calls.length, 0);
+    });
+
+    it('does not restore while the passphrase is switched on but empty', () => {
+      const { getByTestId } = renderScreen();
+
+      fireEvent.changeText(getByTestId('MnemonicInput'), VALID_MNEMONIC);
+      fireEvent(getByTestId('UsePassphraseToggle'), 'press');
+      fireEvent.press(getByTestId('DoImport'));
+
+      assert.strictEqual(addAndSaveWallet.mock.calls.length, 0);
     });
   });
 
