@@ -63,9 +63,11 @@ interface SeedVerificationProps {
   seed: string[];
   onSuccess: () => void;
   onBack: () => void;
+  /** Shown under the instructions, e.g. the passphrase reminder. */
+  notice?: React.ReactNode;
 }
 
-const SeedVerification: React.FC<SeedVerificationProps> = ({ seed, onSuccess, onBack }) => {
+const SeedVerification: React.FC<SeedVerificationProps> = ({ seed, onSuccess, onBack, notice }) => {
   const { colors } = useTheme();
   const [shuffledWords, setShuffledWords] = useState<string[]>([]);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
@@ -160,6 +162,7 @@ const SeedVerification: React.FC<SeedVerificationProps> = ({ seed, onSuccess, on
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.pleasebackup.heading}</Text>
         <Text style={[styles.subtitle, { color: colors.textMuted }]}>{subtitle}</Text>
+        {notice ? <View style={styles.notice}>{notice}</View> : null}
 
         <View style={styles.wordsGrid}>
           {shuffledWords.map((word, index) => {
@@ -210,6 +213,7 @@ const styles = StyleSheet.create({
   },
   title: { fontFamily: ClashFont.medium, fontSize: 32, lineHeight: 40, letterSpacing: -1.2, marginBottom: 12 },
   subtitle: { fontFamily: ClashFont.regular, fontSize: 15, lineHeight: 22.5, marginBottom: 24 },
+  notice: { marginBottom: 24 },
   wordsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

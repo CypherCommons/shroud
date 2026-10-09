@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { ActivityIndicator, View, Text, StyleSheet, Image } from 'react-native';
 import { useTheme } from '../../components/themes';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
@@ -43,7 +43,17 @@ async function startScanningFromNow(w: TWallet): Promise<void> {
 const OnboardingScreen: React.FC = () => {
   const { colors } = useTheme();
   const { navigate, navigateToWalletsList } = useExtendedNavigation<NavigationProps>();
-  const { addWallet, deleteWallet, saveToDisk, wallets, activeNetworkId, isSwitchingNetwork, walletToReuse } = useStorage();
+  const {
+    addWallet,
+    deleteWallet,
+    saveToDisk,
+    wallets,
+    activeNetworkId,
+    isSwitchingNetwork,
+    walletToReuse,
+    setPendingWallet,
+    getPendingWallet,
+  } = useStorage();
   const selectNetwork = useSelectNetwork();
   const networkName = getNetwork(activeNetworkId).displayName;
 
@@ -79,25 +89,41 @@ const OnboardingScreen: React.FC = () => {
     [addWallet, deleteWallet, saveToDisk],
   );
 
+  // Creating awaits the indexer, so a second tap would otherwise make a second pending wallet after
+  // the backup screen already shows the first one's words.
+  const isCreatingRef = useRef(false);
+
   const handleContinue = useCallback(async () => {
     if (isSwitchingNetwork) return;
     if (wallets.length > 0) {
       navigateToWalletsList();
       return;
     }
+    if (isCreatingRef.current) return;
+    isCreatingRef.current = true;
 
-    const w = new HDSilentPaymentsWallet();
-    w.setLabel(loc.wallets.details_title);
-    await w.generate();
-    if (!(await addNewWallet(w, 'now'))) return;
+    try {
+      // Creation left unfinished (e.g. the app was killed during backup): same words again.
+      if (getPendingWallet()) {
+        navigate('AddWalletRoot', { screen: 'PleaseBackup' });
+        return;
+      }
 
-    navigate('AddWalletRoot', {
-      screen: 'PleaseBackup',
-      params: {
-        walletID: w.getID(),
-      },
-    });
-  }, [isSwitchingNetwork, wallets, navigateToWalletsList, addNewWallet, navigate]);
+      const w = new HDSilentPaymentsWallet();
+      w.setLabel(loc.wallets.details_title);
+      await w.generate();
+      await startScanningFromNow(w);
+      // Saved as a draft before its words are shown; it becomes a real wallet once the backup is done
+      // (or skipped), so a passphrase can still be chosen there.
+      await setPendingWallet(w);
+
+      triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
+
+      navigate('AddWalletRoot', { screen: 'PleaseBackup' });
+    } finally {
+      isCreatingRef.current = false;
+    }
+  }, [isSwitchingNetwork, wallets, navigateToWalletsList, getPendingWallet, setPendingWallet, navigate]);
 
   const reuseRecoveryPhrase = useCallback(
     async (source: TWallet, scanFrom: ScanFrom) => {

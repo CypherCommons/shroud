@@ -162,6 +162,14 @@ const ViewRecoveryPhrase: React.FC = () => {
             emphasis={loc.settings.security_recovery_phrase_warning_emphasis}
             containerStyle={styles.banner}
           />
+          {wallet?.passphraseFingerprint ? (
+            <InfoBanner
+              variant="caution"
+              title={loc.passphrase.backup_title}
+              text={loc.formatString(loc.passphrase.export_text, { fingerprint: wallet.passphraseFingerprint }) as string}
+              containerStyle={styles.banner}
+            />
+          ) : null}
 
           <SeedWordsGrid ref={gridWrapperRef} words={words} revealed={isRevealed} onLayout={measureRevealArea} />
         </ScrollView>

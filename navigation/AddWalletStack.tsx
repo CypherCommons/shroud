@@ -3,8 +3,7 @@ import React from 'react';
 
 import navigationStyle from '../components/navigationStyle';
 import { useTheme } from '../components/themes';
-import loc from '../loc';
-import { ImportSpeedComponent, ImportWalletComponent, PleaseBackupComponent } from './LazyLoadAddWalletStack';
+import { ImportWalletComponent, PleaseBackupComponent } from './LazyLoadAddWalletStack';
 import { ScanQRCodeComponent } from './LazyLoadScanQRCodeStack';
 import { ScanQRCodeParamList } from './DetailViewStackParamList';
 
@@ -12,10 +11,7 @@ export type AddWalletStackParamList = {
   ImportWallet?: {
     onBarScanned?: string;
   };
-  ImportSpeed: undefined;
-  PleaseBackup: {
-    walletID: string;
-  };
+  PleaseBackup: undefined;
   ScanQRCode: ScanQRCodeParamList;
 };
 
@@ -26,11 +22,6 @@ const AddWalletStack = () => {
   return (
     <Stack.Navigator initialRouteName="ImportWallet">
       <Stack.Screen name="ImportWallet" component={ImportWalletComponent} options={navigationStyle({ title: '' })(theme)} />
-      <Stack.Screen
-        name="ImportSpeed"
-        component={ImportSpeedComponent}
-        options={navigationStyle({ statusBarStyle: 'light', title: loc.wallets.import_title })(theme)}
-      />
       <Stack.Screen
         name="PleaseBackup"
         component={PleaseBackupComponent}
