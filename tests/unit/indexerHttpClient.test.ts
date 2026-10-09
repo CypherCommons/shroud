@@ -167,6 +167,16 @@ describe('unit - IndexerHttpClient Tor routing', () => {
     assert.strictEqual(torManagerMock.markUnavailable.mock.calls.length, 0);
   }, 10000);
 
+  it('retries a 429 with backoff instead of treating it as a definitive 4xx', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 429, json: async () => ({}) }).mockResolvedValue(okJsonResponse({ ok: true }));
+
+    const client = new IndexerHttpClient('https://clearnet.example', 1000);
+    const result = await client.get('/status', 'test');
+
+    assert.deepStrictEqual(result, { ok: true });
+    assert.strictEqual(mockFetch.mock.calls.length, 2);
+  }, 10000);
+
   it('goes straight to clearnet without attempting Tor when Tor is disabled', async () => {
     mockFetch.mockResolvedValue(okJsonResponse({ ok: true }));
 
