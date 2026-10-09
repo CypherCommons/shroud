@@ -349,6 +349,35 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     return true;
   }
 
+  /**
+   * The indexer doesn't report spends, and markUTXOAsSpent only sees this device's own broadcasts,
+   * so a restored wallet would count SP coins spent long ago. Every SP output has its own taproot
+   * address, so ask Electrum: a coin it knows (funding tx in the address history) but no longer
+   * lists as unspent is spent. A coin Electrum hasn't seen yet is left alone.
+   */
+  private async markSpentSilentPaymentUTXOs(): Promise<void> {
+    const utxos = this.getUTXOs();
+    if (utxos.length === 0) return;
+
+    try {
+      const addresses = [...new Set(utxos.map(u => u.address))];
+      const [unspent, history] = await Promise.all([
+        Electrum.multiGetUtxoByAddress(addresses),
+        Electrum.multiGetHistoryByAddress(addresses),
+      ]);
+
+      for (const utxo of utxos) {
+        const known = history[utxo.address]?.some(h => h.tx_hash === utxo.txid);
+        const listed = unspent[utxo.address];
+        if (known && listed && !listed.some(u => u.txid === utxo.txid && u.vout === utxo.vout)) {
+          this.markUTXOAsSpent(utxo.txid, utxo.vout);
+        }
+      }
+    } catch (error) {
+      console.warn('[SP] Could not check SP coins for spends:', error);
+    }
+  }
+
   private ensurePendingInputsInitialized(): void {
     if (!this._sp_pending_inputs || !(this._sp_pending_inputs instanceof Set)) {
       this._sp_pending_inputs = new Set();
@@ -620,6 +649,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
     try {
       const result = await this.activeScanPromise;
+      await this.markSpentSilentPaymentUTXOs();
       return result;
     } finally {
       this.activeScanPromise = null;
