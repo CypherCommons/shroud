@@ -636,7 +636,6 @@ describe('BIP-352 Silent Payments', () => {
       wallet.prepareForSerialization();
       expect(Object.keys(wallet.toPersistable()).sort()).toEqual([
         '_address',
-        '_address_to_wif_cache',
         '_balances_by_external_index',
         '_balances_by_internal_index',
         '_birthHeight',
@@ -665,7 +664,7 @@ describe('BIP-352 Silent Payments', () => {
         'networkId',
         'next_free_address_index',
         'next_free_change_address_index',
-        'passphrase',
+        'passphraseFingerprint',
         'preferredBalanceUnit',
         'secret',
         'segwitType',
@@ -675,6 +674,92 @@ describe('BIP-352 Silent Payments', () => {
         'usedAddresses',
         'userHasSavedExport',
       ]);
+    });
+  });
+
+  describe('passphrase', () => {
+    // BIP39 test vector: this mnemonic with passphrase "TREZOR"
+    const TREZOR_SEED_HEX =
+      'c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04';
+
+    it('derives the silent-payment keys from mnemonic + passphrase', () => {
+      const plain = HDSilentPaymentsWallet.fromMnemonic(TEST_SEED);
+      const withPassphrase = HDSilentPaymentsWallet.fromMnemonic(TEST_SEED, 'TREZOR');
+
+      expect((withPassphrase as any).getSeed().toString('hex')).toBe(TREZOR_SEED_HEX);
+      const expectedAddress = getSilentPaymentAddress(Buffer.from(TREZOR_SEED_HEX, 'hex'), getNetwork('bitcoin'));
+      expect(withPassphrase.getSilentPaymentAddress()).toBe(expectedAddress);
+      expect(withPassphrase.getSilentPaymentAddress()).not.toBe(plain.getSilentPaymentAddress());
+      expect(withPassphrase.getXpub()).not.toBe(plain.getXpub());
+      expect(withPassphrase.getID()).not.toBe(plain.getID());
+    });
+
+    it('treats an empty passphrase as none', () => {
+      const plain = HDSilentPaymentsWallet.fromMnemonic(TEST_SEED);
+      const empty = HDSilentPaymentsWallet.fromMnemonic(TEST_SEED);
+      empty.setPassphrase('');
+
+      expect(empty.getID()).toBe(plain.getID());
+      expect(empty.getSilentPaymentAddress()).toBe(plain.getSilentPaymentAddress());
+      expect(empty.passphraseFingerprint).toBeUndefined();
+    });
+
+    it('gives the same wallet for composed and decomposed input', () => {
+      const composed = HDSilentPaymentsWallet.fromMnemonic(TEST_SEED, 'caf\u00e9');
+      const decomposed = HDSilentPaymentsWallet.fromMnemonic(TEST_SEED, 'cafe\u0301');
+      expect(composed.getID()).toBe(decomposed.getID());
+      expect(composed.passphraseFingerprint).toBe(decomposed.passphraseFingerprint);
+    });
+
+    // The create flow sets these before the backup screen, and the passphrase only after it.
+    it('accepts a passphrase on a generated wallet with its label and birth height set', async () => {
+      const wallet = new HDSilentPaymentsWallet();
+      wallet.setLabel('Wallet');
+      await wallet.generate();
+      wallet.updateBirthHeight(900_000, { pendingTimestamp: 1_700_000_000 });
+
+      wallet.setPassphrase('TREZOR');
+
+      expect(wallet.passphraseFingerprint).toBe(HDSilentPaymentsWallet.fromMnemonic(wallet.getSecret(), 'TREZOR').passphraseFingerprint);
+      expect(wallet.getLabel()).toBe('Wallet');
+      expect((wallet as any)._birthHeight).toBe(900_000);
+      expect(wallet.getPendingBirthTimestamp()).toBe(1_700_000_000);
+    });
+
+    it('refuses a passphrase once keys are derived', () => {
+      const wallet = HDSilentPaymentsWallet.fromMnemonic(TEST_SEED);
+      wallet.getSilentPaymentAddress();
+      expect(() => wallet.setPassphrase('TREZOR')).toThrow();
+    });
+
+    it('persists the fingerprint but never the passphrase', () => {
+      const wallet = HDSilentPaymentsWallet.fromMnemonic(TEST_SEED, 'TREZOR');
+      wallet.prepareForSerialization();
+      const json = JSON.stringify(wallet.toPersistable());
+      expect(json).not.toContain('TREZOR');
+      expect(JSON.parse(json).passphraseFingerprint).toBe(wallet.passphraseFingerprint);
+    });
+
+    it('ignores a passphrase stored in an old blob', () => {
+      const wallet = HDSilentPaymentsWallet.fromMnemonic(TEST_SEED);
+      wallet.prepareForSerialization();
+      const blob = JSON.stringify({ ...wallet.toPersistable(), passphrase: 'TREZOR' });
+      const loaded = HDSilentPaymentsWallet.fromJson(blob);
+      expect(loaded.getPassphrase()).toBeUndefined();
+      expect(loaded.getID()).toBe(wallet.getID());
+    });
+
+    it('unlocks with the right passphrase only', () => {
+      const wallet = HDSilentPaymentsWallet.fromMnemonic(TEST_SEED, 'TREZOR');
+      const address = wallet.getSilentPaymentAddress();
+      wallet.prepareForSerialization();
+      const blob = JSON.stringify(wallet.toPersistable());
+
+      expect(HDSilentPaymentsWallet.unlockFromJson(blob, 'trezor')).toBeNull();
+      expect(HDSilentPaymentsWallet.unlockFromJson(blob, '')).toBeNull();
+      const unlocked = HDSilentPaymentsWallet.unlockFromJson(blob, 'TREZOR');
+      expect(unlocked?.getID()).toBe(wallet.getID());
+      expect(unlocked?.getSilentPaymentAddress()).toBe(address);
     });
   });
 });

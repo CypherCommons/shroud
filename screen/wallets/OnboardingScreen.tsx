@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { useTheme } from '../../components/themes';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
@@ -7,7 +7,6 @@ import { DetailViewStackParamList } from '../../navigation/DetailViewStackParamL
 import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
 import { ClashFont } from '../../constants/fonts';
 import loc from '../../loc';
-import presentAlert from '../../components/Alert';
 import { useStorage } from '../../hooks/context/useStorage';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
 import { getDefaultIndexer } from '../../modules/SilentPaymentIndexer';
@@ -19,43 +18,52 @@ type NavigationProps = NativeStackNavigationProp<DetailViewStackParamList, 'Onbo
 const OnboardingScreen: React.FC = () => {
   const { colors } = useTheme();
   const { navigate, navigateToWalletsList } = useExtendedNavigation<NavigationProps>();
-  const { addWallet, saveToDisk, wallets } = useStorage();
+  const { setPendingWallet, getPendingWallet, wallets } = useStorage();
+
+  // Creating awaits the indexer, so a second tap would otherwise make a second pending wallet after
+  // the backup screen already shows the first one's words.
+  const isCreatingRef = useRef(false);
 
   const handleContinue = useCallback(async () => {
     if (wallets.length > 0) {
       navigateToWalletsList();
       return;
     }
+    if (isCreatingRef.current) return;
+    isCreatingRef.current = true;
 
-    const w = new HDSilentPaymentsWallet();
-    w.setLabel(loc.wallets.details_title);
-    await w.generate();
-    if (!addWallet(w)) {
-      presentAlert({ message: loc.wallets.single_wallet_limit });
-      return;
-    }
     try {
-      const indexer = getDefaultIndexer();
-      const latestHeightResponse = await indexer.getLatestBlockHeight();
-      w.setBirthHeight(latestHeightResponse.height);
-      console.log(`Wallet birth height set to: ${latestHeightResponse.height}`);
-    } catch (error) {
-      // indexer unreachable (or not initialised) at creation: remember when the wallet was made so
-      // the first scan that reaches it resolves the height, instead of rescanning from BIP-352 activation.
-      console.warn('Could not fetch birth height, deferring resolution to the first scan:', error);
-      w.updateBirthHeight(w.getNetworkConfig().bip352ActivationHeight, { pendingTimestamp: Math.floor(Date.now() / 1000) });
+      // Creation left unfinished (e.g. the app was killed during backup): same words again.
+      if (getPendingWallet()) {
+        navigate('AddWalletRoot', { screen: 'PleaseBackup' });
+        return;
+      }
+
+      const w = new HDSilentPaymentsWallet();
+      w.setLabel(loc.wallets.details_title);
+      await w.generate();
+      try {
+        const indexer = getDefaultIndexer();
+        const latestHeightResponse = await indexer.getLatestBlockHeight();
+        w.setBirthHeight(latestHeightResponse.height);
+        console.log(`Wallet birth height set to: ${latestHeightResponse.height}`);
+      } catch (error) {
+        // indexer unreachable (or not initialised) at creation: remember when the wallet was made so
+        // the first scan that reaches it resolves the height, instead of rescanning from BIP-352 activation.
+        console.warn('Could not fetch birth height, deferring resolution to the first scan:', error);
+        w.updateBirthHeight(w.getNetworkConfig().bip352ActivationHeight, { pendingTimestamp: Math.floor(Date.now() / 1000) });
+      }
+      // Saved as a draft before its words are shown; it becomes a real wallet once the backup is done
+      // (or skipped), so a passphrase can still be chosen there.
+      await setPendingWallet(w);
+
+      triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
+
+      navigate('AddWalletRoot', { screen: 'PleaseBackup' });
+    } finally {
+      isCreatingRef.current = false;
     }
-    await saveToDisk();
-
-    triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
-
-    navigate('AddWalletRoot', {
-      screen: 'PleaseBackup',
-      params: {
-        walletID: w.getID(),
-      },
-    });
-  }, [wallets, navigateToWalletsList, addWallet, saveToDisk, navigate]);
+  }, [wallets, navigateToWalletsList, getPendingWallet, setPendingWallet, navigate]);
 
   const importWallet = useCallback(() => {
     if (wallets.length > 0) {

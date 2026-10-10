@@ -10,10 +10,12 @@ import loc from '../loc';
 
 interface RestoreSuccessSheetProps {
   onDone: () => void;
+  /** Set for a passphrase wallet: the only way to tell a mistyped passphrase from an empty wallet. */
+  fingerprint?: string;
 }
 
 // Shown once a restored wallet has been saved, before handing off to the wallets list.
-const RestoreSuccessSheet = forwardRef<BottomModalHandle, RestoreSuccessSheetProps>(({ onDone }, ref) => {
+const RestoreSuccessSheet = forwardRef<BottomModalHandle, RestoreSuccessSheetProps>(({ onDone, fingerprint }, ref) => {
   const { colors } = useTheme();
 
   return (
@@ -33,6 +35,11 @@ const RestoreSuccessSheet = forwardRef<BottomModalHandle, RestoreSuccessSheetPro
         </View>
         <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.wallets.restore_success_title}</Text>
         <Text style={[styles.message, { color: colors.textMuted }]}>{loc.wallets.restore_success_message}</Text>
+        {fingerprint ? (
+          <Text style={[styles.message, { color: colors.textMuted }]} testID="RestoreSuccessFingerprint">
+            {loc.formatString(loc.passphrase.restore_success_fingerprint, { fingerprint })}
+          </Text>
+        ) : null}
         <ActionButton
           title={loc.wallets.restore_success_done}
           onPress={onDone}

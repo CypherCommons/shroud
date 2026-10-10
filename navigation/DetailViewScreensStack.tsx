@@ -31,6 +31,7 @@ import PaymentFound from '../screen/wallets/PaymentFound';
 import NoPaymentFound from '../screen/wallets/NoPaymentFound';
 import SyncScreen from '../screen/wallets/SyncScreen';
 import OnboardingStack from './OnboardingStack';
+import PassphraseUnlock from '../screen/wallets/PassphraseUnlock';
 import ContactList from '../screen/contacts/ContactList';
 import ContactEdit from '../screen/contacts/ContactEdit';
 import ContactDetail from '../screen/contacts/ContactDetail';
@@ -40,7 +41,7 @@ import { navigationRef } from '../NavigationService';
 const DetailViewStackScreensStack = () => {
   const theme = useTheme();
   const { sizeClass } = useSizeClass();
-  const { activeNetworkId, wallets } = useStorage();
+  const { activeNetworkId, wallets, hasLockedWallet } = useStorage();
   const RightBarButtons = useMemo(() => <SettingsButton />, []);
 
   const walletListScreenOptions = useMemo<NativeStackNavigationOptions>(() => {
@@ -57,7 +58,12 @@ const DetailViewStackScreensStack = () => {
   // startAndDecrypt before walletsInitialized flips) rather than the React `wallets` state,
   // which lags one render behind on launch and would otherwise pin us to Onboarding even
   // when a wallet exists. initialRouteName is only read once at navigator mount.
-  const initialRoute = ShroudApp.getInstance().getWallets().length === 0 ? 'Onboarding' : 'WalletsList';
+  const shroudApp = ShroudApp.getInstance();
+  const initialRoute = shroudApp.hasLockedWallet()
+    ? 'PassphraseUnlock'
+    : shroudApp.getWallets().length === 0
+      ? 'Onboarding'
+      : 'WalletsList';
 
   // initialRouteName is read once, so a runtime network switch cannot rely on it: moving to a
   // chain with no wallet yet (or back to one that has one) has to re-route explicitly.
@@ -66,9 +72,9 @@ const DetailViewStackScreensStack = () => {
     if (previousNetworkId.current === activeNetworkId) return;
     previousNetworkId.current = activeNetworkId;
 
-    const target = wallets.length === 0 ? 'Onboarding' : 'WalletsList';
+    const target = hasLockedWallet() ? 'PassphraseUnlock' : wallets.length === 0 ? 'Onboarding' : 'WalletsList';
     navigationRef.current?.reset({ index: 0, routes: [{ name: target }] });
-  }, [activeNetworkId, wallets.length]);
+  }, [activeNetworkId, wallets.length, hasLockedWallet]);
 
   return (
     <DetailViewStack.Navigator
@@ -78,6 +84,11 @@ const DetailViewStackScreensStack = () => {
       <DetailViewStack.Screen
         name="Onboarding"
         component={OnboardingStack}
+        options={{ headerShown: false, gestureEnabled: false, headerBackVisible: false }}
+      />
+      <DetailViewStack.Screen
+        name="PassphraseUnlock"
+        component={PassphraseUnlock}
         options={{ headerShown: false, gestureEnabled: false, headerBackVisible: false }}
       />
       <DetailViewStack.Screen name="WalletsList" component={WalletsList} options={navigationStyle(walletListScreenOptions)(theme)} />

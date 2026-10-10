@@ -1,5 +1,4 @@
 import BigNumber from 'bignumber.js';
-import * as bip39 from 'bip39';
 import { Buffer } from 'buffer';
 import { ECPairFactory } from 'ecpair';
 import { AbstractHDElectrumWallet } from './abstract-hd-electrum-wallet.ts';
@@ -124,10 +123,17 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   private _scanSamples: { t: number; percent: number }[] = [];
   private _scanStartTime: number = 0;
   private _onScanStateChangeCallback: ((state: ScanStateInfo) => void) | null = null;
+  // Master fingerprint of mnemonic + passphrase. Not secret, so it is persisted: its presence tells
+  // the app to ask for the passphrase on load, and it rejects a wrong one before it opens a
+  // different wallet.
+  passphraseFingerprint?: string;
 
   // never written to disk and ignored by fromJson. _utxo is rebuilt from _utxos_serializable,
   // everything else is in-memory only
   private static readonly NON_PERSISTED_KEYS: ReadonlySet<string> = new Set([
+    'passphrase',
+    // private keys; with the persisted xpub one of them gives away the whole taproot account
+    '_address_to_wif_cache',
     'cachedSeed',
     'spendKeyCandidates',
     'transactionProcessor',
@@ -204,6 +210,36 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     wallet.setSecret(mnemonic);
     if (passphrase) wallet.setPassphrase(passphrase);
     return wallet;
+  }
+
+  /** Opens a stored passphrase wallet, or returns null when `passphrase` doesn't match its fingerprint. */
+  static unlockFromJson(obj: string, passphrase: string): HDSilentPaymentsWallet | null {
+    const wallet = HDSilentPaymentsWallet.fromJson(obj);
+    const storedFingerprint = wallet.passphraseFingerprint;
+    wallet.setPassphrase(passphrase);
+    if (!storedFingerprint || wallet.passphraseFingerprint !== storedFingerprint) {
+      wallet.clearCache();
+      return null;
+    }
+    return wallet;
+  }
+
+  /**
+   * Must run before anything is derived: the passphrase changes every key and the wallet's ID.
+   * Normalised to NFKD (as BIP39 does) so the ID doesn't depend on how a keyboard composed it, and
+   * an empty passphrase is no passphrase, so it keeps the ID of a wallet that never had one.
+   */
+  setPassphrase(passphrase: string): void {
+    if (this.cachedSeed || this.spendKeyCandidates || this.transactionProcessor || this._node0 || this._node1) {
+      throw new Error('Passphrase must be set before any key is derived');
+    }
+    this.passphrase = passphrase.normalize('NFKD') || undefined;
+    if (!this.passphrase) {
+      this.passphraseFingerprint = undefined;
+      return;
+    }
+    this.cachedSeed = this._getSeed();
+    this.passphraseFingerprint = HDSilentPaymentsWallet.seedToFingerprint(this.cachedSeed);
   }
 
   // SP wallets always derive at the BIP-86 default; moving off it silently changes every
@@ -484,8 +520,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   private getSeed(): Buffer {
     if (this.cachedSeed) return this.cachedSeed;
 
-    const mnemonic = this.secret;
-    this.cachedSeed = bip39.mnemonicToSeedSync(mnemonic, '');
+    this.cachedSeed = this._getSeed();
     return this.cachedSeed;
   }
 

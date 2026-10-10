@@ -60,6 +60,7 @@ export type DetailViewStackParamList = {
   };
   ScanQRCode: ScanQRCodeParamList;
   Onboarding: undefined;
+  PassphraseUnlock: undefined;
   TrackPayment: undefined;
   PaymentFound: { txid: string; outputs: OwnedOutput[]; totalValue: number; confirmations: number };
   NoPaymentFound: undefined;
