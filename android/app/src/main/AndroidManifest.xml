@@ -1,135 +1,82 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:installLocation="auto">
-
-    <uses-feature
-        android:name="android.hardware.camera"
-        android:required="false" />
-
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.DETECT_SCREEN_CAPTURE" />
-
-    <application
-        android:name=".MainApplication"
-        android:label="@string/app_name"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:allowBackup="false"
-        android:largeHeap="true"
-        android:extractNativeLibs="true"
-        android:usesCleartextTraffic="true"
-        android:supportsRtl="true"
-        android:theme="@style/AppTheme"
-        android:networkSecurityConfig="@xml/network_security_config"
-        android:configChanges="uiMode">
-
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.provider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-        </provider>
-
-        <activity
-            android:name=".MainActivity"
-            android:label="@string/app_name"
-            android:launchMode="singleTask"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
-            android:windowSoftInputMode="adjustResize"
-            android:screenOrientation="portrait"
-            android:exported="true">
-
-            <!-- Main launcher intent filter -->
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-
-            <!-- Intent filter for opening the app only when .psbt files are selected -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="file" android:mimeType="application/octet-stream" android:pathPattern=".*\\.psbt" />
-            </intent-filter>
-            
-              <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="file" android:mimeType="image/jpeg" />
-                <data android:scheme="file" android:mimeType="image/png" />
-                <data android:scheme="file" android:mimeType="image/jpg" />
-            </intent-filter>
-            
-            <!-- Intent filter for other custom schemes (bitcoin and shroud) -->
-            <intent-filter tools:ignore="AppLinkUrlError">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="bitcoin" />
-                <data android:scheme="shroud" />
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-            </intent-filter>
-
-            <!-- Intent filter for importing other file types (but not launching the app) -->
-            <intent-filter tools:ignore="AppLinkUrlError">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="file" android:mimeType="application/octet-stream" android:pathPattern=".*\\.*" />
-            </intent-filter>
-
-            <!-- Intent filter for handling PSBT files -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <action android:name="android.intent.action.EDIT" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data
-                    android:mimeType="application/octet-stream"
-                    android:pathPattern=".*\\.psbt" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <action android:name="android.intent.action.EDIT" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data
-                    android:mimeType="text/plain"
-                    android:pathPattern=".*\\.psbt" />
-            </intent-filter>
-        </activity>
-
-        <meta-data android:name="com.bugsnag.android.API_KEY" android:value="ab996e2b9387d2ab0e55d06b1352b137" />
-
-        <!-- expo-updates: mirrors the updates settings in app.json (expo-updates configuration:syncnative) -->
-        <meta-data android:name="expo.modules.updates.ENABLED" android:value="true" />
-        <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="https://updates.shroudwallet.com/manifest" />
-        <meta-data android:name="expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY" android:value="{&quot;expo-channel-name&quot;:&quot;production&quot;}" />
-        <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS" />
-        <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0" />
-        <meta-data android:name="expo.modules.updates.CODE_SIGNING_CERTIFICATE" android:value="-----BEGIN CERTIFICATE-----&#xD;&#xA;MIIC3TCCAcWgAwIBAgIJLL9VqNjFAkMdMA0GCSqGSIb3DQEBCwUAMBgxFjAUBgNV&#xD;&#xA;BAMTDVNocm91ZCBXYWxsZXQwHhcNMjYwOTI3MTAyMTU1WhcNMzYwOTI3MTAyMTU1&#xD;&#xA;WjAYMRYwFAYDVQQDEw1TaHJvdWQgV2FsbGV0MIIBIjANBgkqhkiG9w0BAQEFAAOC&#xD;&#xA;AQ8AMIIBCgKCAQEApykkpRYrs5grb/ZleEJuAnT5W7J68zadTGfGHutLb6TWBGsQ&#xD;&#xA;FBJJl5XKz0yoYeXlc3kUQpjaDOviOxDZpPvlvmaVf8Vi6RVyJ/A3rz/lxwhgy2ox&#xD;&#xA;8OHKsHarHewVjuWAn7Ay0lpeUSnFw3Vle6lEDIRvetx2kBS/cOemr7o4hHP3590I&#xD;&#xA;2EcX556q+uNNZv8Wt2QMntZQ3BFNTeacqeRKc4sbWGHf0cDamenYjvPMq3ITrmXq&#xD;&#xA;kdvGETsgXzcHJn4qztky5k7fdnWfJB1X0wyergUL4Mw0JxFhM1nTPxUrBTlJDqCF&#xD;&#xA;aJsz8xHCGHIMOtXb9eI6jtfWmZ/uFEALULrOrQIDAQABoyowKDAOBgNVHQ8BAf8E&#xD;&#xA;BAMCB4AwFgYDVR0lAQH/BAwwCgYIKwYBBQUHAwMwDQYJKoZIhvcNAQELBQADggEB&#xD;&#xA;AHVcSS/kpY2UBCH5EuyAAA1rUy27I2sGVWWhzQfmib5WpJjbrf0vKnS5C8eJNbtL&#xD;&#xA;41MnaRAL37VDq8Y6P50cW+j2B2QmX46K4n8pBBkqJEmNjoAzUD+j9ksK/hc4N/jc&#xD;&#xA;BErUQ2wTImYTPYgfPxzXVFFGkvEP0kg2LmxtMvM7WaxmLi5VdMPnAgOxzaGoaY3o&#xD;&#xA;ddsk7rRD/LPqIrmJDFmIsCh8mOiKkD6GXmJuErhgXHsEALI+2bOlYIZ4ogNCm5iU&#xD;&#xA;wV3dPGBO7JLc9pa4tLDbNHmCqhjkKUCNumXdr5vtG9mjyZPr6l13A34kZdW/hu+3&#xD;&#xA;d+19T23bSbSZi1dkL6dbOCc=&#xD;&#xA;-----END CERTIFICATE-----&#xD;&#xA;" />
-        <meta-data android:name="expo.modules.updates.CODE_SIGNING_METADATA" android:value="{&quot;keyid&quot;:&quot;main&quot;,&quot;alg&quot;:&quot;rsa-v1_5-sha256&quot;}" />
-        <meta-data android:name="expo.modules.updates.ENABLE_BSDIFF_PATCH_SUPPORT" android:value="true" />
-        <meta-data android:name="expo.modules.updates.EXPO_RUNTIME_VERSION" android:value="@string/expo_runtime_version" />
-    </application>
-
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="https" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="http" />
-        </intent>
-        <package android:name="org.torproject.android" />
-    </queries>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools" android:installLocation="auto">
+  <uses-feature android:name="android.hardware.camera" android:required="false"/>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+  <uses-permission android:name="android.permission.CAMERA"/>
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+  <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+  <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
+  <uses-permission android:name="android.permission.VIBRATE"/>
+  <uses-permission android:name="android.permission.DETECT_SCREEN_CAPTURE"/>
+  <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="false" android:largeHeap="true" android:extractNativeLibs="true" android:usesCleartextTraffic="true" android:supportsRtl="true" android:theme="@style/AppTheme" android:networkSecurityConfig="@xml/network_security_config" android:configChanges="uiMode">
+    <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.provider" android:exported="false" android:grantUriPermissions="true">
+      <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths"/>
+    </provider>
+    <activity android:name=".MainActivity" android:label="@string/app_name" android:launchMode="singleTask" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode" android:windowSoftInputMode="adjustResize" android:screenOrientation="portrait" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="file" android:mimeType="application/octet-stream" android:pathPattern=".*\\.psbt"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="file" android:mimeType="image/jpeg"/>
+        <data android:scheme="file" android:mimeType="image/png"/>
+        <data android:scheme="file" android:mimeType="image/jpg"/>
+      </intent-filter>
+      <intent-filter tools:ignore="AppLinkUrlError">
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="bitcoin"/>
+        <data android:scheme="shroud"/>
+        <data android:scheme="http"/>
+        <data android:scheme="https"/>
+      </intent-filter>
+      <intent-filter tools:ignore="AppLinkUrlError">
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="file" android:mimeType="application/octet-stream" android:pathPattern=".*\\.*"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <action android:name="android.intent.action.EDIT"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:mimeType="application/octet-stream" android:pathPattern=".*\\.psbt"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <action android:name="android.intent.action.EDIT"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:mimeType="text/plain" android:pathPattern=".*\\.psbt"/>
+      </intent-filter>
+    </activity>
+    <meta-data android:name="com.bugsnag.android.API_KEY" android:value="ab996e2b9387d2ab0e55d06b1352b137"/>
+    <meta-data android:name="expo.modules.updates.ENABLED" android:value="true"/>
+    <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="https://updates.shroudwallet.com/manifest"/>
+    <meta-data android:name="expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY" android:value="{&quot;expo-channel-name&quot;:&quot;production&quot;}"/>
+    <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
+    <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
+    <meta-data android:name="expo.modules.updates.CODE_SIGNING_CERTIFICATE" android:value="-----BEGIN CERTIFICATE-----&#xD;&#xA;MIIC3TCCAcWgAwIBAgIJLL9VqNjFAkMdMA0GCSqGSIb3DQEBCwUAMBgxFjAUBgNV&#xD;&#xA;BAMTDVNocm91ZCBXYWxsZXQwHhcNMjYwOTI3MTAyMTU1WhcNMzYwOTI3MTAyMTU1&#xD;&#xA;WjAYMRYwFAYDVQQDEw1TaHJvdWQgV2FsbGV0MIIBIjANBgkqhkiG9w0BAQEFAAOC&#xD;&#xA;AQ8AMIIBCgKCAQEApykkpRYrs5grb/ZleEJuAnT5W7J68zadTGfGHutLb6TWBGsQ&#xD;&#xA;FBJJl5XKz0yoYeXlc3kUQpjaDOviOxDZpPvlvmaVf8Vi6RVyJ/A3rz/lxwhgy2ox&#xD;&#xA;8OHKsHarHewVjuWAn7Ay0lpeUSnFw3Vle6lEDIRvetx2kBS/cOemr7o4hHP3590I&#xD;&#xA;2EcX556q+uNNZv8Wt2QMntZQ3BFNTeacqeRKc4sbWGHf0cDamenYjvPMq3ITrmXq&#xD;&#xA;kdvGETsgXzcHJn4qztky5k7fdnWfJB1X0wyergUL4Mw0JxFhM1nTPxUrBTlJDqCF&#xD;&#xA;aJsz8xHCGHIMOtXb9eI6jtfWmZ/uFEALULrOrQIDAQABoyowKDAOBgNVHQ8BAf8E&#xD;&#xA;BAMCB4AwFgYDVR0lAQH/BAwwCgYIKwYBBQUHAwMwDQYJKoZIhvcNAQELBQADggEB&#xD;&#xA;AHVcSS/kpY2UBCH5EuyAAA1rUy27I2sGVWWhzQfmib5WpJjbrf0vKnS5C8eJNbtL&#xD;&#xA;41MnaRAL37VDq8Y6P50cW+j2B2QmX46K4n8pBBkqJEmNjoAzUD+j9ksK/hc4N/jc&#xD;&#xA;BErUQ2wTImYTPYgfPxzXVFFGkvEP0kg2LmxtMvM7WaxmLi5VdMPnAgOxzaGoaY3o&#xD;&#xA;ddsk7rRD/LPqIrmJDFmIsCh8mOiKkD6GXmJuErhgXHsEALI+2bOlYIZ4ogNCm5iU&#xD;&#xA;wV3dPGBO7JLc9pa4tLDbNHmCqhjkKUCNumXdr5vtG9mjyZPr6l13A34kZdW/hu+3&#xD;&#xA;d+19T23bSbSZi1dkL6dbOCc=&#xD;&#xA;-----END CERTIFICATE-----&#xD;&#xA;"/>
+    <meta-data android:name="expo.modules.updates.CODE_SIGNING_METADATA" android:value="{&quot;keyid&quot;:&quot;main&quot;,&quot;alg&quot;:&quot;rsa-v1_5-sha256&quot;}"/>
+    <meta-data android:name="expo.modules.updates.ENABLE_BSDIFF_PATCH_SUPPORT" android:value="true"/>
+    <meta-data android:name="expo.modules.updates.EXPO_RUNTIME_VERSION" android:value="@string/expo_runtime_version"/>
+  </application>
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.VIEW"/>
+      <data android:scheme="https"/>
+    </intent>
+    <intent>
+      <action android:name="android.intent.action.VIEW"/>
+      <data android:scheme="http"/>
+    </intent>
+    <package android:name="org.torproject.android"/>
+  </queries>
 </manifest>
