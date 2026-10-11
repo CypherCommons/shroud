@@ -10,7 +10,10 @@ import { AppRegistry, LogBox } from 'react-native';
 
 import App from './App';
 import A from './modules/analytics';
+import { installCrashRedaction } from './modules/crashRedaction';
 import { restoreSavedPreferredFiatCurrencyAndExchangeFromStorage } from './modules/currency';
+
+installCrashRedaction();
 
 if (!Error.captureStackTrace) {
   // captureStackTrace is only available when debugging
