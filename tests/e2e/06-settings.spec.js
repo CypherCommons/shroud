@@ -52,6 +52,19 @@ describe('Settings', () => {
       .toBeVisible()
       .withTimeout(10_000);
 
+    await waitFor(element(by.id('CrashReportsSwitch')))
+      .toBeVisible()
+      .whileElement(by.id('GeneralSettingsScrollView'))
+      .scroll(200, 'down');
+    await element(by.id('CrashReportsSwitch')).tap();
+    await expect(element(by.id('CrashReportsSwitch'))).toHaveToggleValue(false);
+    await element(by.id('CrashReportsSwitch')).tap();
+    await expect(element(by.id('CrashReportsSwitch'))).toHaveToggleValue(true);
+
+    await waitFor(element(by.id('ThemeRow')))
+      .toBeVisible()
+      .whileElement(by.id('GeneralSettingsScrollView'))
+      .scroll(200, 'down');
     await element(by.id('ThemeRow')).tap();
     await waitFor(element(by.id('ThemeDarkOption')))
       .toBeVisible()
