@@ -63,6 +63,7 @@ interface SettingsContextType {
   isScreenCaptureAllowed: boolean;
   setIsScreenCaptureAllowed: (value: boolean) => void;
   isDoNotTrackEnabled: boolean;
+  setIsDoNotTrackEnabledStorage: (value: boolean) => Promise<void>;
   isClipboardGetContentEnabled: boolean;
   setIsClipboardGetContentEnabledStorage: (value: boolean) => Promise<void>;
   isTotalBalanceEnabled: boolean;
@@ -89,6 +90,7 @@ const defaultSettingsContext: SettingsContextType = {
   isScreenCaptureAllowed: false,
   setIsScreenCaptureAllowed: () => {},
   isDoNotTrackEnabled: false,
+  setIsDoNotTrackEnabledStorage: async () => {},
   isClipboardGetContentEnabled: true,
   setIsClipboardGetContentEnabledStorage: async () => {},
   isTotalBalanceEnabled: true,
@@ -223,6 +225,19 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
     }
   }, []);
 
+  // MainApplication.kt and AppDelegate.swift read this at launch: '1' keeps Bugsnag from starting, so
+  // a change takes effect the next time the app starts.
+  const setIsDoNotTrackEnabledStorage = useCallback(async (value: boolean): Promise<void> => {
+    try {
+      await DefaultPreference.setName(GROUP_IO_SHROUD);
+      if (value) await DefaultPreference.set(ShroudApp.DO_NOT_TRACK, '1');
+      else await DefaultPreference.clear(ShroudApp.DO_NOT_TRACK);
+      setIsDoNotTrackEnabled(value);
+    } catch (e) {
+      console.error('Error setting isDoNotTrackEnabled:', e);
+    }
+  }, []);
+
   const setIsClipboardGetContentEnabledStorage = useCallback(async (value: boolean): Promise<void> => {
     try {
       await setReadClipboardAllowed(value);
@@ -297,6 +312,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       isScreenCaptureAllowed,
       setIsScreenCaptureAllowed,
       isDoNotTrackEnabled,
+      setIsDoNotTrackEnabledStorage,
       isClipboardGetContentEnabled,
       setIsClipboardGetContentEnabledStorage,
       isTotalBalanceEnabled,
@@ -321,6 +337,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       setPreferredFiatCurrencyStorage,
       isScreenCaptureAllowed,
       isDoNotTrackEnabled,
+      setIsDoNotTrackEnabledStorage,
       isClipboardGetContentEnabled,
       setIsClipboardGetContentEnabledStorage,
       isTotalBalanceEnabled,

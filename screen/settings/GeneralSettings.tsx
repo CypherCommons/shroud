@@ -20,6 +20,8 @@ const GeneralSettings: React.FC = () => {
     setIsClipboardGetContentEnabledStorage,
     isScreenCaptureAllowed,
     setIsScreenCaptureAllowed,
+    isDoNotTrackEnabled,
+    setIsDoNotTrackEnabledStorage,
     themePreference,
   } = useSettings();
 
@@ -57,8 +59,15 @@ const GeneralSettings: React.FC = () => {
           subtitle={loc.settings.general_screen_capture_subtitle}
           value={isScreenCaptureAllowed}
           onValueChange={setIsScreenCaptureAllowed}
-          showSeparator={false}
           testID="AllowScreenCaptureSwitch"
+        />
+        <SettingsToggleRow
+          title={loc.settings.general_crash_reports_title}
+          subtitle={loc.settings.general_crash_reports_subtitle}
+          value={!isDoNotTrackEnabled}
+          onValueChange={value => setIsDoNotTrackEnabledStorage(!value)}
+          showSeparator={false}
+          testID="CrashReportsSwitch"
         />
       </View>
 

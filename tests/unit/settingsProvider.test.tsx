@@ -52,6 +52,31 @@ describe('unit - SettingsProvider', () => {
     assert.strictEqual(remounted.current.themePreference, 'dark');
   });
 
+  it('crash reports switch writes the flag that native code reads at launch', async () => {
+    const { result, unmount } = renderHook(() => useSettings(), { wrapper });
+    await waitFor(() => assert.strictEqual(result.current.settingsLoaded, true));
+    assert.strictEqual(result.current.isDoNotTrackEnabled, false);
+
+    await act(async () => {
+      await result.current.setIsDoNotTrackEnabledStorage(true);
+    });
+    assert.strictEqual(result.current.isDoNotTrackEnabled, true);
+    // MainApplication.kt and AppDelegate.swift read 'donottrack' from this group and skip Bugsnag on '1'.
+    await DefaultPreference.setName('group.com.shroudwallet.app');
+    assert.strictEqual(await DefaultPreference.get('donottrack'), '1');
+    unmount();
+
+    const { result: remounted } = renderHook(() => useSettings(), { wrapper });
+    await waitFor(() => assert.strictEqual(remounted.current.settingsLoaded, true));
+    assert.strictEqual(remounted.current.isDoNotTrackEnabled, true);
+
+    await act(async () => {
+      await remounted.current.setIsDoNotTrackEnabledStorage(false);
+    });
+    await DefaultPreference.setName('group.com.shroudwallet.app');
+    assert.strictEqual(await DefaultPreference.get('donottrack'), null);
+  });
+
   it('falls back themePreference to system when a stale/invalid value is persisted', async () => {
     await DefaultPreference.setName('group.com.shroudwallet.app');
     await DefaultPreference.set('ThemePreference', 'not-a-real-theme');

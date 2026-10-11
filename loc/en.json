@@ -258,6 +258,8 @@
         "general_read_clipboard_title": "Read Clipboard",
         "general_read_clipboard_subtitle": "Provide shortcuts if an address or invoice is found in your clipboard.",
         "general_screen_capture_title": "Allow Screen Capture",
+        "general_crash_reports_title": "Crash Reports",
+        "general_crash_reports_subtitle": "Send a report to Bugsnag when Shroud crashes, so we can fix the problem. Changes take effect the next time you open Shroud.",
         "general_screen_capture_subtitle": "Screen capture protection on your recovery phrase screens will be temporarily turned off, enabling screenshots and screen recordings there. Protection reactivates when you close and reopen Shroud.",
         "general_display_header": "Display",
         "theme": "Theme",
