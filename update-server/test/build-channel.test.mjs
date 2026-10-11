@@ -53,3 +53,15 @@ test('the fingerprint hook leaves other files alone', () => {
   assert.equal(fileHookTransform({ type: 'file', filePath: 'ios/Shroud/Info.plist' }, chunk, false, 'utf8'), chunk);
   assert.equal(fileHookTransform({ type: 'contents', id: 'expoConfig' }, '{}', true, 'utf8'), '{}');
 });
+
+test("the fingerprint ignores ExpoModulesCore's path-dependent checksum in Podfile.lock", async () => {
+  const committed = await readFile(path.join(repoRoot, 'ios/Podfile.lock'), 'utf8');
+  const line = /^ {2}ExpoModulesCore: [0-9a-f]{40}$/m;
+  assert.match(committed, line);
+  const elsewhere = committed.replace(line, `  ExpoModulesCore: ${'b'.repeat(40)}`);
+  assert.equal(hashInput('ios/Podfile.lock', elsewhere), hashInput('ios/Podfile.lock', committed));
+  // Every other checksum still counts.
+  const otherPod = committed.replace(/^( {2}ExpoFont: )[0-9a-f]{40}$/m, `$1${'c'.repeat(40)}`);
+  assert.notEqual(otherPod, committed);
+  assert.notEqual(hashInput('ios/Podfile.lock', otherPod), hashInput('ios/Podfile.lock', committed));
+});

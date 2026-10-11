@@ -89,9 +89,9 @@ android/app/src/main/jniLibs
 rust_jsi_bridge/target/
 ios/RustJsiBridge.xcframework/
 
-# Expo
+# Expo (`expo export` writes to /dist; modules/*/dist is committed build output the app imports)
 .expo/
-dist/
+/dist/
 
 # Signing credentials (EAS manages these remotely)
 credentials.json

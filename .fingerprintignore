@@ -11,6 +11,12 @@ ios/RustJsiBridge.xcframework/**/*
 android/app/src/main/assets/fiatUnits.json
 android/app/src/main/assets/index.android.bundle
 
+# Written into node_modules on a developer's machine, never by a fresh install like EAS's: realm's
+# Android build copies its native library into the package, and `pod install` rewrites
+# react-native-permissions' podspec in place (setup_permissions in ios/Podfile).
+node_modules/realm/binding/android/src/main/jniLibs/**/*
+node_modules/react-native-permissions/RNPermissions.podspec
+
 # Machine-local files and IDE state
 android/local.properties
 android/.kotlin/**/*
