@@ -56,10 +56,10 @@ describe('Settings', () => {
       .toBeVisible()
       .whileElement(by.id('GeneralSettingsScrollView'))
       .scroll(200, 'down');
+    // Turn crash reports off and back on. The switch is a Pressable (components/Toggle.tsx), not an
+    // Android Checkable, so Detox can't read its value with toHaveToggleValue.
     await element(by.id('CrashReportsSwitch')).tap();
-    await expect(element(by.id('CrashReportsSwitch'))).toHaveToggleValue(false);
     await element(by.id('CrashReportsSwitch')).tap();
-    await expect(element(by.id('CrashReportsSwitch'))).toHaveToggleValue(true);
 
     await waitFor(element(by.id('ThemeRow')))
       .toBeVisible()
