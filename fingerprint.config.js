@@ -1,21 +1,30 @@
 const { CHANNEL_HEADERS, setChannelHeader } = require('./scripts/ota/channel-header');
 
-// Per file being hashed, the chunks read so far of the files that name the update channel.
-const channelFileChunks = new WeakMap();
-
 /**
- * Builds of different EAS profiles differ only in the update channel they ask for (see
- * scripts/ota/set-build-channel.mjs). Hash them all with the channel blanked, so they get the
- * runtime version that `npm run ota:publish` computes from a checkout.
+ * Parts of files that differ between machines or build profiles without changing the native app.
+ * They are blanked before hashing, so a build on EAS gets the runtime version that
+ * `npm run ota:publish` computes from a checkout on a Mac.
  */
+const NORMALIZE = {
+  // Builds of different EAS profiles differ only in the update channel they ask for (see
+  // scripts/ota/set-build-channel.mjs).
+  ...Object.fromEntries(Object.keys(CHANNEL_HEADERS).map(file => [file, contents => setChannelHeader(file, contents, '').contents])),
+  // ExpoModulesCore's precompiled podspec embeds the checkout's absolute path, so its checksum
+  // changes with where the project lives (/Users/expo/workingdir/build on EAS).
+  'ios/Podfile.lock': contents => contents.replace(/^( {2}ExpoModulesCore: )[0-9a-f]{40}$/m, '$1'),
+};
+
+// Per file being hashed, the chunks read so far of the files in NORMALIZE.
+const pendingChunks = new WeakMap();
+
 function fileHookTransform(source, chunk, isEndOfFile) {
-  if (source.type !== 'file' || !Object.hasOwn(CHANNEL_HEADERS, source.filePath)) return chunk;
-  // Files arrive in 1 KB chunks: collect the whole file, then blank the channel.
-  const chunks = channelFileChunks.get(source) ?? [];
-  channelFileChunks.set(source, chunks);
+  if (source.type !== 'file' || !Object.hasOwn(NORMALIZE, source.filePath)) return chunk;
+  // Files arrive in 1 KB chunks: collect the whole file, then normalize it.
+  const chunks = pendingChunks.get(source) ?? [];
+  pendingChunks.set(source, chunks);
   if (chunk !== null) chunks.push(Buffer.from(chunk));
   if (!isEndOfFile) return null;
-  return setChannelHeader(source.filePath, Buffer.concat(chunks).toString('utf8'), '').contents;
+  return NORMALIZE[source.filePath](Buffer.concat(chunks).toString('utf8'));
 }
 
 /**
