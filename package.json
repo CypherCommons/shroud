@@ -134,7 +134,7 @@
     "crypto-js": "4.2.0",
     "dayjs": "1.11.18",
     "detox": "20.51.4",
-    "ecpair": "3.0.0",
+    "ecpair": "3.0.2",
     "electrum-client": "github:BlueWallet/rn-electrum-client#d9f511d",
     "events": "3.3.0",
     "expo": "~57.0.25",
