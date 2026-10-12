@@ -14,6 +14,7 @@ import ShareIcon from '../../components/icons/ShareIcon';
 import InfoBanner from '../../components/InfoBanner';
 import PillSegmentedControl from '../../components/PillSegmentedControl';
 import QRCard from '../../components/QRCard';
+import TabPager from '../../components/TabPager';
 import { useTheme } from '../../components/themes';
 import { TransactionPendingIconBig } from '../../components/TransactionPendingIconBig';
 import { useStorage } from '../../hooks/context/useStorage';
@@ -27,33 +28,27 @@ import { Loading } from '../../components/Loading';
 import SafeAreaScrollView from '../../components/SafeAreaScrollView';
 import { ClashFont } from '../../constants/fonts';
 
-const segmentControlValues = [loc.bip352.silent_payments, loc.wallets.details_address];
+// One entry per tab: the pill's labels and the pager's pages both follow this order.
+const TABS = [
+  { key: 'silentPayments', label: loc.bip352.silent_payments },
+  { key: 'standard', label: loc.wallets.details_address },
+] as const;
+type Tab = (typeof TABS)[number]['key'];
+const TAB_LABELS = TABS.map(tab => tab.label);
 const HORIZONTAL_PADDING = 24;
 const qrLogo = require('../../img/logo.png');
 
 type StickyHeaderProps = {
-  wallet: any;
-  tabValues: string[];
-  currentTab: string;
-  setCurrentTab: (tab: string) => void;
+  selectedIndex: number;
+  onChange: (index: number) => void;
   backgroundColor: string;
 };
 
-const StickyHeader = React.memo(({ wallet, tabValues, currentTab, setCurrentTab, backgroundColor }: StickyHeaderProps) => {
-  if (!wallet) return null;
-
-  return (
-    <View style={[styles.tabsContainer, { backgroundColor }]}>
-      <PillSegmentedControl
-        values={tabValues}
-        selectedIndex={tabValues.findIndex(tab => tab === currentTab)}
-        onChange={index => {
-          setCurrentTab(tabValues[index]);
-        }}
-      />
-    </View>
-  );
-});
+const StickyHeader = React.memo(({ selectedIndex, onChange, backgroundColor }: StickyHeaderProps) => (
+  <View style={[styles.tabsContainer, { backgroundColor }]}>
+    <PillSegmentedControl values={TAB_LABELS} selectedIndex={selectedIndex} onChange={onChange} />
+  </View>
+));
 
 type NavigationProps = NativeStackNavigationProp<ReceiveDetailsStackParamList, 'ReceiveDetails'>;
 type RouteProps = RouteProp<ReceiveDetailsStackParamList, 'ReceiveDetails'>;
@@ -66,7 +61,7 @@ const ReceiveDetails = () => {
   const [showPendingBalance, setShowPendingBalance] = useState(false);
   const [showConfirmedBalance, setShowConfirmedBalance] = useState(false);
   const [showAddress, setShowAddress] = useState(false);
-  const [currentTab, setCurrentTab] = useState(segmentControlValues[0]);
+  const [currentTab, setCurrentTab] = useState<Tab>('silentPayments');
   const { goBack, setParams } = useExtendedNavigation<NavigationProps>();
   const [intervalMs, setIntervalMs] = useState(5000);
   const [eta, setEta] = useState('');
@@ -80,6 +75,9 @@ const ReceiveDetails = () => {
     wallet && 'getSilentPaymentAddress' in wallet && typeof wallet.getSilentPaymentAddress === 'function'
       ? wallet.getSilentPaymentAddress()
       : undefined;
+
+  const selectedTabIndex = TABS.findIndex(tab => tab.key === currentTab);
+  const selectTab = useCallback((index: number) => setCurrentTab(TABS[index].key), []);
 
   const stylesHook = StyleSheet.create({
     root: {
@@ -271,40 +269,38 @@ const ReceiveDetails = () => {
     );
   }, []);
 
-  const renderTabContent = () => {
-    if (currentTab === segmentControlValues[1]) {
-      return (
-        <View style={styles.container}>
-          {address && (
-            <View style={styles.addressBody}>
-              <InfoBanner
-                text={loc.receive.standard_address_notice}
-                emphasis={loc.receive.standard_address_notice_emphasis}
-                variant="caution"
-              />
-              <QRCard value={bip21encoded} size={qrCodeSize} logo={qrLogo} />
-              <AddressCopyCard text={address} />
-            </View>
-          )}
+  const renderTabPage = (tab: Tab) => {
+    if (tab === 'silentPayments') {
+      return spAddress ? (
+        <View style={styles.addressBody}>
+          <InfoBanner text={loc.bip352.explanation} emphasis={loc.bip352.explanation_emphasis} />
+          <QRCard value={spAddress} size={qrCodeSize} logo={qrLogo} />
+          <AddressCopyCard text={spAddress} />
         </View>
+      ) : (
+        <ShroudText>{loc.bip352.not_supported}</ShroudText>
       );
-    } else if (currentTab === segmentControlValues[0] && wallet) {
-      return (
-        <View style={styles.container}>
-          {spAddress ? (
-            <View style={styles.addressBody}>
-              <InfoBanner text={loc.bip352.explanation} emphasis={loc.bip352.explanation_emphasis} />
-              <QRCard value={spAddress} size={qrCodeSize} logo={qrLogo} />
-              <AddressCopyCard text={spAddress} />
-            </View>
-          ) : (
-            <ShroudText>{loc.bip352.not_supported}</ShroudText>
-          )}
-        </View>
-      );
-    } else {
-      return null;
     }
+    return address ? (
+      <View style={styles.addressBody}>
+        <InfoBanner text={loc.receive.standard_address_notice} emphasis={loc.receive.standard_address_notice_emphasis} variant="caution" />
+        <QRCard value={bip21encoded} size={qrCodeSize} logo={qrLogo} />
+        <AddressCopyCard text={address} testID="StandardAddressCopyCard" />
+      </View>
+    ) : null;
+  };
+
+  const renderTabContent = () => {
+    if (!wallet) return null;
+    return (
+      <TabPager selectedIndex={selectedTabIndex} onChange={selectTab} testID="ReceiveTabPager">
+        {TABS.map(tab => (
+          <View key={tab.key} style={styles.page}>
+            {renderTabPage(tab.key)}
+          </View>
+        ))}
+      </TabPager>
+    );
   };
 
   useFocusEffect(
@@ -327,12 +323,7 @@ const ReceiveDetails = () => {
   );
 
   const handleShareButtonPressed = () => {
-    let message: string | false = false;
-    if (currentTab === segmentControlValues[1]) {
-      message = bip21encoded;
-    } else if (currentTab === segmentControlValues[0]) {
-      message = spAddress ?? false;
-    }
+    const message = currentTab === 'standard' ? bip21encoded : spAddress;
 
     if (!message) {
       presentAlert({ title: loc.errors.error, message: loc.receive.address_not_found });
@@ -342,7 +333,7 @@ const ReceiveDetails = () => {
     Share.open({ message }).catch(error => console.debug('Error sharing:', error));
   };
 
-  const shareDisabled = currentTab === segmentControlValues[0] ? !spAddress : !bip21encoded;
+  const shareDisabled = currentTab === 'standard' ? !bip21encoded : !spAddress;
 
   return (
     <View style={[styles.flex, stylesHook.root]}>
@@ -357,15 +348,7 @@ const ReceiveDetails = () => {
         onLayout={onLayout}
         stickyHeaderIndices={wallet ? [0] : []}
       >
-        {wallet && (
-          <StickyHeader
-            wallet={wallet}
-            tabValues={segmentControlValues}
-            currentTab={currentTab}
-            setCurrentTab={setCurrentTab}
-            backgroundColor={colors.background}
-          />
-        )}
+        {wallet && <StickyHeader selectedIndex={selectedTabIndex} onChange={selectTab} backgroundColor={colors.background} />}
         {showAddress && renderTabContent()}
         {showConfirmedBalance && renderConfirmedBalance()}
         {showPendingBalance && renderPendingBalance()}
@@ -450,10 +433,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingBottom: 12,
   },
-  container: {
-    flex: 1,
+  // Sized by its content: the pager measures its height from its pages, so a flex page collapses.
+  page: {
     alignItems: 'center',
-    justifyContent: 'flex-start',
     paddingTop: 4,
   },
   loadingContainer: {
