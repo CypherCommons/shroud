@@ -37,7 +37,7 @@ const P2PKH_SCRIPT_LENGTH = 25;
  * coinselect appends its change output as a bare `{ value }`. An output with no address but
  * with `script.hex` is a custom script (OP_RETURN), not change - see `CreateTransactionTarget`.
  */
-const isChangeOutput = (output: { address?: string; script?: { hex?: string } }) => !output.address && !output.script?.hex;
+export const isChangeOutput = (output: { address?: string; script?: { hex?: string } }) => !output.address && !output.script?.hex;
 
 type BalanceByIndex = {
   c: number;

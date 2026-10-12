@@ -589,9 +589,9 @@ const SendDetails = () => {
 
     let change: string | undefined = await getChangeAddressAsync();
 
-    // An SP wallet sends change to its label-0 silent payment address, but only when the
-    // silent payment builder will actually run — the regular builder can't encode an sp1
-    // change output. The wallet owns that decision so this screen and the builder agree.
+    // An SP wallet sends change to its label-0 silent payment address whenever any of the coins
+    // on offer is a silent payment one. The wallet owns that decision so this screen and the
+    // builder agree on which output is change.
     if (wallet.type === HDSilentPaymentsWallet.type) {
       change = (wallet as HDSilentPaymentsWallet).getChangeAddressForUtxos(lutxo, change);
     }

@@ -1,18 +1,21 @@
 import * as bip39 from 'bip39';
 import * as bitcoin from 'bitcoinjs-lib';
 import * as crypto from 'crypto';
-import { decodeSilentPaymentAddress } from '@silent-pay/core';
+import { createInputHash, decodeSilentPaymentAddress, scanOutputs } from '@silent-pay/core';
+import { AbstractHDElectrumWallet } from '../../class/wallets/abstract-hd-electrum-wallet.ts';
 import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet.ts';
+import { HDTaprootWallet } from '../../class/wallets/hd-taproot-wallet.ts';
 import ecc from '../../modules/noble_ecc.ts';
 import {
   getScanPrivateKey,
   getSilentPaymentAddress,
+  getSilentPaymentChangeLabelMap,
   getSilentPaymentChangeSpendPublicKey,
   getSpendPublicKey,
 } from '../../helpers/silent-payments';
 import { type SilentPaymentUTXO } from '../../helpers/silent-payments/types.ts';
 import { getNetwork, setActiveNetwork, type NetworkId } from '../../modules/network';
-import { type CreateTransactionUtxo } from '../../class/wallets/types.ts';
+import { type CreateTransactionUtxo, type Transaction, type Utxo } from '../../class/wallets/types.ts';
 
 const TEST_SEED = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
@@ -91,7 +94,7 @@ describe('BIP-352 Silent Payments', () => {
     });
   });
 
-  describe('createSPTransaction handles both spend pubkey parities', () => {
+  describe('createTransaction handles both spend pubkey parities of an SP coin', () => {
     it.each([
       {
         label: 'even-Y (0x02)',
@@ -140,7 +143,7 @@ describe('BIP-352 Silent Payments', () => {
     });
   });
 
-  describe('createSPTransaction verifies Schnorr signatures locally before returning', () => {
+  describe('createTransaction verifies Schnorr signatures locally before returning', () => {
     const targetAddress = 'bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr';
 
     // produce a structurally valid Schnorr signature over the WRONG sighash: it parses fine
@@ -338,7 +341,7 @@ describe('BIP-352 Silent Payments', () => {
       (wallet as any).scanBroadcastedTxForOurOutputs(tx!, tx!.getId());
 
       expect((wallet as any)._utxo).toHaveLength(0);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('not one of our SP UTXOs'));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('not one of our UTXOs'));
       warn.mockRestore();
     });
   });
@@ -351,7 +354,7 @@ describe('BIP-352 Silent Payments', () => {
       address: 'bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr',
     } as CreateTransactionUtxo;
 
-    it('uses the label-0 address only when every UTXO is a silent payment UTXO', () => {
+    it('uses the label-0 address whenever a silent payment UTXO is on offer', () => {
       const wallet = new HDSilentPaymentsWallet();
       wallet.setSecret(TEST_SEED);
 
@@ -360,10 +363,12 @@ describe('BIP-352 Silent Payments', () => {
 
       expect(wallet.getChangeAddressForUtxos([spUtxo], fallback)).toBe(wallet.getSilentPaymentChangeAddress());
 
-      // A regular UTXO routes to the parent builder, which cannot encode an sp1 change
-      // output — handing it one throws "has no matching Script".
+      // createTransaction can pay sp1 change whichever of these coin selection ends up
+      // spending, so a mix gets it too, and its change counts toward the balance right away.
+      expect(wallet.getChangeAddressForUtxos([spUtxo, regularUtxo], fallback)).toBe(wallet.getSilentPaymentChangeAddress());
+
+      // regular coins alone keep regular change
       expect(wallet.getChangeAddressForUtxos([regularUtxo], fallback)).toBe(fallback);
-      expect(wallet.getChangeAddressForUtxos([spUtxo, regularUtxo], fallback)).toBe(fallback);
       expect(wallet.getChangeAddressForUtxos([], fallback)).toBe(fallback);
     });
   });
@@ -396,8 +401,9 @@ describe('BIP-352 Silent Payments', () => {
     }
 
     // Receiver-side BIP-352 derivation: recompute the taproot output key the recipient's
-    // scan key would discover, independently of the sender-side code under test.
-    function expectedRecipientOutputKey(spentUtxos: SilentPaymentUTXO[]): Buffer {
+    // scan key would discover, independently of the sender-side code under test. It only
+    // needs what the chain shows of each spent coin: its outpoint and output key.
+    function expectedRecipientOutputKey(spentUtxos: Pick<SilentPaymentUTXO, 'txid' | 'vout' | 'pubKey'>[]): Buffer {
       const seed = bip39.mnemonicToSeedSync(recipientSeed);
       const bScan = getScanPrivateKey(seed, getNetwork('bitcoin'));
       const BSpend = getSpendPublicKey(seed, getNetwork('bitcoin'));
@@ -506,6 +512,419 @@ describe('BIP-352 Silent Payments', () => {
       // regression too.
       expect(result.fee).toBeGreaterThanOrEqual(tx.virtualSize() * feeRate);
       expect(result.fee).toBe(314);
+    });
+
+    // A regular BIP-86 coin as fetchUtxo stores it, plus what the recipient sees of it on chain:
+    // its outpoint and the output key in its scriptPubKey (the TapTweak-ed internal key, not
+    // the BIP-32 key itself).
+    function regularCoin(wallet: HDSilentPaymentsWallet, value: number, txidHexChar: string) {
+      const address = wallet._getExternalAddressByIndex(0);
+      return {
+        txid: txidHexChar.repeat(64),
+        vout: 1,
+        value,
+        address,
+        wif: wallet._getWifForAddress(address),
+        pubKey: Buffer.from(bitcoin.address.toOutputScript(address).subarray(2)).toString('hex'),
+      };
+    }
+
+    it('derives the sp1 output from every input when SP and regular coins are spent together', () => {
+      const wallet = new HDSilentPaymentsWallet();
+      wallet.setSecret(senderSeed);
+
+      // the regular coin holds the smallest outpoint, which BIP-352 keys the input hash on
+      const utxos = [makeSpUtxo(wallet, 0x07, 30_000, '3'), regularCoin(wallet, 50_000, '2')];
+
+      // and its output key has odd Y, so this also checks the sender negates it before summing:
+      // the receiver lifts every input key to even Y
+      const internalKey = wallet._getPubkeyByAddress(utxos[1].address) as Buffer;
+      expect(ecc.xOnlyPointAddTweak(internalKey, taggedHash('TapTweak', internalKey))?.parity).toBe(1);
+      const result = wallet.createTransaction(
+        utxos as never[],
+        [{ address: recipientSpAddress, value: 60_000 }],
+        2,
+        wallet.getSilentPaymentChangeAddress(),
+        0xfffffffd,
+        false,
+        0,
+      );
+
+      const tx = result.tx!;
+      expect(tx.ins).toHaveLength(2);
+
+      const expectedScript = Buffer.concat([Buffer.from([0x51, 0x20]), expectedRecipientOutputKey(utxos)]);
+      const spOut = tx.outs.find(o => Buffer.from(o.script).equals(expectedScript));
+      expect(spOut?.value).toBe(60_000n);
+
+      // the caller sees the on-chain output derived for the recipient, not the sp1 code
+      expect(result.outputs[0].address).toBe(bitcoin.address.fromOutputScript(expectedScript));
+    });
+
+    it('pays an sp1 address from regular coins alone with an output the recipient can find', () => {
+      // The raw BIP-32 key of a BIP-86 coin is not the key of its output: summing it into the
+      // input keys derives an output the recipient's scan never matches.
+      const wallet = new HDSilentPaymentsWallet();
+      wallet.setSecret(senderSeed);
+
+      const utxo = regularCoin(wallet, 100_000, 'e');
+      const { tx } = wallet.createTransaction(
+        [utxo as never],
+        [{ address: recipientSpAddress, value: 50_000 }],
+        2,
+        wallet._getInternalAddressByIndex(0),
+        0xfffffffd,
+        false,
+        0,
+      );
+
+      const expectedScript = Buffer.concat([Buffer.from([0x51, 0x20]), expectedRecipientOutputKey([utxo])]);
+      expect(tx!.outs.some(o => Buffer.from(o.script).equals(expectedScript))).toBe(true);
+    });
+  });
+
+  describe('spending a mix of SP and regular coins', () => {
+    const RECIPIENT = 'bc1p4mc3hspc535vj2d9qcjmtynllv38u0lvfp8gs8npt64ejgtxszuq6t4ckj'; // not TEST_SEED's
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    const newWallet = () => {
+      const wallet = new HDSilentPaymentsWallet();
+      wallet.setSecret(TEST_SEED);
+      return wallet;
+    };
+
+    const spCoin = (wallet: HDSilentPaymentsWallet, value: number): SilentPaymentUTXO => ({
+      ...buildUtxo(wallet.getSpendPublicKey(), wallet.getSilentPaymentAddress()!, 0x07),
+      value,
+    });
+
+    /** A regular BIP-86 coin on the wallet's first receive address, as fetchUtxo stores it. */
+    const regularCoin = (wallet: HDSilentPaymentsWallet, value: number): Utxo => {
+      const address = wallet._getExternalAddressByIndex(0);
+      return {
+        txid: '2222222222222222222222222222222222222222222222222222222222222222',
+        vout: 0,
+        value,
+        height: 800_000,
+        address,
+        wif: wallet._getWifForAddress(address),
+      };
+    };
+
+    const spentUtxo = (input: { hash: Uint8Array; index: number }, utxos: Utxo[]): Utxo =>
+      utxos.find(u => u.txid === Buffer.from(input.hash).reverse().toString('hex') && u.vout === input.index)!;
+
+    // Every input's key-path signature verifies against its own prevout's output key, over a
+    // sighash committing to all of the prevouts, as a node checks it.
+    const expectEveryInputSigned = (tx: bitcoin.Transaction, utxos: Utxo[]) => {
+      const prevouts = tx.ins.map(input => spentUtxo(input, utxos));
+      const scripts = prevouts.map(u => bitcoin.address.toOutputScript(u.address));
+      const values = prevouts.map(u => BigInt(u.value));
+
+      tx.ins.forEach((input, idx) => {
+        const sighash = tx.hashForWitnessV1(idx, scripts, values, bitcoin.Transaction.SIGHASH_DEFAULT);
+        const sig = input.witness[0];
+        const sig64 = sig.length === 65 ? sig.subarray(0, 64) : sig;
+        expect(ecc.verifySchnorr!(sighash, scripts[idx].subarray(2), sig64)).toBe(true);
+      });
+    };
+
+    // The outputs a scan fed by the indexer finds for us. It only has the input keys as the
+    // chain shows them (each prevout's output key), never our private keys, so it checks the
+    // wallet's BIP-352 key sum independently.
+    const voutsFoundFromChain = (tx: bitcoin.Transaction, utxos: Utxo[]): number[] => {
+      const prevouts = tx.ins.map(input => spentUtxo(input, utxos));
+      const A = prevouts
+        .map(u => Buffer.concat([Buffer.from([0x02]), bitcoin.address.toOutputScript(u.address).subarray(2)]))
+        .reduce((sum, point) => Buffer.from(ecc.pointAdd(sum, point, true)!));
+      const serialise = (u: Utxo) => {
+        const vout = Buffer.alloc(4);
+        vout.writeUInt32LE(u.vout);
+        return Buffer.concat([Buffer.from(u.txid, 'hex').reverse(), vout]);
+      };
+      const smallest = [...prevouts].sort((a, b) => Buffer.compare(serialise(a), serialise(b)))[0];
+
+      const seed = bip39.mnemonicToSeedSync(TEST_SEED);
+      const network = getNetwork('bitcoin');
+      const outputs = tx.outs.map(o => Buffer.concat([Buffer.from([0x02]), Buffer.from(o.script.subarray(2))]));
+      const matches = scanOutputs(
+        getScanPrivateKey(seed, network),
+        getSpendPublicKey(seed, network),
+        A,
+        createInputHash(A, smallest),
+        [...outputs], // scanOutputs removes what it matches from the array it's given
+        getSilentPaymentChangeLabelMap(seed, network),
+      );
+      return [...matches.keys()].map(hex => outputs.findIndex(o => o.toString('hex') === hex));
+    };
+
+    it('spends both kinds in one transaction when the amount needs them', () => {
+      const wallet = newWallet();
+      const utxos = [spCoin(wallet, 30_000), regularCoin(wallet, 50_000)];
+      const changeAddress = wallet.getChangeAddressForUtxos(utxos as never[], wallet._getInternalAddressByIndex(0));
+      const feeRate = 2;
+
+      const { tx, fee, outputs } = wallet.createTransaction(
+        utxos as never[],
+        [{ address: RECIPIENT, value: 60_000 }],
+        feeRate,
+        changeAddress,
+        0xfffffffd,
+        false,
+        0,
+      );
+
+      expect(tx!.ins).toHaveLength(2);
+      expectEveryInputSigned(tx!, utxos);
+      expect(fee).toBeGreaterThanOrEqual(tx!.virtualSize() * feeRate);
+
+      // the caller gets back its recipient, and change it can pick out by the address it passed
+      expect(outputs.map(o => o.address)).toEqual([RECIPIENT, wallet.getSilentPaymentChangeAddress()]);
+      expect(outputs.reduce((sum, o) => sum + o.value, 0)).toBe(80_000 - fee);
+    });
+
+    it.each([
+      { picked: 'SP', spValue: 100_000, regularValue: 5_000 },
+      { picked: 'regular', spValue: 5_000, regularValue: 100_000 },
+    ])('spends only the $picked coin when coin selection picks just that one out of a mix', ({ picked, spValue, regularValue }) => {
+      const wallet = newWallet();
+      const utxos = [spCoin(wallet, spValue), regularCoin(wallet, regularValue)];
+      (wallet as any)._utxo = [...utxos];
+
+      const { tx, fee } = wallet.createTransaction(
+        utxos as never[],
+        [{ address: RECIPIENT, value: 20_000 }],
+        2,
+        wallet.getChangeAddressForUtxos(utxos as never[], wallet._getInternalAddressByIndex(0)),
+        0xfffffffd,
+        false,
+        0,
+      );
+
+      expect(tx!.ins).toHaveLength(1);
+      expect('tweak' in spentUtxo(tx!.ins[0], utxos)).toBe(picked === 'SP');
+      expectEveryInputSigned(tx!, utxos);
+
+      // with an SP coin on offer change is a silent payment, which the post-broadcast scan has
+      // to find even when the only input it can take the keys from is a regular one
+      (wallet as any).scanBroadcastedTxForOurOutputs(tx!, tx!.getId());
+      const change = wallet.getUTXOs().filter(u => u.txid === tx!.getId());
+      expect(change.map(u => u.value)).toEqual([100_000 - 20_000 - fee]);
+
+      // and so does a scan that only sees the chain, as the indexer's does
+      expect(voutsFoundFromChain(tx!, utxos)).toEqual([change[0].vout]);
+    });
+
+    it('sends mixed-input change to the label-0 address, where it is found and spendable again', () => {
+      const wallet = newWallet();
+      const utxos = [spCoin(wallet, 30_000), regularCoin(wallet, 50_000)];
+      (wallet as any)._utxo = [...utxos];
+
+      const { tx, fee } = wallet.createTransaction(
+        utxos as never[],
+        [{ address: RECIPIENT, value: 60_000 }],
+        2,
+        wallet.getSilentPaymentChangeAddress(),
+        0xfffffffd,
+        false,
+        0,
+      );
+
+      (wallet as any).scanBroadcastedTxForOurOutputs(tx!, tx!.getId());
+
+      const found = wallet.getUTXOs().filter(u => u.txid === tx!.getId());
+      expect(found).toHaveLength(1);
+      expect(found[0].value).toBe(80_000 - 60_000 - fee);
+      expect(voutsFoundFromChain(tx!, utxos)).toEqual([found[0].vout]);
+
+      const spend = wallet.createTransaction(
+        [found[0] as never],
+        [{ address: RECIPIENT, value: 10_000 }],
+        2,
+        wallet.getSilentPaymentChangeAddress(),
+        0xfffffffd,
+        false,
+        0,
+      );
+      expectEveryInputSigned(spend.tx!, found);
+    });
+
+    it('reserves only the SP inputs, since broadcastTx reads anything reserved as SP', () => {
+      const wallet = newWallet();
+      const sp = spCoin(wallet, 30_000);
+
+      wallet.createTransaction(
+        [sp, regularCoin(wallet, 50_000)] as never[],
+        [{ address: RECIPIENT, value: 60_000 }],
+        2,
+        wallet.getSilentPaymentChangeAddress(),
+        0xfffffffd,
+        false,
+        0,
+      );
+
+      expect([...(wallet as any)._sp_pending_inputs]).toEqual([`${sp.txid}:${sp.vout}`]);
+    });
+
+    it.each([
+      // the MAX send tests/unit/hd-taproot-wallet.test.ts pins the hex of
+      { label: 'a MAX send', targets: [{ address: '13HaCAB4jf7FYSZexJxoczyDDnutzZigjS' }], feeRate: 1 },
+      {
+        label: 'a send with change',
+        targets: [{ address: 'bc1pgrhjjw52p6a03v635f7cnl6ttvuz9f34ujhaefm6xqtscd3m473szkl92g', value: 100_000 }],
+        feeRate: 2,
+      },
+    ])('spends regular coins alone exactly as the plain taproot wallet does, for $label', ({ targets, feeRate }) => {
+      const mnemonic = 'zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo glue';
+      // the coin tests/unit/hd-taproot-wallet.test.ts spends
+      const utxos = [
+        {
+          height: 0,
+          value: 181385,
+          address: 'bc1p4mc3hspc535vj2d9qcjmtynllv38u0lvfp8gs8npt64ejgtxszuq6t4ckj',
+          txid: 'e97f982766537c5330b50ef521bbcd8811971eb7cc9fd64bda45266136f27b82',
+          vout: 0,
+        },
+      ];
+
+      const taproot = new HDTaprootWallet();
+      taproot.setSecret(mnemonic);
+      const expected = taproot.createTransaction(utxos, targets, feeRate, taproot._getInternalAddressByIndex(0));
+
+      const wallet = HDSilentPaymentsWallet.fromMnemonic(mnemonic);
+      const changeAddress = wallet._getInternalAddressByIndex(0);
+      const actual = wallet.createTransaction(
+        utxos,
+        targets,
+        feeRate,
+        wallet.getChangeAddressForUtxos(utxos, changeAddress),
+        HDSilentPaymentsWallet.defaultRBFSequence,
+        false,
+        0,
+      );
+
+      expect(actual.tx!.toHex()).toBe(expected.tx!.toHex());
+      expect(actual.fee).toBe(expected.fee);
+    });
+
+    it('records a mixed spend once, at its full value, before and after Electrum reports it', async () => {
+      const wallet = newWallet();
+      const sp = spCoin(wallet, 30_000);
+      const regular = regularCoin(wallet, 50_000);
+      (wallet as any)._utxo = [regular, sp];
+
+      const { tx, fee } = wallet.createTransaction(
+        [regular, sp] as never[],
+        [{ address: RECIPIENT, value: 60_000 }],
+        2,
+        wallet.getSilentPaymentChangeAddress(),
+        0xfffffffd,
+        false,
+        0,
+      );
+      const txid = tx!.getId();
+
+      jest.spyOn(AbstractHDElectrumWallet.prototype, 'broadcastTx').mockResolvedValue(true);
+      jest.spyOn(wallet, 'fetchUtxo').mockResolvedValue(undefined);
+      expect(await wallet.broadcastTx(tx!.toHex())).toBe(true);
+
+      // the SP input is spent and released; the SP change is ours already
+      expect(wallet.getUTXOs().map(u => u.txid)).toEqual([txid]);
+      expect((wallet as any)._sp_pending_inputs.size).toBe(0);
+
+      const rowsForTx = () => wallet.getTransactions().filter(t => t.txid === txid);
+      expect(rowsForTx()).toHaveLength(1);
+      expect(rowsForTx()[0].value).toBe(-(60_000 + fee));
+      expect(
+        rowsForTx()[0]
+          .inputs.map(i => i.addresses?.[0])
+          .sort(),
+      ).toEqual([regular.address, wallet.getSilentPaymentAddress()].sort());
+
+      // Electrum then reports the transaction through the regular input's address, knowing
+      // only that side of it (inputs carry the prevout values it looked up, in BTC)
+      const btc = (sats: number) => sats / 100_000_000;
+      const electrumRow: Transaction = {
+        txid,
+        hash: txid,
+        version: 2,
+        size: tx!.byteLength(),
+        vsize: tx!.virtualSize(),
+        weight: tx!.weight(),
+        locktime: 0,
+        blockhash: 'ab'.repeat(32),
+        confirmations: 1,
+        time: 1_700_000_000,
+        blocktime: 1_700_000_000,
+        timestamp: 1_700_000_000,
+        inputs: tx!.ins.map(input => {
+          const prevout = spentUtxo(input, [regular, sp]);
+          return {
+            txid: prevout.txid,
+            vout: prevout.vout,
+            scriptSig: { asm: '', hex: '' },
+            txinwitness: [],
+            sequence: input.sequence,
+            addresses: [prevout.address],
+            value: btc(prevout.value),
+          };
+        }),
+        outputs: tx!.outs.map((out, n) => ({
+          n,
+          value: btc(Number(out.value)),
+          scriptPubKey: {
+            asm: '',
+            hex: '',
+            reqSigs: 1,
+            type: 'witness_v1_taproot',
+            addresses: [bitcoin.address.fromOutputScript(out.script)],
+          },
+        })),
+      };
+      (wallet as any)._txs_by_external_index = { 0: [electrumRow] };
+
+      expect(rowsForTx()).toHaveLength(1);
+      expect(rowsForTx()[0].value).toBe(-(60_000 + fee));
+      expect(rowsForTx()[0].confirmations).toBe(1);
+    });
+
+    it('holds to the stricter Buffer#equals of the buffer polyfill the app runs on', async () => {
+      // In the app `buffer` is the npm polyfill, whose Buffer#equals throws on a plain
+      // Uint8Array (which is what bitcoinjs-lib 7 hands back), where Node's accepts one.
+      const realEquals = Buffer.prototype.equals;
+      jest.spyOn(Buffer.prototype, 'equals').mockImplementation(function (this: Buffer, other: unknown) {
+        if (!Buffer.isBuffer(other)) throw new TypeError('Argument must be a Buffer');
+        return realEquals.call(this, other);
+      });
+
+      const wallet = newWallet();
+      const utxos = [spCoin(wallet, 30_000), regularCoin(wallet, 50_000)];
+      (wallet as any)._utxo = [...utxos];
+
+      const { tx } = wallet.createTransaction(
+        utxos as never[],
+        [
+          {
+            address: 'sp1qqvchcnrcqpdutxhpf57ptn3wajj0ymqxwzu9g6vj9uxx3wuvlykhyqh99hyh33y5593802pzw5rtw040zrw9f8re52tgcwngc5974w5evuufdy0m',
+            value: 60_000,
+          },
+        ],
+        2,
+        wallet.getSilentPaymentChangeAddress(),
+        0xfffffffd,
+        false,
+        0,
+      );
+
+      jest.spyOn(AbstractHDElectrumWallet.prototype, 'broadcastTx').mockResolvedValue(true);
+      jest.spyOn(wallet, 'fetchUtxo').mockResolvedValue(undefined);
+      await wallet.broadcastTx(tx!.toHex());
+
+      // the instant scan ran through every input's keys and found the change
+      expect(wallet.getUTXOs().map(u => u.txid)).toEqual([tx!.getId()]);
     });
   });
 
