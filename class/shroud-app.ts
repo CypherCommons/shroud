@@ -13,7 +13,7 @@ import { randomBytes } from './rng';
 import { ExtendedTransaction, Transaction, TWallet } from './wallets/types';
 import { HDSilentPaymentsWallet } from './wallets/hd-bip352-wallet.ts';
 import { readContacts, TContacts } from './contacts';
-import { getActiveNetworkId } from '../modules/network';
+import { getActiveNetworkId, isNetworkEnabled, type NetworkId } from '../modules/network';
 
 let usedBucketNum: boolean | number = false;
 let savingInProgress = 0; // its both a flag and a counter of attempts to write to disk
@@ -686,6 +686,15 @@ export class ShroudApp {
   /** Every wallet across every chain. Only for persistence; the UI wants `getWallets()`. */
   getAllWalletsAcrossNetworks = (): TWallet[] => {
     return this.wallets;
+  };
+
+  /**
+   * A wallet on another selectable chain whose recovery phrase could also set up `networkId`'s
+   * wallet, so moving to a chain with no wallet yet need not mean a new phrase. Undefined when
+   * there is none.
+   */
+  getWalletToReuseOn = (networkId: NetworkId): TWallet | undefined => {
+    return this.wallets.find(w => w.networkId !== networkId && isNetworkEnabled(w.networkId));
   };
 
   /**

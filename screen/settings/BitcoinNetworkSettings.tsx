@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import SafeAreaScrollView from '../../components/SafeAreaScrollView';
 import SettingsCard from '../../components/SettingsCard';
@@ -6,11 +6,11 @@ import SettingsRowWrapper from '../../components/SettingsRowWrapper';
 import CheckmarkIcon from '../../components/icons/CheckmarkIcon';
 import { useTheme } from '../../components/themes';
 import { useStorage } from '../../hooks/context/useStorage';
-import presentAlert from '../../components/Alert';
-import confirm from '../../helpers/confirm';
+import { useSelectNetwork } from '../../hooks/useSelectNetwork';
 import loc from '../../loc';
 import { ClashFont } from '../../constants/fonts';
-import { getEnabledNetworks, type NetworkId } from '../../modules/network';
+import { getEnabledNetworks } from '../../modules/network';
+import { isNetworkSwitchable } from '../../modules/networkPreference';
 
 /**
  * Which chain the wallet is on: mainnet, testnet4 or signet. Not to be confused with
@@ -19,35 +19,19 @@ import { getEnabledNetworks, type NetworkId } from '../../modules/network';
  */
 const BitcoinNetworkSettings: React.FC = () => {
   const { colors } = useTheme();
-  const { activeNetworkId, switchNetwork, isSwitchingNetwork, scanState } = useStorage();
+  const { activeNetworkId, isSwitchingNetwork } = useStorage();
+  const onSelect = useSelectNetwork();
   const networks = getEnabledNetworks();
-
-  const onSelect = useCallback(
-    async (next: NetworkId) => {
-      if (next === activeNetworkId || isSwitchingNetwork) return;
-
-      // A scan can take a long time; abandoning one silently would look like the app lost data.
-      if (scanState.status === 'scanning') {
-        const proceed = await confirm(loc.settings.network_switch_scan_title, loc.settings.network_switch_scan_message);
-        if (!proceed) return;
-      }
-
-      try {
-        await switchNetwork(next);
-      } catch (error: any) {
-        presentAlert({ title: loc.errors.error, message: error?.message ?? String(error) });
-      }
-    },
-    [activeNetworkId, isSwitchingNetwork, switchNetwork, scanState.status],
-  );
 
   return (
     <SafeAreaScrollView contentContainerStyle={styles.content} testID="BitcoinNetworkSettingsScrollView">
       <SettingsCard>
         {networks.map((network, index) => {
           const selected = network.id === activeNetworkId;
-          // A chain with no indexer cannot be scanned; the subtitle says why.
-          const unavailable = isSwitchingNetwork || !network.indexerBaseUrl;
+          // Only enabled chains are listed, so a chain that can't be switched to has no indexer to
+          // scan it; the subtitle says so.
+          const switchable = isNetworkSwitchable(network.id);
+          const unavailable = isSwitchingNetwork || !switchable;
           return (
             <SettingsRowWrapper key={network.id} showSeparator={index < networks.length - 1}>
               <Pressable
@@ -62,9 +46,7 @@ const BitcoinNetworkSettings: React.FC = () => {
               >
                 <View style={styles.rowText}>
                   <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>{network.displayName}</Text>
-                  {!network.indexerBaseUrl && (
-                    <Text style={[styles.rowSubtitle, { color: colors.textMuted }]}>{loc.settings.network_no_indexer}</Text>
-                  )}
+                  {!switchable && <Text style={[styles.rowSubtitle, { color: colors.textMuted }]}>{loc.settings.network_no_indexer}</Text>}
                 </View>
                 {selected && <CheckmarkIcon color={colors.brandPrimary} size={20} />}
               </Pressable>
