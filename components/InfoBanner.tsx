@@ -12,7 +12,7 @@ interface InfoBannerProps {
   emphasis?: string;
   /** Optional heading shown above `text`. */
   title?: string;
-  variant?: 'info' | 'caution';
+  variant?: 'info' | 'caution' | 'error';
   /** 1px border in the variant's accent color. */
   bordered?: boolean;
   containerStyle?: ViewStyle;
@@ -21,11 +21,11 @@ interface InfoBannerProps {
 const InfoBanner: React.FC<InfoBannerProps> = ({ text, emphasis, title, variant = 'info', bordered = false, containerStyle }) => {
   const { colors } = useTheme();
   const [before, match, after] = splitForEmphasis(text, emphasis);
-  const backgroundColor = variant === 'caution' ? colors.surfaceCaution : colors.surfaceSubtle;
-  const iconColor = variant === 'caution' ? colors.textWarning : colors.brandPrimary;
-  const borderColor = variant === 'caution' ? colors.textWarning : colors.accentSubtle;
+  const backgroundColor = variant === 'caution' ? colors.surfaceCaution : variant === 'error' ? colors.surfaceError : colors.surfaceSubtle;
+  const iconColor = variant === 'caution' ? colors.textWarning : variant === 'error' ? colors.statusError : colors.brandPrimary;
+  const borderColor = variant === 'caution' ? colors.textWarning : variant === 'error' ? colors.statusError : colors.accentSubtle;
   const titleColor = variant === 'caution' ? colors.textCaution : colors.textPrimary;
-  const textColor = variant === 'caution' ? colors.textCaution : colors.textSecondary;
+  const textColor = variant === 'caution' ? colors.textCaution : variant === 'error' ? colors.statusError : colors.textSecondary;
 
   return (
     <View style={[styles.banner, { backgroundColor }, bordered && styles.bordered, bordered && { borderColor }, containerStyle]}>

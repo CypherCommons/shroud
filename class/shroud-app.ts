@@ -7,6 +7,7 @@ import RNSecureKeyStore, { ACCESSIBLE } from 'react-native-secure-key-store';
 import Realm from 'realm';
 
 import * as encryption from '../modules/encryption';
+import { encryptBackup } from '../modules/backupEncryption';
 import { GROUP_IO_SHROUD } from '../modules/currency';
 import presentAlert from '../components/Alert';
 import { randomBytes } from './rng';
@@ -199,6 +200,47 @@ export class ShroudApp {
   };
 
   /**
+   * Forgets everything this app stores about the wallet: in-memory state, the keystore copy and the
+   * Realm key-value backup (encrypted and decoy buckets included), and the Realm transaction caches.
+   * Used by the forgot-PIN reset. Throws if any of it can't be removed, so the caller doesn't go on
+   * to drop the PIN while the old wallet is still on disk.
+   */
+  wipeAllData = async (): Promise<void> => {
+    usedBucketNum = false;
+    this.cachedPassword = undefined;
+    this.wallets = [];
+    this.tx_metadata = {};
+    this.contacts = {};
+
+    // Wait out a save already in flight and hold its lock, so it can't write the old wallet back
+    // after this wipe.
+    // eslint-disable-next-line no-unmodified-loop-condition -- saveToDisk() clears it while this awaits
+    while (savingInProgress) await new Promise(resolve => setTimeout(resolve, 100));
+    savingInProgress = 1;
+    try {
+      // Written directly rather than through saveToDisk(), which reports errors with an alert instead of throwing.
+      const data = JSON.stringify({ wallets: [], tx_metadata: {}, contacts: {} });
+      await this.setItem('data', data);
+      await this.setItem(ShroudApp.FLAG_ENCRYPTED, '');
+      const realmkeyValue = await this.openRealmKeyValue();
+      try {
+        this.saveToRealmKeyValue(realmkeyValue, 'data', data);
+        this.saveToRealmKeyValue(realmkeyValue, ShroudApp.FLAG_ENCRYPTED, '');
+      } finally {
+        realmkeyValue.close();
+      }
+
+      // One transaction cache per storage password (see getRealmForTransactions), plus Realm's lock/note/management files.
+      const files = await RNFS.readDir(RNFS.CachesDirectoryPath);
+      for (const file of files) {
+        if (file.name.includes('-wallettransactions.realm')) await RNFS.unlink(file.path);
+      }
+    } finally {
+      savingInProgress = 0;
+    }
+  };
+
+  /**
    * Cleans up all current application data (wallets, tx metadata etc)
    * Encrypts the bucket and saves it storage
    */
@@ -221,6 +263,51 @@ export class ShroudApp {
     const bucketsString = JSON.stringify(buckets);
     await this.setItem('data', bucketsString);
     return (await this.getItem('data')) === bucketsString;
+  };
+
+  /**
+   * Stripped-down version of every wallet, safe to JSON.stringify and persist — shared by
+   * saveToDisk() and exportEncryptedBackup() so the stripping logic only lives in one place.
+   */
+  private serializeWalletsForStorage(): string[] {
+    const walletsToSave: string[] = [];
+    // Every network's wallets, not just the active one's — this array is what replaces the
+    // stored bucket, so narrowing it here would drop the other chains' wallets.
+    for (const key of this.wallets) {
+      if (typeof key === 'boolean') continue;
+      key.prepareForSerialization();
+      // @ts-ignore wtf is wallet.current? Does it even exist?
+      delete key.current;
+      const keyCloned: any = key instanceof HDSilentPaymentsWallet ? key.toPersistable() : Object.assign({}, key); // stripped-down version of a wallet to save to secure keystore
+      if ('_hdWalletInstance' in key) {
+        const k = keyCloned as any;
+        k._hdWalletInstance = Object.assign({}, key._hdWalletInstance);
+        k._hdWalletInstance._txs_by_external_index = {};
+        k._hdWalletInstance._txs_by_internal_index = {};
+      }
+      // stripping down:
+      if (key._txs_by_external_index) {
+        keyCloned._txs_by_external_index = {};
+        keyCloned._txs_by_internal_index = {};
+      }
+
+      walletsToSave.push(JSON.stringify({ ...keyCloned, type: keyCloned.type }));
+    }
+    return walletsToSave;
+  }
+
+  /**
+   * Encrypts a fresh, plaintext snapshot of the current wallet/contacts/tx-metadata data with the
+   * given password — independent of whether on-device storage encryption is separately enabled,
+   * so a single password fully unlocks the file. Read-only: no Keychain/Realm/disk writes.
+   */
+  exportEncryptedBackup = async (password: string): Promise<string> => {
+    const data: TBucketStorage = {
+      wallets: this.serializeWalletsForStorage(),
+      tx_metadata: this.tx_metadata,
+      contacts: this.contacts,
+    };
+    return encryptBackup(JSON.stringify(data), password);
   };
 
   hashIt = (s: string): string => {
@@ -518,40 +605,22 @@ export class ShroudApp {
     savingInProgress = 1;
 
     try {
-      const walletsToSave: string[] = []; // serialized wallets
       let realm;
       try {
         realm = await this.getRealmForTransactions();
       } catch (error: any) {
         presentAlert({ message: error.message });
       }
-      // Every network's wallets, not just the active one's — this array is what replaces the
-      // stored bucket, so narrowing it here would drop the other chains' wallets.
-      for (const key of this.wallets) {
-        if (typeof key === 'boolean') continue;
-        key.prepareForSerialization();
-        // @ts-ignore wtf is wallet.current? Does it even exist?
-        delete key.current;
-        const keyCloned: any = key instanceof HDSilentPaymentsWallet ? key.toPersistable() : Object.assign({}, key); // stripped-down version of a wallet to save to secure keystore
-        if ('_hdWalletInstance' in key) {
-          const k = keyCloned as any;
-          k._hdWalletInstance = Object.assign({}, key._hdWalletInstance);
-          k._hdWalletInstance._txs_by_external_index = {};
-          k._hdWalletInstance._txs_by_internal_index = {};
+      if (realm) {
+        for (const key of this.wallets) {
+          if (typeof key === 'boolean') continue;
+          this.offloadWalletToRealm(realm, key);
         }
-        if (realm) this.offloadWalletToRealm(realm, key);
-        // stripping down:
-        if (key._txs_by_external_index) {
-          keyCloned._txs_by_external_index = {};
-          keyCloned._txs_by_internal_index = {};
-        }
-
-        walletsToSave.push(JSON.stringify({ ...keyCloned, type: keyCloned.type }));
+        realm.close();
       }
-      if (realm) realm.close();
 
       let data: TBucketStorage | string[] /* either a bucket, or an array of encrypted buckets */ = {
-        wallets: walletsToSave,
+        wallets: this.serializeWalletsForStorage(),
         tx_metadata: this.tx_metadata,
         contacts: this.contacts,
       };
