@@ -47,7 +47,8 @@
         "ts-check": false
       }
     ],
-    "@typescript-eslint/no-unused-vars": ["error", { "args": "none" }],
+    // v8 flags unused catch bindings by default; the codebase relies on `catch (e) {}` as v7 allowed
+    "@typescript-eslint/no-unused-vars": ["error", { "args": "none", "caughtErrors": "none" }],
 
     // disable rules that are superseded by @typescript-eslint rules
     "no-unused-vars": "off",
@@ -57,6 +58,10 @@
     // disable rules that we want to enforce only for typescript files
     "@typescript-eslint/explicit-module-boundary-types": "off",
     "@typescript-eslint/no-var-requires": "off",
+    "@typescript-eslint/no-require-imports": "off", // v8 successor of no-var-requires
+    // new in the v8 recommended set; the codebase uses `cond && fn()` and `interface X extends Y {}` widely enough to allow them
+    "@typescript-eslint/no-unused-expressions": ["error", { "allowShortCircuit": true }],
+    "@typescript-eslint/no-empty-object-type": ["error", { "allowInterfaces": "with-single-extends" }],
     "@typescript-eslint/no-this-alias": "off",
     "@typescript-eslint/no-use-before-define": "off",
   },
