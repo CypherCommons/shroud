@@ -38,6 +38,7 @@ import AddIcon from '../../components/icons/AddIcon';
 import ContactRow from '../../components/ContactRow';
 import ContactsEmptyState from '../../components/ContactsEmptyState';
 import EmptyStateCard from '../../components/EmptyStateCard';
+import FittedAmount from '../../components/FittedAmount';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import { ContactListItem } from '../../class/contacts';
 import { useContacts } from '../../hooks/context/useContacts';
@@ -510,9 +511,7 @@ const WalletsList: React.FC = () => {
         <TestnetBadge style={styles.testnetBadge} />
         <TouchableOpacity onPress={changeWalletBalanceUnit} style={styles.balanceHeader}>
           <View style={styles.balanceRow}>
-            <Text style={[styles.balanceNumber, stylesHook.foregroundText]} adjustsFontSizeToFit numberOfLines={1}>
-              {displayNum}
-            </Text>
+            <FittedAmount style={stylesHook.foregroundText}>{displayNum}</FittedAmount>
             <Text style={[styles.balanceUnit, stylesHook.alternativeText]}>{preferredUnit}</Text>
           </View>
           <Text style={[styles.balanceFiat, stylesHook.alternativeText]}>{fiatLine}</Text>
@@ -730,14 +729,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'center',
-  },
-  balanceNumber: {
-    fontSize: 48,
-    lineHeight: 48,
-    letterSpacing: -1.2,
-    textAlign: 'center',
-    fontFamily: ClashFont.medium,
-    flexShrink: 1,
   },
   balanceUnit: {
     fontSize: 22,
