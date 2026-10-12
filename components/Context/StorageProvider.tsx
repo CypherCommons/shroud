@@ -54,6 +54,8 @@ interface StorageContextType {
   activeNetworkId: NetworkId;
   switchNetwork: (next: NetworkId) => Promise<void>;
   isSwitchingNetwork: boolean;
+  /** While the active chain has no wallet: another chain's wallet whose recovery phrase it could use. */
+  walletToReuse: TWallet | undefined;
 }
 
 export enum WalletTransactionsStatus {
@@ -498,6 +500,13 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     [saveToDisk, wallets],
   );
 
+  // Every change to the stored wallets is followed by a new `wallets`, and another chain's wallets
+  // can only change while that chain is active, so these two are all the answer depends on.
+  const walletToReuse = useMemo(
+    () => (wallets.length === 0 ? shroudApp.getWalletToReuseOn(activeNetworkId) : undefined),
+    [wallets, activeNetworkId],
+  );
+
   const addAndSaveWallet = useCallback(
     async (w: TWallet) => {
       if (wallets.length > 0) throw new Error(loc.wallets.single_wallet_limit);
@@ -552,6 +561,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       activeNetworkId,
       switchNetwork,
       isSwitchingNetwork,
+      walletToReuse,
     }),
     [
       wallets,
@@ -571,6 +581,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       activeNetworkId,
       switchNetwork,
       isSwitchingNetwork,
+      walletToReuse,
     ],
   );
 
