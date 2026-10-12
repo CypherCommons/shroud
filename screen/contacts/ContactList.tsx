@@ -1,5 +1,5 @@
 import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, StyleSheet, View } from 'react-native';
 
 import { ContactListItem, searchContacts } from '../../class/contacts';
 import ContactRow from '../../components/ContactRow';
@@ -8,8 +8,10 @@ import SafeArea from '../../components/SafeArea';
 import SearchField from '../../components/SearchField';
 import { useTheme } from '../../components/themes';
 import AddIcon from '../../components/icons/AddIcon';
+import HeaderBarButton from '../../components/HeaderBarButton';
 import { useContacts } from '../../hooks/context/useContacts';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
+import { hasLiquidGlass } from '../../modules/environment';
 import loc from '../../loc';
 
 const ContactList: React.FC = () => {
@@ -33,15 +35,15 @@ const ContactList: React.FC = () => {
 
   const HeaderRight = useMemo(
     () => (
-      <Pressable
-        accessibilityRole="button"
+      <HeaderBarButton
         accessibilityLabel={loc.contacts.add}
         onPress={openAdd}
         testID="AddContactButton"
-        style={[styles.add, { backgroundColor: colors.brandPrimary, borderColor: colors.background }]}
+        backgroundStyle={[styles.add, { backgroundColor: colors.brandPrimary, borderColor: colors.background }]}
       >
-        <AddIcon size={24} color={colors.white} />
-      </Pressable>
+        {/* On glass the "+" sits on the bar's capsule rather than a purple square, so it takes the brand color. */}
+        <AddIcon size={24} color={hasLiquidGlass ? colors.brandPrimary : colors.white} />
+      </HeaderBarButton>
     ),
     [openAdd, colors.brandPrimary, colors.white, colors.background],
   );
@@ -88,7 +90,7 @@ const styles = StyleSheet.create({
   // component to nudge itself up out of a list footer's position.
   emptyState: { flex: 1, justifyContent: 'center', paddingBottom: 96 },
   searchField: { marginHorizontal: 24, marginTop: 16 },
-  add: { width: 40, height: 40, borderRadius: 8, borderWidth: 1.63, alignItems: 'center', justifyContent: 'center' },
+  add: { borderRadius: 8, borderWidth: 1.63 },
   // Rows are bare here, so the 16pt rhythm is the list's to set.
   listContent: { gap: 16, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 24 },
 });

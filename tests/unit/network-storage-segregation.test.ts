@@ -77,4 +77,25 @@ describe('storage segregation by network', () => {
     const ids = app.getAllWalletsAcrossNetworks().map(w => w.getID());
     expect(new Set(ids).size).toBe(3);
   });
+
+  describe('a phrase to reuse on a chain with no wallet', () => {
+    it('comes from another selectable chain', () => {
+      app.wallets = [walletOn('signet')];
+      expect(app.getWalletToReuseOn('bitcoin')?.networkId).toBe('signet');
+
+      app.wallets = [walletOn('bitcoin')];
+      expect(app.getWalletToReuseOn('signet')?.networkId).toBe('bitcoin');
+    });
+
+    // Testnet4 is switched off: its wallet stays in storage, but the user can no longer see it.
+    it('never comes from a chain that is switched off', () => {
+      app.wallets = [walletOn('testnet4')];
+      expect(app.getWalletToReuseOn('bitcoin')).toBeUndefined();
+    });
+
+    it('never comes from the chain being set up', () => {
+      app.wallets = [walletOn('bitcoin')];
+      expect(app.getWalletToReuseOn('bitcoin')).toBeUndefined();
+    });
+  });
 });

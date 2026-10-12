@@ -7,7 +7,7 @@ import loc from '../loc';
 import { WalletExportComponent } from './LazyLoadWalletExportStack';
 
 export type WalletExportStackParamList = {
-  WalletExport: { walletID: string };
+  WalletExport: undefined;
 };
 
 const Stack = createNativeStackNavigator<WalletExportStackParamList>();

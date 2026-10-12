@@ -1,12 +1,8 @@
 import { useNavigation, NavigationProp, ParamListBase, CommonActions } from '@react-navigation/native';
 import { navigationRef } from '../NavigationService';
 import { presentWalletExportReminder } from '../helpers/presentWalletExportReminder';
-import { unlockWithBiometrics, useBiometrics } from './useBiometrics';
 import { useStorage } from './context/useStorage';
 import { useCallback, useMemo } from 'react';
-
-// List of screens that require biometrics
-const requiresBiometrics = ['WalletExportRoot'];
 
 // List of screens that require wallet export to be saved
 const requiresWalletExportIsSaved = ['ReceiveDetails'];
@@ -16,7 +12,6 @@ export const useExtendedNavigation = <T extends NavigationProp<ParamListBase>>()
 } => {
   const originalNavigation = useNavigation<T>();
   const { wallets, saveToDisk } = useStorage();
-  const { isBiometricUseEnabled } = useBiometrics();
 
   const enhancedNavigate = useCallback(
     (
@@ -47,7 +42,6 @@ export const useExtendedNavigation = <T extends NavigationProp<ParamListBase>>()
         throw new Error('Invalid navigation options');
       }
 
-      const isRequiresBiometrics = requiresBiometrics.includes(screenName);
       const isRequiresWalletExportIsSaved = requiresWalletExportIsSaved.includes(screenName);
 
       const proceedWithNavigation = () => {
@@ -88,19 +82,6 @@ export const useExtendedNavigation = <T extends NavigationProp<ParamListBase>>()
           return;
         }
 
-        if (isRequiresBiometrics) {
-          const isBiometricsEnabled = await isBiometricUseEnabled();
-          if (isBiometricsEnabled) {
-            const isAuthenticated = await unlockWithBiometrics();
-            if (isAuthenticated) {
-              proceedWithNavigation();
-              return;
-            } else {
-              console.error('Biometric authentication failed');
-              return;
-            }
-          }
-        }
         if (isRequiresWalletExportIsSaved) {
           console.log('Checking if wallet export is saved');
           let walletID: string | undefined;
@@ -121,10 +102,7 @@ export const useExtendedNavigation = <T extends NavigationProp<ParamListBase>>()
               await saveToDisk();
               proceedWithNavigation();
             } catch (error) {
-              originalNavigation.navigate('WalletExportRoot', {
-                screen: 'WalletExport',
-                params: { walletID },
-              });
+              originalNavigation.navigate('ViewRecoveryPhrase');
             }
             return;
           }
@@ -135,7 +113,7 @@ export const useExtendedNavigation = <T extends NavigationProp<ParamListBase>>()
         proceedWithNavigation();
       })();
     },
-    [originalNavigation, isBiometricUseEnabled, wallets, saveToDisk],
+    [originalNavigation, wallets, saveToDisk],
   );
 
   const navigateToWalletsList = useCallback(() => {

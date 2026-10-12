@@ -5,6 +5,7 @@ import SettingsRow from '../../components/SettingsRow';
 import GeneralIcon from '../../components/icons/GeneralIcon';
 import CurrencyIcon from '../../components/icons/CurrencyIcon';
 import ContactIcon from '../../components/icons/ContactIcon';
+import SecurityIcon from '../../components/icons/SecurityIcon';
 import NetworkIcon from '../../components/icons/NetworkIcon';
 import AboutIcon from '../../components/icons/AboutIcon';
 import { Theme, useTheme } from '../../components/themes';
@@ -16,7 +17,7 @@ import { getAppVersionLabel } from '../../helpers/appVersion';
 import { ClashFont } from '../../constants/fonts';
 import { IconProps } from '../../components/icons/types';
 
-type SettingsRoute = 'General' | 'Currency' | 'Contacts' | 'NetworkSettings' | 'About';
+type SettingsRoute = 'General' | 'Currency' | 'Contacts' | 'Security' | 'NetworkSettings' | 'About';
 
 interface RowConfig {
   Icon: React.FC<IconProps>;
@@ -51,6 +52,14 @@ const MAIN_ROWS: RowConfig[] = [
     subtitle: loc.contacts.settings_subtitle,
     route: 'Contacts',
     testID: 'ContactsButton',
+  },
+  {
+    Icon: SecurityIcon,
+    colorToken: 'statusError',
+    title: loc.settings.security_title,
+    subtitle: loc.settings.security_subtitle,
+    route: 'Security',
+    testID: 'SecurityButton',
   },
   {
     Icon: NetworkIcon,

@@ -1,7 +1,9 @@
 import React, { useCallback, useMemo } from 'react';
-import { Platform, TouchableOpacity } from 'react-native';
+import { Platform, StyleProp, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
 import { MenuView, MenuAction, NativeActionEvent } from '@react-native-menu/menu';
 import { ToolTipMenuProps, Action } from './types';
+
+const leaveLongPressToMenu = () => {};
 
 const ToolTipMenu = (props: ToolTipMenuProps) => {
   const {
@@ -103,28 +105,55 @@ const ToolTipMenu = (props: ToolTipMenuProps) => {
   );
 
   const renderMenuView = () => {
-    return (
+    const opensOnLongPress = !isMenuPrimaryAction;
+
+    const renderMenu = (content: React.ReactNode, style?: StyleProp<ViewStyle>) => (
       <MenuView
         title={title}
         isAnchoredToRight
         onPressAction={handlePressMenuItemForMenuView}
         actions={Platform.OS === 'ios' ? menuViewItemsIOS : menuViewItemsAndroid}
-        shouldOpenOnLongPress={!isMenuPrimaryAction}
+        shouldOpenOnLongPress={opensOnLongPress}
+        style={style}
         // @ts-ignore: Not exposed in types
         accessibilityLabel={props.accessibilityLabel}
         accessibilityHint={props.accessibilityHint}
         accessibilityRole={props.accessibilityRole}
         accessibilityLanguage="en"
       >
-        {isMenuPrimaryAction || isButton ? (
-          <TouchableOpacity style={buttonStyle} disabled={disabled} onPress={onPress} {...restProps}>
-            {children}
-          </TouchableOpacity>
-        ) : (
-          children
-        )}
+        {content}
       </MenuView>
     );
+
+    if (!isButton && !isMenuPrimaryAction) return renderMenu(children);
+
+    const renderTouchable = (content: React.ReactNode) => (
+      <TouchableOpacity
+        style={buttonStyle}
+        disabled={disabled}
+        onPress={onPress}
+        // The long press belongs to the menu: claiming it stops the release from also firing onPress.
+        onLongPress={opensOnLongPress ? leaveLongPressToMenu : undefined}
+        {...restProps}
+      >
+        {content}
+      </TouchableOpacity>
+    );
+
+    // On iOS, MenuView mounts its native button above its React children, so the button takes
+    // every tap and a touchable nested inside the menu never sees one. There the menu goes inside
+    // the touchable instead, laid over its content: the touchable is then an ancestor of whatever
+    // is tapped, and the menu still gets the long press. Android keeps the menu outside, because a
+    // touchable that owns a gesture takes it from the native views inside it, cancelling the long press.
+    if (opensOnLongPress && Platform.OS === 'ios') {
+      return renderTouchable(
+        <>
+          {children}
+          {renderMenu(null, StyleSheet.absoluteFill)}
+        </>,
+      );
+    }
+    return renderMenu(renderTouchable(children));
   };
 
   return props.actions.length > 0 ? renderMenuView() : null;

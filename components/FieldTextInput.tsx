@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 import { Platform, StyleSheet, TextInput, TextInputProps } from 'react-native';
 
 import { ClashFont } from '../constants/fonts';
@@ -6,11 +6,12 @@ import { caretProps, useTheme } from './themes';
 
 // The input that goes inside a LabeledField. It owns the typography and the themed colours so
 // the text stays in step with the field chrome around it wherever the pair is used.
-const FieldTextInput: React.FC<TextInputProps> = ({ style, ...props }) => {
+const FieldTextInput = forwardRef<TextInput, TextInputProps>(({ style, ...props }, ref) => {
   const { colors } = useTheme();
 
   return (
     <TextInput
+      ref={ref}
       style={[styles.input, { color: colors.textSecondary }, style]}
       placeholderTextColor={colors.textMuted}
       underlineColorAndroid="transparent"
@@ -18,7 +19,7 @@ const FieldTextInput: React.FC<TextInputProps> = ({ style, ...props }) => {
       {...props}
     />
   );
-};
+});
 
 // The same input configured for a bitcoin address: long, wrapped, and never autocorrected.
 export const FieldAddressInput: React.FC<TextInputProps> = ({ style, ...props }) => (

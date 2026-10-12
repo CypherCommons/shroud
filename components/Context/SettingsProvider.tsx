@@ -21,6 +21,7 @@ import { BitcoinUnit } from '../../models/bitcoinUnits';
 const TotalWalletsBalanceKey = 'TotalWalletsBalance';
 const TotalWalletsBalancePreferredUnit = 'TotalWalletsBalancePreferredUnit';
 const ThemePreferenceKey = 'ThemePreference';
+const PinLayoutScrambledKey = 'PinLayoutScrambled';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -57,6 +58,10 @@ const getTotalBalancePreferredUnit = (): Promise<BitcoinUnit> =>
 
 const persistTotalBalancePreferredUnit = (unit: BitcoinUnit): Promise<void> => writePref(TotalWalletsBalancePreferredUnit, unit);
 
+const getIsPinLayoutScrambled = (): Promise<boolean> => readPref(PinLayoutScrambledKey, value => value === '1', false);
+
+const persistIsPinLayoutScrambled = (value: boolean): Promise<void> => writePref(PinLayoutScrambledKey, value ? '1' : '0');
+
 interface SettingsContextType {
   preferredFiatCurrency: TFiatUnit;
   setPreferredFiatCurrencyStorage: (currency: TFiatUnit) => Promise<void>;
@@ -82,6 +87,8 @@ interface SettingsContextType {
   checkTorConnection: () => Promise<boolean>;
   selectedBlockExplorer: BlockExplorer;
   setBlockExplorerStorage: (explorer: BlockExplorer) => Promise<boolean>;
+  isPinLayoutScrambled: boolean;
+  setIsPinLayoutScrambledStorage: (value: boolean) => Promise<void>;
 }
 
 const defaultSettingsContext: SettingsContextType = {
@@ -109,6 +116,8 @@ const defaultSettingsContext: SettingsContextType = {
   checkTorConnection: async () => false,
   selectedBlockExplorer: BLOCK_EXPLORERS.default,
   setBlockExplorerStorage: async () => false,
+  isPinLayoutScrambled: false,
+  setIsPinLayoutScrambledStorage: async () => {},
 };
 
 export const SettingsContext = createContext<SettingsContextType>(defaultSettingsContext);
@@ -128,6 +137,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
   const [torSocksPort, setTorSocksPortState] = useState<number>(9050);
   const [torStatus, setTorStatus] = useState<TorStatus>('disabled');
   const [selectedBlockExplorer, setSelectedBlockExplorer] = useState<BlockExplorer>(BLOCK_EXPLORERS.default);
+  const [isPinLayoutScrambled, setIsPinLayoutScrambled] = useState<boolean>(false);
 
   const { walletsInitialized } = useStorage();
 
@@ -167,6 +177,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
         getBlockExplorerUrl().then(url => {
           const found = getBlockExplorersList().find(explorer => normalizeUrl(explorer.url) === normalizeUrl(url));
           setSelectedBlockExplorer(found ?? BLOCK_EXPLORERS.default);
+        }),
+        getIsPinLayoutScrambled().then(scrambled => {
+          setIsPinLayoutScrambled(scrambled);
         }),
       ];
 
@@ -305,6 +318,15 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
     return success;
   }, []);
 
+  const setIsPinLayoutScrambledStorage = useCallback(async (value: boolean): Promise<void> => {
+    try {
+      await persistIsPinLayoutScrambled(value);
+      setIsPinLayoutScrambled(value);
+    } catch (e) {
+      console.error('Error setting isPinLayoutScrambled:', e);
+    }
+  }, []);
+
   const value = useMemo(
     () => ({
       preferredFiatCurrency,
@@ -331,6 +353,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       checkTorConnection,
       selectedBlockExplorer,
       setBlockExplorerStorage,
+      isPinLayoutScrambled,
+      setIsPinLayoutScrambledStorage,
     }),
     [
       preferredFiatCurrency,
@@ -356,6 +380,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       checkTorConnection,
       selectedBlockExplorer,
       setBlockExplorerStorage,
+      isPinLayoutScrambled,
+      setIsPinLayoutScrambledStorage,
     ],
   );
 

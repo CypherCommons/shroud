@@ -11,9 +11,10 @@ import { useTheme } from './themes';
 
 interface AddressCopyCardProps {
   text: string;
+  testID?: string;
 }
 
-const AddressCopyCard: React.FC<AddressCopyCardProps> = ({ text }) => {
+const AddressCopyCard: React.FC<AddressCopyCardProps> = ({ text, testID = 'AddressCopyCard' }) => {
   const { colors } = useTheme();
   const [copied, setCopied] = useState(false);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,12 +38,7 @@ const AddressCopyCard: React.FC<AddressCopyCardProps> = ({ text }) => {
   };
 
   return (
-    <Pressable
-      onPress={onCopy}
-      accessibilityRole="button"
-      testID="AddressCopyCard"
-      style={[styles.card, { backgroundColor: colors.surfaceSubtle }]}
-    >
+    <Pressable onPress={onCopy} accessibilityRole="button" testID={testID} style={[styles.card, { backgroundColor: colors.surfaceSubtle }]}>
       <ShroudText testID="AddressValue" style={[styles.address, { color: colors.textSecondary }]}>
         {text}
       </ShroudText>

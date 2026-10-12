@@ -65,11 +65,16 @@ export function assertNetworkEnabled(id: NetworkId): void {
   }
 }
 
+function hasIndexer(id: NetworkId): boolean {
+  return !!getNetwork(id).indexerBaseUrl;
+}
+
 /** Throws if the chain has no indexer configured. Cheap and side-effect free, so call it first. */
 export function assertIndexerConfigured(id: NetworkId): void {
-  const network = getNetwork(id);
-  if (!network.indexerBaseUrl) {
-    throw new Error(`No silent payment indexer is configured for ${network.displayName}. Set EXPO_PUBLIC_INDEXER_BASE_URL_* in .env`);
+  if (!hasIndexer(id)) {
+    throw new Error(
+      `No silent payment indexer is configured for ${getNetwork(id).displayName}. Set EXPO_PUBLIC_INDEXER_BASE_URL_* in .env`,
+    );
   }
 }
 
@@ -77,6 +82,11 @@ export function assertIndexerConfigured(id: NetworkId): void {
 export function assertNetworkSwitchable(id: NetworkId): void {
   assertNetworkEnabled(id);
   assertIndexerConfigured(id);
+}
+
+/** `assertNetworkSwitchable` as a yes/no, for UI that offers or greys out a chain. */
+export function isNetworkSwitchable(id: NetworkId): boolean {
+  return isNetworkEnabled(id) && hasIndexer(id);
 }
 
 /** Point the indexer singleton at the active chain. Throws if that chain has no indexer set. */

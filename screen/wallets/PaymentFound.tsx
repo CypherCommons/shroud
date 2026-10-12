@@ -14,6 +14,7 @@ import { BitcoinUnit } from '../../models/bitcoinUnits';
 import ActionButton from '../../components/ActionButton';
 import CheckBadgeIcon from '../../components/icons/CheckBadgeIcon';
 import SegmentedProgressBar from '../../components/SegmentedProgressBar';
+import FittedAmount from '../../components/FittedAmount';
 import { ClashFont } from '../../constants/fonts';
 import { splitForEmphasis } from '../../helpers/emphasis';
 
@@ -96,9 +97,7 @@ const PaymentFound: React.FC<PaymentFoundProps> = ({ route }) => {
 
           <View style={styles.amountGroup}>
             <View style={styles.amountRow}>
-              <Text style={[styles.amount, stylesHook.amount]} adjustsFontSizeToFit numberOfLines={1}>
-                {formattedBTC}
-              </Text>
+              <FittedAmount style={stylesHook.amount}>{formattedBTC}</FittedAmount>
               <Text style={[styles.unit, stylesHook.unit]}>{BitcoinUnit.BTC}</Text>
             </View>
             <Text style={[styles.fiat, stylesHook.fiat]}>≈ {formattedFiat}</Text>
@@ -189,14 +188,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'center',
-  },
-  amount: {
-    fontFamily: ClashFont.medium,
-    fontSize: 48,
-    lineHeight: 48,
-    letterSpacing: -1.2,
-    textAlign: 'center',
-    flexShrink: 1,
   },
   unit: {
     fontFamily: ClashFont.regular,
