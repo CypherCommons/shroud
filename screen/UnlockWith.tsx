@@ -1,14 +1,12 @@
 import React, { useCallback, useEffect, useReducer, useRef } from 'react';
-import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../modules/hapticFeedback';
-import { ShroudTextCentered } from '../ShroudComponents';
-import Button from '../components/Button';
 import SafeArea from '../components/SafeArea';
 import PinEntry from '../components/PinEntry';
-import { BiometricType, unlockWithBiometrics, useBiometrics } from '../hooks/useBiometrics';
+import LockScreen from '../components/LockScreen';
+import { BiometricType, getBiometricUnlockTitle, unlockWithBiometrics, useBiometrics } from '../hooks/useBiometrics';
 import loc from '../loc';
 import { useStorage } from '../hooks/context/useStorage';
-import { useTheme } from '../components/themes';
 import { hasPinSet } from '../helpers/pinLock';
 import { usePinAttempt } from '../hooks/usePinAttempt';
 import { useResetApp } from '../hooks/useResetApp';
@@ -56,7 +54,6 @@ function reducer(state: State, action: Action): State {
 }
 
 const UnlockWith: React.FC = () => {
-  const { colors } = useTheme();
   const [state, dispatch] = useReducer(reducer, initialState);
   const isUnlockingWallets = useRef(false);
   const { setWalletsInitialized, isStorageEncrypted, startAndDecrypt } = useStorage();
@@ -154,19 +151,27 @@ const UnlockWith: React.FC = () => {
   // After a reset there's no PIN or wallet left: unlock as a fresh install, which lands on onboarding.
   const resetApp = useResetApp(unlockWithKey);
 
-  const renderUnlockOptions = () => {
-    if (state.isAuthenticating) {
-      return <ActivityIndicator color={colors.brandPrimary} />;
-    } else {
-      switch (state.auth.type) {
-        case AuthType.Biometrics:
-        case AuthType.Encrypted:
-          return <Button onPress={onUnlockPressed} title={loc._.unlock} />;
-        case AuthType.BiometricsUnavailable:
-          return <ShroudTextCentered>{loc.settings.biometrics_no_longer_available}</ShroudTextCentered>;
-        default:
-          return null;
-      }
+  // What the lock screen asks for. No lock at all (AuthType.None) leaves just the logo, as a splash.
+  const lockScreenProps = (): React.ComponentProps<typeof LockScreen> => {
+    switch (state.auth.type) {
+      case AuthType.Biometrics:
+        return {
+          title: loc.settings.lock_title,
+          subtitle: loc.settings.lock_subtitle,
+          unlockTitle: getBiometricUnlockTitle(deviceBiometricType),
+          onUnlock: onUnlockPressed,
+        };
+      case AuthType.Encrypted:
+        return {
+          title: loc.settings.lock_title,
+          subtitle: loc._.storage_is_encrypted,
+          unlockTitle: loc._.unlock,
+          onUnlock: onUnlockPressed,
+        };
+      case AuthType.BiometricsUnavailable:
+        return { title: loc.settings.lock_title, subtitle: loc.settings.biometrics_no_longer_available };
+      default:
+        return {};
     }
   };
 
@@ -185,10 +190,7 @@ const UnlockWith: React.FC = () => {
 
   return (
     <SafeArea style={styles.root}>
-      <View style={styles.container}>
-        <Image source={require('../img/logo.png')} style={styles.logoImage} resizeMode="contain" />
-      </View>
-      <View style={styles.biometricRow}>{renderUnlockOptions()}</View>
+      <LockScreen {...lockScreenProps()} isAuthenticating={state.isAuthenticating} />
     </SafeArea>
   );
 };
@@ -202,15 +204,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  biometricRow: {
-    justifyContent: 'center',
-    flexDirection: 'row',
-    width: 300,
-    minHeight: 60,
-    alignSelf: 'center',
-    marginBottom: 20,
-    paddingHorizontal: 20,
   },
   pinRow: {
     alignSelf: 'center',

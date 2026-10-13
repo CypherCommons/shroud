@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, AppStateStatus, Image, Modal, Platform, StyleSheet, View } from 'react-native';
+import { AppState, AppStateStatus, Image, Modal, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PinEntry from './PinEntry';
-import Button from './Button';
+import LockScreen from './LockScreen';
 import { useTheme } from './themes';
 import { useStorage } from '../hooks/context/useStorage';
-import { unlockWithBiometrics, useBiometrics } from '../hooks/useBiometrics';
+import { getBiometricUnlockTitle, unlockWithBiometrics, useBiometrics } from '../hooks/useBiometrics';
 import { hasPinSet } from '../helpers/pinLock';
 import { usePinAttempt } from '../hooks/usePinAttempt';
 import { useResetApp } from '../hooks/useResetApp';
@@ -27,7 +27,7 @@ const ANDROID_RELOCK_GRACE_MS = 30 * 1000;
 const AppLock: React.FC = () => {
   const { colors } = useTheme();
   const { walletsInitialized, setWalletsInitialized } = useStorage();
-  const { isBiometricUseCapableAndEnabled } = useBiometrics();
+  const { isBiometricUseCapableAndEnabled, deviceBiometricType } = useBiometrics();
   const [lockMethod, setLockMethod] = useState<LockMethod>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   // Kept fresh while the app is in the foreground, so going to the background can lock synchronously
@@ -137,18 +137,24 @@ const AppLock: React.FC = () => {
     // onRequestClose is a no-op: Android's back key must not dismiss the lock.
     <Modal visible animationType="none" statusBarTranslucent onRequestClose={() => {}}>
       <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]} testID="AppLockScreen">
-        <View style={styles.logoContainer}>
-          <Image source={require('../img/logo.png')} style={styles.logo} resizeMode="contain" />
-        </View>
-        <View style={styles.unlockRow}>
-          {lockMethod === 'pin' ? (
-            <PinEntry pinAttempt={pinAttempt} onForgotPin={resetApp} forgotPinTestID="AppLockForgotPinButton" />
-          ) : isAuthenticating ? (
-            <ActivityIndicator color={colors.primary} />
-          ) : (
-            <Button onPress={unlockUsingBiometrics} title={loc._.unlock} />
-          )}
-        </View>
+        {lockMethod === 'pin' ? (
+          <>
+            <View style={styles.logoContainer}>
+              <Image source={require('../img/logo.png')} style={styles.logo} resizeMode="contain" />
+            </View>
+            <View style={styles.unlockRow}>
+              <PinEntry pinAttempt={pinAttempt} onForgotPin={resetApp} forgotPinTestID="AppLockForgotPinButton" />
+            </View>
+          </>
+        ) : (
+          <LockScreen
+            title={loc.settings.lock_title}
+            subtitle={loc.settings.lock_subtitle}
+            unlockTitle={getBiometricUnlockTitle(deviceBiometricType)}
+            onUnlock={unlockUsingBiometrics}
+            isAuthenticating={isAuthenticating}
+          />
+        )}
       </SafeAreaView>
     </Modal>
   );

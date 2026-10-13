@@ -62,6 +62,20 @@ const unlockWithBiometrics = async () => {
   }
 };
 
+/** The lock screen's button label for this sensor: a plain "Unlock" until the type is known. */
+const getBiometricUnlockTitle = (type: string | undefined): string => {
+  switch (type) {
+    case RNBiometryTypes.FaceID:
+      return loc.settings.lock_unlock_face_id;
+    case RNBiometryTypes.TouchID:
+      return loc.settings.lock_unlock_touch_id;
+    case RNBiometryTypes.Biometrics:
+      return loc.settings.lock_unlock_biometrics;
+    default:
+      return loc._.unlock;
+  }
+};
+
 const showKeychainWipeAlert = () => {
   if (Platform.OS === 'ios') {
     Alert.alert(
@@ -188,4 +202,4 @@ const useBiometrics = () => {
   };
 };
 
-export { RNBiometryTypes as BiometricType, useBiometrics, showKeychainWipeAlert, unlockWithBiometrics };
+export { RNBiometryTypes as BiometricType, useBiometrics, showKeychainWipeAlert, unlockWithBiometrics, getBiometricUnlockTitle };
