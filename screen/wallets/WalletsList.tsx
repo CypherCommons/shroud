@@ -34,7 +34,6 @@ import SearchIcon from '../../components/icons/SearchIcon';
 import ShieldReceiveIcon from '../../components/icons/ShieldReceiveIcon';
 import ReceiveArrowIcon from '../../components/icons/ReceiveArrowIcon';
 import PayArrowIcon from '../../components/icons/PayArrowIcon';
-import ChevronRightIcon from '../../components/icons/ChevronRightIcon';
 import AddIcon from '../../components/icons/AddIcon';
 import ContactRow from '../../components/ContactRow';
 import ContactsEmptyState from '../../components/ContactsEmptyState';
@@ -168,10 +167,6 @@ const WalletsList: React.FC = () => {
       },
       walletContainer: {
         backgroundColor: colors.background,
-      },
-      trackPaymentBg: {
-        backgroundColor: colors.surfaceSubtle,
-        borderColor: colors.accentSubtle,
       },
       receiveBtnStyle: {
         backgroundColor: colors.surfaceBrandTint,
@@ -331,27 +326,14 @@ const WalletsList: React.FC = () => {
     navigation.navigate('ContactEdit', { mode: 'add' });
   }, [navigation]);
 
+  const openTrackPayment = useCallback(() => {
+    navigation.navigate('TrackPayment');
+  }, [navigation]);
+
+  // Each tab's action sits at the end of the tab row: Track for transactions, Add for contacts.
   const renderListHeaderComponent = useCallback(() => {
-    const wallet = wallets.length > 0 ? wallets[0] : null;
     return (
       <View style={[styles.listHeaderBack, stylesHook.listHeaderBack]}>
-        {wallet && (
-          <TouchableOpacity
-            style={[styles.trackPaymentBanner, stylesHook.trackPaymentBg]}
-            onPress={() => navigation.navigate('TrackPayment')}
-            activeOpacity={0.7}
-            testID="TrackPaymentBanner"
-          >
-            <View style={styles.trackPaymentIconCircle}>
-              <SearchIcon size={48} background={colors.background} stroke={colors.brandPrimary} />
-            </View>
-            <View style={styles.trackPaymentBannerContent}>
-              <Text style={[styles.trackPaymentBannerTitle, stylesHook.foregroundText]}>{loc.track_payment.banner_title}</Text>
-              <Text style={[styles.trackPaymentBannerSubtitle, stylesHook.alternativeText]}>{loc.track_payment.banner_subtitle}</Text>
-            </View>
-            <ChevronRightIcon color={colors.iconSecondary} />
-          </TouchableOpacity>
-        )}
         <View style={styles.tabRow}>
           <UnderlineTabs
             values={[loc.transactions.list_title, loc.contacts.header]}
@@ -359,16 +341,23 @@ const WalletsList: React.FC = () => {
             onChange={setActiveTab}
             testIDPrefix="HomeTab"
           />
+          {activeTab === HomeTab.Transactions && wallets.length > 0 && (
+            <TouchableOpacity
+              style={styles.tabAction}
+              onPress={openTrackPayment}
+              accessibilityRole="button"
+              accessibilityLabel={loc.track_payment.home_button_label}
+              testID="HomeTrackPaymentButton"
+            >
+              <SearchIcon size={20} stroke={colors.brandPrimary} />
+              <Text style={[styles.tabActionLabel, { color: colors.textBrand }]}>{loc.track_payment.home_button}</Text>
+            </TouchableOpacity>
+          )}
           {/* The empty state carries its own add button, so this one would be the second on screen. */}
           {activeTab === HomeTab.Contacts && contactList.length > 0 && (
-            <TouchableOpacity
-              style={styles.addContactButton}
-              onPress={openAddContact}
-              accessibilityRole="button"
-              testID="HomeAddContactButton"
-            >
+            <TouchableOpacity style={styles.tabAction} onPress={openAddContact} accessibilityRole="button" testID="HomeAddContactButton">
               <AddIcon size={24} color={colors.brandPrimary} />
-              <Text style={[styles.addContactLabel, { color: colors.textBrand }]}>{loc.contacts.add}</Text>
+              <Text style={[styles.tabActionLabel, { color: colors.textBrand }]}>{loc.contacts.add}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -376,17 +365,12 @@ const WalletsList: React.FC = () => {
     );
   }, [
     stylesHook.listHeaderBack,
-    stylesHook.trackPaymentBg,
-    stylesHook.foregroundText,
-    stylesHook.alternativeText,
-    navigation,
-    wallets,
+    wallets.length,
     activeTab,
     contactList.length,
+    openTrackPayment,
     openAddContact,
-    colors.background,
     colors.brandPrimary,
-    colors.iconSecondary,
     colors.textBrand,
   ]);
 
@@ -772,35 +756,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: ClashFont.medium,
   },
-  trackPaymentBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    height: 80,
-    gap: 12,
-    marginBottom: 12,
-  },
-  trackPaymentIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  trackPaymentBannerContent: {
-    flex: 1,
-  },
-  trackPaymentBannerTitle: {
-    fontSize: 17,
-    marginBottom: 3,
-    fontFamily: ClashFont.medium,
-  },
-  trackPaymentBannerSubtitle: {
-    fontSize: 13,
-    fontFamily: ClashFont.regular,
-  },
   tabRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -809,13 +764,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 16,
   },
-  addContactButton: {
+  tabAction: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingVertical: 4,
   },
-  addContactLabel: {
+  tabActionLabel: {
     fontSize: 16,
     lineHeight: 26,
     fontFamily: ClashFont.medium,

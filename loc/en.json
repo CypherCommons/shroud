@@ -556,8 +556,8 @@
         "invalid_id": "Not a valid transaction ID",
         "clear": "Clear",
         "check_transaction": "Check Transaction",
-        "banner_title": "Track a payment",
-        "banner_subtitle": "Find it faster with a TXID"
+        "home_button": "Track",
+        "home_button_label": "Track a payment"
     },
     "payment_found": {
         "title": "Payment Found",
