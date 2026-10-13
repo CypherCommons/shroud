@@ -23,4 +23,19 @@ describe('Receive', () => {
   it('fits the screen, so Share shows without scrolling', async () => {
     await expect(element(by.id('ReceiveShareButton'))).toBeVisible();
   });
+
+  it('inspects the full address in a sheet', async () => {
+    await element(by.id('AddressCopyCardInspectButton')).tap();
+    // TrueSheet reports the sheet's content as children of its host view as well as of the
+    // sheet itself, so Espresso finds every view in the sheet twice. Both matches are the same view.
+    await waitFor(element(by.id('InspectAddressSheet')).atIndex(0))
+      .toBeVisible()
+      .withTimeout(10_000);
+    await element(by.id('InspectAddressCopyButton')).atIndex(0).tap();
+
+    await device.pressBack();
+    await waitFor(element(by.id('InspectAddressSheet')).atIndex(0))
+      .not.toBeVisible()
+      .withTimeout(10_000);
+  });
 });

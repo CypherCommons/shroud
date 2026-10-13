@@ -129,6 +129,8 @@
         "details_share": "Share Address",
         "tap_to_copy": "Tap to copy",
         "copied": "Copied to clipboard.",
+        "inspect_address": "Inspect Address",
+        "copy_address": "Copy Address",
         "address_not_found": "Unable to generate receiving address.",
         "header": "Receive",
         "qrcode_for_the_address": "QR Code for the address",

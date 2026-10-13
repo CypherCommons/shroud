@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { RouteProp, useFocusEffect, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BackHandler, InteractionManager, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -10,8 +10,10 @@ import { ShroudText } from '../../ShroudComponents';
 import DeeplinkSchemaMatch from '../../class/deeplink-schema-match';
 import AddressCopyCard from '../../components/AddressCopyCard';
 import presentAlert from '../../components/Alert';
+import { BottomModalHandle } from '../../components/BottomModal';
 import ShareIcon from '../../components/icons/ShareIcon';
 import InfoBanner from '../../components/InfoBanner';
+import InspectAddressSheet from '../../components/InspectAddressSheet';
 import PillSegmentedControl from '../../components/PillSegmentedControl';
 import QRCard from '../../components/QRCard';
 import TabPager from '../../components/TabPager';
@@ -56,6 +58,7 @@ const ReceiveDetails = () => {
   const { wallets, saveToDisk, sleep, fetchAndSaveWalletTransactions } = useStorage();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const inspectSheetRef = useRef<BottomModalHandle>(null);
   const [bip21encoded, setBip21encoded] = useState('');
   const [showPendingBalance, setShowPendingBalance] = useState(false);
   const [showConfirmedBalance, setShowConfirmedBalance] = useState(false);
@@ -76,6 +79,7 @@ const ReceiveDetails = () => {
 
   const selectedTabIndex = TABS.findIndex(tab => tab.key === currentTab);
   const selectTab = useCallback((index: number) => setCurrentTab(TABS[index].key), []);
+  const presentInspectSheet = useCallback(() => inspectSheetRef.current?.present(), []);
 
   const stylesHook = StyleSheet.create({
     root: {
@@ -263,7 +267,7 @@ const ReceiveDetails = () => {
         <View style={styles.addressBody}>
           <InfoBanner text={loc.bip352.explanation} emphasis={loc.bip352.explanation_emphasis} />
           <QRCard value={spAddress} logo={qrLogo} />
-          <AddressCopyCard text={spAddress} />
+          <AddressCopyCard text={spAddress} onInspect={presentInspectSheet} />
         </View>
       ) : (
         <ShroudText>{loc.bip352.not_supported}</ShroudText>
@@ -273,7 +277,7 @@ const ReceiveDetails = () => {
       <View style={styles.addressBody}>
         <InfoBanner text={loc.receive.standard_address_notice} emphasis={loc.receive.standard_address_notice_emphasis} variant="caution" />
         <QRCard value={bip21encoded} logo={qrLogo} />
-        <AddressCopyCard text={address} testID="StandardAddressCopyCard" />
+        <AddressCopyCard text={address} onInspect={presentInspectSheet} testID="StandardAddressCopyCard" />
       </View>
     ) : null;
   };
@@ -361,6 +365,8 @@ const ReceiveDetails = () => {
           <ShroudText style={[styles.shareLabel, { color: colors.white }]}>{loc.receive.details_share}</ShroudText>
         </Pressable>
       </View>
+
+      <InspectAddressSheet ref={inspectSheetRef} address={(currentTab === 'standard' ? address : spAddress) ?? undefined} />
     </View>
   );
 };
