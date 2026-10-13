@@ -3,7 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import useAppState from '../../hooks/useAppState';
 import ScanProgressBar from '../../components/ScanProgressBar';
 import { useScanActions, useScannableWallet } from '../../hooks/useScannableWallet';
-import { Alert, Animated, InteractionManager, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, InteractionManager, Modal, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import A from '../../modules/analytics';
 import { getClipboardContent } from '../../modules/clipboard';
 import { isDesktop } from '../../modules/environment';
@@ -34,7 +34,6 @@ import SearchIcon from '../../components/icons/SearchIcon';
 import ShieldReceiveIcon from '../../components/icons/ShieldReceiveIcon';
 import ReceiveArrowIcon from '../../components/icons/ReceiveArrowIcon';
 import PayArrowIcon from '../../components/icons/PayArrowIcon';
-import ChevronRightIcon from '../../components/icons/ChevronRightIcon';
 import AddIcon from '../../components/icons/AddIcon';
 import ContactRow from '../../components/ContactRow';
 import ContactsEmptyState from '../../components/ContactsEmptyState';
@@ -43,6 +42,7 @@ import FittedAmount from '../../components/FittedAmount';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import { ContactListItem } from '../../class/contacts';
 import { useContacts } from '../../hooks/context/useContacts';
+import useTabSwipe from '../../hooks/useTabSwipe';
 
 // The second section holds whichever tab is selected, so it is named for the role, not the content.
 // One section per row type, so the renderer knows what it holds instead of sniffing the value.
@@ -52,6 +52,9 @@ enum HomeTab {
   Transactions,
   Contacts,
 }
+
+// In HomeTab order.
+const HOME_TAB_LABELS = [loc.transactions.list_title, loc.contacts.header];
 
 // The wallet section's single row is its own key string; the list section holds whichever tab
 // is selected.
@@ -134,6 +137,24 @@ const WalletsList: React.FC = () => {
   const { contactList } = useContacts();
   const sendToAddress = useSendToAddress();
   const [activeTab, setActiveTab] = useState(HomeTab.Transactions);
+  const listRef = useRef<SectionList<any | string, SectionData>>(null);
+  // A responder inside the list can't stop it scrolling on iOS, so a sideways swipe that drifts
+  // vertically would scroll it too.
+  const holdListStill = useCallback((swiping: boolean) => {
+    listRef.current?.getScrollResponder()?.getNativeScrollRef()?.setNativeProps({ scrollEnabled: !swiping });
+  }, []);
+  const {
+    panHandlers: tabSwipeHandlers,
+    style: tabSwipeStyle,
+    select: selectTab,
+  } = useTabSwipe({
+    index: activeTab,
+    count: HOME_TAB_LABELS.length,
+    onChange: setActiveTab,
+    // Large screens show no tabs.
+    enabled: sizeClass !== SizeClass.Large,
+    onSwipingChange: holdListStill,
+  });
   const dataSource = getTransactions(undefined, Infinity).flatMap(splitSelfTransfer);
   const walletsCount = useRef<number>(wallets.length);
   const [showZeroBalanceToast, setShowZeroBalanceToast] = useState(false);
@@ -168,10 +189,6 @@ const WalletsList: React.FC = () => {
       },
       walletContainer: {
         backgroundColor: colors.background,
-      },
-      trackPaymentBg: {
-        backgroundColor: colors.surfaceSubtle,
-        borderColor: colors.accentSubtle,
       },
       receiveBtnStyle: {
         backgroundColor: colors.surfaceBrandTint,
@@ -331,44 +348,33 @@ const WalletsList: React.FC = () => {
     navigation.navigate('ContactEdit', { mode: 'add' });
   }, [navigation]);
 
+  const openTrackPayment = useCallback(() => {
+    navigation.navigate('TrackPayment');
+  }, [navigation]);
+
+  // Each tab's action sits at the end of the tab row: Track for transactions, Add for contacts.
   const renderListHeaderComponent = useCallback(() => {
-    const wallet = wallets.length > 0 ? wallets[0] : null;
     return (
       <View style={[styles.listHeaderBack, stylesHook.listHeaderBack]}>
-        {wallet && (
-          <TouchableOpacity
-            style={[styles.trackPaymentBanner, stylesHook.trackPaymentBg]}
-            onPress={() => navigation.navigate('TrackPayment')}
-            activeOpacity={0.7}
-            testID="TrackPaymentBanner"
-          >
-            <View style={styles.trackPaymentIconCircle}>
-              <SearchIcon size={48} background={colors.background} stroke={colors.brandPrimary} />
-            </View>
-            <View style={styles.trackPaymentBannerContent}>
-              <Text style={[styles.trackPaymentBannerTitle, stylesHook.foregroundText]}>{loc.track_payment.banner_title}</Text>
-              <Text style={[styles.trackPaymentBannerSubtitle, stylesHook.alternativeText]}>{loc.track_payment.banner_subtitle}</Text>
-            </View>
-            <ChevronRightIcon color={colors.iconSecondary} />
-          </TouchableOpacity>
-        )}
         <View style={styles.tabRow}>
-          <UnderlineTabs
-            values={[loc.transactions.list_title, loc.contacts.header]}
-            selectedIndex={activeTab}
-            onChange={setActiveTab}
-            testIDPrefix="HomeTab"
-          />
+          <UnderlineTabs values={HOME_TAB_LABELS} selectedIndex={activeTab} onChange={selectTab} testIDPrefix="HomeTab" />
+          {activeTab === HomeTab.Transactions && wallets.length > 0 && (
+            <TouchableOpacity
+              style={styles.tabAction}
+              onPress={openTrackPayment}
+              accessibilityRole="button"
+              accessibilityLabel={loc.track_payment.home_button_label}
+              testID="HomeTrackPaymentButton"
+            >
+              <SearchIcon size={20} stroke={colors.brandPrimary} />
+              <Text style={[styles.tabActionLabel, { color: colors.textBrand }]}>{loc.track_payment.home_button}</Text>
+            </TouchableOpacity>
+          )}
           {/* The empty state carries its own add button, so this one would be the second on screen. */}
           {activeTab === HomeTab.Contacts && contactList.length > 0 && (
-            <TouchableOpacity
-              style={styles.addContactButton}
-              onPress={openAddContact}
-              accessibilityRole="button"
-              testID="HomeAddContactButton"
-            >
+            <TouchableOpacity style={styles.tabAction} onPress={openAddContact} accessibilityRole="button" testID="HomeAddContactButton">
               <AddIcon size={24} color={colors.brandPrimary} />
-              <Text style={[styles.addContactLabel, { color: colors.textBrand }]}>{loc.contacts.add}</Text>
+              <Text style={[styles.tabActionLabel, { color: colors.textBrand }]}>{loc.contacts.add}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -376,25 +382,24 @@ const WalletsList: React.FC = () => {
     );
   }, [
     stylesHook.listHeaderBack,
-    stylesHook.trackPaymentBg,
-    stylesHook.foregroundText,
-    stylesHook.alternativeText,
-    navigation,
-    wallets,
+    wallets.length,
     activeTab,
+    selectTab,
     contactList.length,
+    openTrackPayment,
     openAddContact,
-    colors.background,
     colors.brandPrimary,
-    colors.iconSecondary,
     colors.textBrand,
   ]);
 
+  // Rows and the footer below them carry the tab swipe; the header and the wallet above stay put.
   const renderTransactionListsRow = useCallback(
     (item: ExtendedTransaction) => (
-      <TransactionListItem key={item.hash} item={item} itemPriceUnit={item.walletPreferredBalanceUnit} walletID={item.walletID} />
+      <Animated.View style={tabSwipeStyle} {...tabSwipeHandlers}>
+        <TransactionListItem item={item} itemPriceUnit={item.walletPreferredBalanceUnit} walletID={item.walletID} />
+      </Animated.View>
     ),
-    [],
+    [tabSwipeStyle, tabSwipeHandlers],
   );
 
   const openContactDetail = useCallback((address: string) => navigation.navigate('ContactDetail', { address }), [navigation]);
@@ -403,17 +408,18 @@ const WalletsList: React.FC = () => {
   // stays mounted underneath it.
   const renderContactRow = useCallback(
     (item: ContactListItem) => (
-      <ContactRow
-        key={item.address}
-        variant="card"
-        contact={item}
-        onPress={openContactDetail}
-        onPay={sendToAddress}
-        style={styles.contactCard}
-        testID={`HomeContact-${item.address}`}
-      />
+      <Animated.View style={tabSwipeStyle} {...tabSwipeHandlers}>
+        <ContactRow
+          variant="card"
+          contact={item}
+          onPress={openContactDetail}
+          onPay={sendToAddress}
+          style={styles.contactCard}
+          testID={`HomeContact-${item.address}`}
+        />
+      </Animated.View>
     ),
-    [openContactDetail, sendToAddress],
+    [openContactDetail, sendToAddress, tabSwipeStyle, tabSwipeHandlers],
   );
 
   const changeWalletBalanceUnit = useCallback(async () => {
@@ -602,7 +608,7 @@ const WalletsList: React.FC = () => {
     [sizeClass, renderListHeaderComponent],
   );
 
-  const renderEmptyCard = useCallback(() => {
+  const renderEmptyState = useCallback(() => {
     if (activeTab === HomeTab.Contacts) {
       return contactList.length === 0 ? <ContactsEmptyState onAdd={openAddContact} /> : null;
     }
@@ -666,13 +672,22 @@ const WalletsList: React.FC = () => {
   return (
     <>
       <SafeAreaSectionList<any | string, SectionData>
+        ref={listRef}
         testID="WalletsListScrollView"
         contentContainerStyle={styles.sectionListContent}
         renderItem={renderSectionItem}
         keyExtractor={sectionListKeyExtractor}
         renderSectionHeader={renderSectionHeader}
         initialNumToRender={10}
-        ListFooterComponent={renderEmptyCard}
+        // Rendered even with no empty state to show, so the space below a short list takes the
+        // swipe too, and an empty tab still leaves a view on the swipe's animated value, which
+        // stops animating once its last view goes. An element rather than a render callback,
+        // which the list would mount as a component and remount whenever the callback changed.
+        ListFooterComponent={
+          <Animated.View style={[styles.emptyCardOuter, tabSwipeStyle]} {...tabSwipeHandlers}>
+            {renderEmptyState()}
+          </Animated.View>
+        }
         ListFooterComponentStyle={styles.emptyCardOuter}
         sections={sections}
         maxToRenderPerBatch={10}
@@ -772,35 +787,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: ClashFont.medium,
   },
-  trackPaymentBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    height: 80,
-    gap: 12,
-    marginBottom: 12,
-  },
-  trackPaymentIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  trackPaymentBannerContent: {
-    flex: 1,
-  },
-  trackPaymentBannerTitle: {
-    fontSize: 17,
-    marginBottom: 3,
-    fontFamily: ClashFont.medium,
-  },
-  trackPaymentBannerSubtitle: {
-    fontSize: 13,
-    fontFamily: ClashFont.regular,
-  },
   tabRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -809,13 +795,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 16,
   },
-  addContactButton: {
+  tabAction: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingVertical: 4,
   },
-  addContactLabel: {
+  tabActionLabel: {
     fontSize: 16,
     lineHeight: 26,
     fontFamily: ClashFont.medium,

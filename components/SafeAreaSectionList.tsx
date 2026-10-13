@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 interface SafeAreaSectionListProps<ItemT, SectionT> extends SectionListProps<ItemT, SectionT> {
   floatingButtonHeight?: number;
   ignoreTopInset?: boolean;
+  ref?: React.Ref<SectionList<ItemT, SectionT>>;
 }
 
 const SafeAreaSectionList = <ItemT, SectionT>(props: SafeAreaSectionListProps<ItemT, SectionT>) => {
