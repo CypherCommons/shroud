@@ -7,8 +7,19 @@ env:
   TRAVIS: 1
   HD_MNEMONIC: ${{ secrets.HD_MNEMONIC }}
   MNEMONIC_TEST: ${{ secrets.MNEMONIC_TEST }}
+  # The CI emulator is x86_64; building the other three ABIs (Rust + the RN/Fabric C++) was most of the build time.
+  ANDROID_ABIS: x86_64
 
-on: [pull_request]
+on:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - LICENSE
+
+# a newer push supersedes the run in flight
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   e2e:
@@ -18,17 +29,6 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 1
-
-    - name: Free Disk Space
-      uses: jlumbroso/free-disk-space@main
-      with:
-        tool-cache: true
-        android: false
-        dotnet: true
-        haskell: true
-        large-packages: true
-        docker-images: true
-        swap-storage: true
 
     - name: npm and gradle caches in /mnt
       run: |
@@ -79,6 +79,17 @@ jobs:
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm
 
+    - name: Use cargo caches
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          rust_jsi_bridge/target
+        key: ${{ runner.os }}-cargo-${{ env.ANDROID_ABIS }}-${{ hashFiles('rust_jsi_bridge/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-${{ env.ANDROID_ABIS }}-
+
     - name: Build Rust JSI bridge for Android
       run: npm run rust:build
 
@@ -87,6 +98,10 @@ jobs:
 
     - name: Build
       run: npm run e2e:release-build
+
+    - name: Disk usage after build
+      if: always()
+      run: df -h / /mnt
 
     - name: Install dev deps needed for tests
       run: npm i
@@ -98,7 +113,7 @@ jobs:
         avd-name: Pixel_API_31
         emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -partition-size 2047
         arch: x86_64
-        script: npm run e2e:release-test --  --record-videos all --record-logs all --take-screenshots all --headless -d 200000 --retries 3 --artifacts-location /mnt/artifacts
+        script: npm run e2e:release-test --  --record-videos failing --record-logs failing --take-screenshots failing --headless -d 200000 --retries 3 --artifacts-location /mnt/artifacts
 
     - uses: actions/upload-artifact@v4
       if: failure()

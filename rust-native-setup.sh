@@ -85,6 +85,21 @@ success() { echo -e "\033[1;32m  ✅ $1\033[0m"; }
 warn() { echo -e "\033[1;33m  ⚠️  $1\033[0m"; }
 error() { echo -e "\033[1;31m❌ $1\033[0m"; exit 1; }
 
+# ANDROID_ABIS (comma-separated, e.g. "x86_64") limits the Android targets to those ABIs; unset
+# builds all of them. Same names and same variable as the Gradle build uses (reactNativeArchitectures).
+if [ -n "${ANDROID_ABIS:-}" ]; then
+    selected_targets=()
+    for item in "${ANDROID_TARGETS[@]}"; do
+        case ",${ANDROID_ABIS}," in
+            *",${item##*|},"*) selected_targets+=("$item") ;;
+        esac
+    done
+    if [ ${#selected_targets[@]} -eq 0 ]; then
+        error "ANDROID_ABIS='${ANDROID_ABIS}' matches no target (expected any of arm64-v8a, armeabi-v7a, x86_64, x86)"
+    fi
+    ANDROID_TARGETS=("${selected_targets[@]}")
+fi
+
 is_macos() {
     [[ "$(uname -s)" == "Darwin" ]]
 }
@@ -101,12 +116,9 @@ ensure_rust_targets() {
             "x86_64-apple-ios"
         )
     else
-        targets=(
-            "aarch64-linux-android"
-            "armv7-linux-androideabi"
-            "x86_64-linux-android"
-            "i686-linux-android"
-        )
+        for item in "${ANDROID_TARGETS[@]}"; do
+            targets+=("${item%%|*}")
+        done
     fi
     
     local installed_targets
