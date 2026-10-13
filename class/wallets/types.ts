@@ -82,6 +82,12 @@ export type Transaction = {
   blocktime: number;
   timestamp: number; // seconds, not milliseconds
   value?: number;
+  /**
+   * Set on a spend of our own coins that also pays one of our own addresses (not change): the
+   * sats it paid us, and where. `value` nets that against the inputs, leaving only the fee, so
+   * the list shows such a self-transfer as a send and a receive (see splitSelfTransfer).
+   */
+  selfTransfer?: { value: number; address?: string };
 };
 
 /**

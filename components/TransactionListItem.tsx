@@ -309,8 +309,10 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
     );
   },
   (prevProps, nextProps) => {
+    // value too: a self-transfer's two rows share a hash and timestamp
     return (
       prevProps.item.hash === nextProps.item.hash &&
+      prevProps.item.value === nextProps.item.value &&
       prevProps.item.timestamp === nextProps.item.timestamp &&
       prevProps.itemPriceUnit === nextProps.itemPriceUnit &&
       prevProps.walletID === nextProps.walletID &&

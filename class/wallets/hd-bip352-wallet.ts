@@ -6,7 +6,14 @@ import { AbstractHDElectrumWallet, isChangeOutput } from './abstract-hd-electrum
 import * as Electrum from '../../modules/Electrum';
 import { getDefaultIndexer, SilentPaymentIndexer } from '../../modules/SilentPaymentIndexer';
 import ecc from '../../modules/noble_ecc';
-import { calculateSumOfPrivateKeys, createInputHash, scanOutputs, type PrivateKey } from '@silent-pay/core';
+import {
+  calculateSumOfPrivateKeys,
+  createInputHash,
+  createTaggedHash,
+  scanOutputs,
+  serialiseUint32,
+  type PrivateKey,
+} from '@silent-pay/core';
 import {
   getSilentPaymentAddress,
   getSilentPaymentChangeAddress,
@@ -88,6 +95,14 @@ export type ScanByTxidResult = {
   bothBranchesFailed: boolean;
 };
 
+// What getTransactions knows about our coins and addresses, worked out once per call.
+type Ownership = {
+  spUtxosByOutpoint: Map<string, SilentPaymentUTXO>;
+  regularAddressChains: Map<string, 'receive' | 'change'>;
+  // the spends broadcast from this device, the only ones whose SP outputs the post-broadcast scan stored
+  broadcastHere: Set<string>;
+};
+
 // A regular output matched against this wallet's addresses, plus the derivation index needed to
 // advance the discovery frontier. Internal handoff between detectRegularOutputs and
 // ingestRegularOutputs only — never returned from scanByTxid, so OwnedOutput itself stays free of
@@ -115,6 +130,9 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   private _birthTimestamp: number | null = null; // set when indexer is unreachable, resolved to height on next scan
   private _birthResolutionFailures: number = 0; // consecutive failed attempts to resolve _birthTimestamp
   private spUTXOsCache: SilentPaymentUTXO[] | null = null;
+  // Whether each SP output of ours is label-0 change, by outpoint (see isSpChange): it takes EC
+  // math, and the answer never changes, while getTransactions asks on every render of the list.
+  private spChangeByOutpoint: Map<string, boolean> = new Map();
   private activeScanPromise: Promise<number> | null = null;
   private cancelScanCallbackScan: boolean = false;
   private pollingIntervalId: NodeJS.Timeout | null = null;
@@ -141,6 +159,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     'spendKeyCandidates',
     'transactionProcessor',
     'spUTXOsCache',
+    'spChangeByOutpoint',
     'activeScanPromise',
     'cancelScanCallbackScan',
     'pollingIntervalId',
@@ -1162,6 +1181,12 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     // Include ALL UTXOs (both spent and unspent) so incoming SP transactions appear in the list
     const utxos = this.getSilentPaymentUTXOs();
     const utxosByOutpoint = new Map(utxos.map(utxo => [`${utxo.txid}:${utxo.vout}`, utxo]));
+    const spSpendingTxids = new Set(this._sp_spending_txs.map(tx => tx.txid));
+    const ownership: Ownership = {
+      spUtxosByOutpoint: utxosByOutpoint,
+      regularAddressChains: this.getRegularAddressChains(),
+      broadcastHere: spSpendingTxids,
+    };
 
     // Electrum values a transaction by our BIP-86 addresses alone, so one that also spends or
     // creates SP coins (a spend mixing both kinds, say) comes back with only its regular side.
@@ -1175,14 +1200,22 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       for (const output of tx.outputs) {
         spValue += utxosByOutpoint.get(`${tx.txid}:${output.n}`)?.value ?? 0;
       }
-      return spValue === 0 ? tx : { ...tx, value: (tx.value ?? 0) + spValue };
+      // Electrum's verbose output values are in BTC
+      const selfTransfer = this.findSelfTransfer(tx, ownership, btc => new BigNumber(btc).multipliedBy(100000000).toNumber());
+      if (spValue === 0 && !selfTransfer) return tx;
+      return { ...tx, value: (tx.value ?? 0) + spValue, ...(selfTransfer && { selfTransfer }) };
     });
 
     // A transaction Electrum knows about is listed once, from its row: that one carries real
     // confirmations, which our own records never get.
     const regularTxids = new Set(regularTransactions.map(tx => tx.txid));
-    const spSpendingTransactions = this._sp_spending_txs.filter(tx => !regularTxids.has(tx.txid));
-    const spSpendingTxids = new Set(this._sp_spending_txs.map(tx => tx.txid));
+    const spSpendingTransactions = this._sp_spending_txs
+      .filter(tx => !regularTxids.has(tx.txid))
+      .map(tx => {
+        // our own records keep output values in sats
+        const selfTransfer = this.findSelfTransfer(tx, ownership, sats => sats);
+        return selfTransfer ? { ...tx, selfTransfer } : tx;
+      });
 
     const txMap = new Map<string, SilentPaymentUTXO[]>();
 
@@ -1243,6 +1276,118 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     });
 
     return allTransactions;
+  }
+
+  /** Each of our BIP-86 addresses the parent's getTransactions counts as ours, by chain. */
+  private getRegularAddressChains(): Map<string, 'receive' | 'change'> {
+    const chains = new Map<string, 'receive' | 'change'>();
+    for (let c = 0; c < this.next_free_address_index + 1; c++) chains.set(this._getExternalAddressByIndex(c), 'receive');
+    for (let c = 0; c < this.next_free_change_address_index + 1; c++) chains.set(this._getInternalAddressByIndex(c), 'change');
+    return chains;
+  }
+
+  /**
+   * What a transaction spending our own coins paid back to an address of ours that isn't change:
+   * our silent payment address (an output under the main spend key, not label-0 change) or one of
+   * our BIP-86 receive addresses. Undefined for anything else, including a spend whose only
+   * outputs of ours are change.
+   */
+  private findSelfTransfer(
+    tx: Transaction,
+    ownership: Ownership,
+    outputValueToSats: (value: number) => number,
+  ): Transaction['selfTransfer'] {
+    const { spUtxosByOutpoint, regularAddressChains } = ownership;
+    const spendsOurCoins = tx.inputs.some(input => {
+      const address = input.addresses?.[0] ?? input.address;
+      return spUtxosByOutpoint.has(`${input.txid}:${input.vout}`) || (address !== undefined && regularAddressChains.has(address));
+    });
+    if (!spendsOurCoins) return undefined;
+
+    let value = 0;
+    let address: string | undefined;
+    for (const output of tx.outputs) {
+      const spUtxo = spUtxosByOutpoint.get(`${tx.txid}:${output.n}`);
+      const outputAddress = output.scriptPubKey?.addresses?.[0];
+      const paysUs = spUtxo
+        ? !this.isSpChange(tx, spUtxo, ownership)
+        : outputAddress !== undefined && regularAddressChains.get(outputAddress) === 'receive';
+      if (!paysUs) continue;
+      value += spUtxo ? spUtxo.value : outputValueToSats(output.value);
+      address ??= outputAddress;
+    }
+    return value > 0 ? { value, address } : undefined;
+  }
+
+  /**
+   * Whether an SP output of ours in `tx` is label-0 change. isLabelChangeOutput can tell for what
+   * the indexer finds, but not for what the post-broadcast scan stored: that keeps change under the
+   * main spend key, with the label folded into the tweak, so it reads as a payment. A spend sent
+   * from this device is scanned again here instead.
+   */
+  private isSpChange(tx: Transaction, utxo: SilentPaymentUTXO, ownership: Ownership): boolean {
+    const outpoint = `${utxo.txid}:${utxo.vout}`;
+    if (!this.spChangeByOutpoint.has(outpoint)) {
+      if (ownership.broadcastHere.has(tx.txid)) {
+        this.findChangeByScanning(tx, ownership)?.forEach((isChange, vout) => this.spChangeByOutpoint.set(`${tx.txid}:${vout}`, isChange));
+      }
+      if (!this.spChangeByOutpoint.has(outpoint)) this.spChangeByOutpoint.set(outpoint, this.isLabelChangeOutput(utxo));
+    }
+    return this.spChangeByOutpoint.get(outpoint)!;
+  }
+
+  /**
+   * Which of our SP outputs in `tx` are label-0 change, by vout, found as BIP-352 scanning finds
+   * them: the shared secret from the sum of the input keys, then for k = 0, 1, … the output the
+   * main and the change spend key each get. Undefined unless every input is one of our coins, since
+   * the secret takes all of their private keys.
+   */
+  private findChangeByScanning(tx: Transaction, ownership: Ownership): Map<number, boolean> | undefined {
+    const { spUtxosByOutpoint, regularAddressChains } = ownership;
+    try {
+      const inputPrivKeys: PrivateKey[] = [];
+      for (const input of tx.inputs) {
+        const address = input.addresses?.[0] ?? input.address;
+        const coin: Utxo | undefined =
+          spUtxosByOutpoint.get(`${input.txid}:${input.vout}`) ??
+          (address !== undefined && regularAddressChains.has(address)
+            ? { txid: input.txid, vout: input.vout, address, value: 0, height: 0 }
+            : undefined);
+        if (!coin) return undefined;
+        const { keyPair } = this.resolveInputKeys(coin);
+        inputPrivKeys.push({ key: Buffer.from(keyPair.privateKey!).toString('hex'), isXOnly: true });
+      }
+      if (inputPrivKeys.length === 0) return undefined;
+
+      const sumOfInputPubKeys = ecc.pointFromScalar(calculateSumOfPrivateKeys(inputPrivKeys), true);
+      if (!sumOfInputPubKeys) return undefined;
+      const inputHash = createInputHash(sumOfInputPubKeys, findSmallestOutpoint(tx.inputs.map(({ txid, vout }) => ({ txid, vout }))));
+      const scanPrivateKey = getScanPrivateKey(this.getSeed(), this.getNetworkConfig());
+      const sharedSecret = ecc.pointMultiply(ecc.pointMultiply(sumOfInputPubKeys, inputHash, true)!, scanPrivateKey, true)!;
+      const [main, change] = this.getSpendKeyCandidates();
+
+      // our SP outputs in this tx, by x-only output key
+      const unmatched = new Map<string, number>();
+      for (const output of tx.outputs) {
+        const utxo = spUtxosByOutpoint.get(`${tx.txid}:${output.n}`);
+        if (utxo) unmatched.set(utxo.pubKey, output.n);
+      }
+
+      const isChangeByVout = new Map<number, boolean>();
+      for (let k = 0; unmatched.size > 0; k++) {
+        const tweak = createTaggedHash('BIP0352/SharedSecret', Buffer.concat([sharedSecret, serialiseUint32(k)]));
+        const outputKey = (spendPub: Uint8Array) => Buffer.from(ecc.pointAddScalar(spendPub, tweak, true)!.subarray(1)).toString('hex');
+        const [mainKey, changeKey] = [outputKey(main.spendPub), outputKey(change.spendPub)];
+        const matchedKey = unmatched.has(mainKey) ? mainKey : unmatched.has(changeKey) ? changeKey : undefined;
+        if (matchedKey === undefined) break; // k only counts up past an output it found
+        isChangeByVout.set(unmatched.get(matchedKey)!, matchedKey === changeKey);
+        unmatched.delete(matchedKey);
+      }
+      return isChangeByVout;
+    } catch (error) {
+      console.warn('[SP] Could not work out which outputs are change:', error);
+      return undefined;
+    }
   }
 
   allowSend(): boolean {
@@ -1668,6 +1813,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
     this.stopPolling();
     this.invalidateUTXOCache();
+    this.spChangeByOutpoint.clear();
     this._sp_pending_inputs = new Set();
     this.onBalanceChangeCallback = null;
     this.onPersistCallback = null;
