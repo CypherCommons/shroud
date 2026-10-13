@@ -19,4 +19,8 @@ describe('Receive', () => {
       .toExist()
       .withTimeout(15_000);
   });
+
+  it('fits the screen, so Share shows without scrolling', async () => {
+    await expect(element(by.id('ReceiveShareButton'))).toBeVisible();
+  });
 });
