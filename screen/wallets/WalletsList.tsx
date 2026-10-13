@@ -3,7 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import useAppState from '../../hooks/useAppState';
 import ScanProgressBar from '../../components/ScanProgressBar';
 import { useScanActions, useScannableWallet } from '../../hooks/useScannableWallet';
-import { Alert, Animated, InteractionManager, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, InteractionManager, Modal, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import A from '../../modules/analytics';
 import { getClipboardContent } from '../../modules/clipboard';
 import { isDesktop } from '../../modules/environment';
@@ -42,6 +42,7 @@ import FittedAmount from '../../components/FittedAmount';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import { ContactListItem } from '../../class/contacts';
 import { useContacts } from '../../hooks/context/useContacts';
+import useTabSwipe from '../../hooks/useTabSwipe';
 
 // The second section holds whichever tab is selected, so it is named for the role, not the content.
 // One section per row type, so the renderer knows what it holds instead of sniffing the value.
@@ -51,6 +52,9 @@ enum HomeTab {
   Transactions,
   Contacts,
 }
+
+// In HomeTab order.
+const HOME_TAB_LABELS = [loc.transactions.list_title, loc.contacts.header];
 
 // The wallet section's single row is its own key string; the list section holds whichever tab
 // is selected.
@@ -133,6 +137,24 @@ const WalletsList: React.FC = () => {
   const { contactList } = useContacts();
   const sendToAddress = useSendToAddress();
   const [activeTab, setActiveTab] = useState(HomeTab.Transactions);
+  const listRef = useRef<SectionList<any | string, SectionData>>(null);
+  // A responder inside the list can't stop it scrolling on iOS, so a sideways swipe that drifts
+  // vertically would scroll it too.
+  const holdListStill = useCallback((swiping: boolean) => {
+    listRef.current?.getScrollResponder()?.getNativeScrollRef()?.setNativeProps({ scrollEnabled: !swiping });
+  }, []);
+  const {
+    panHandlers: tabSwipeHandlers,
+    style: tabSwipeStyle,
+    select: selectTab,
+  } = useTabSwipe({
+    index: activeTab,
+    count: HOME_TAB_LABELS.length,
+    onChange: setActiveTab,
+    // Large screens show no tabs.
+    enabled: sizeClass !== SizeClass.Large,
+    onSwipingChange: holdListStill,
+  });
   const dataSource = getTransactions(undefined, Infinity).flatMap(splitSelfTransfer);
   const walletsCount = useRef<number>(wallets.length);
   const [showZeroBalanceToast, setShowZeroBalanceToast] = useState(false);
@@ -335,12 +357,7 @@ const WalletsList: React.FC = () => {
     return (
       <View style={[styles.listHeaderBack, stylesHook.listHeaderBack]}>
         <View style={styles.tabRow}>
-          <UnderlineTabs
-            values={[loc.transactions.list_title, loc.contacts.header]}
-            selectedIndex={activeTab}
-            onChange={setActiveTab}
-            testIDPrefix="HomeTab"
-          />
+          <UnderlineTabs values={HOME_TAB_LABELS} selectedIndex={activeTab} onChange={selectTab} testIDPrefix="HomeTab" />
           {activeTab === HomeTab.Transactions && wallets.length > 0 && (
             <TouchableOpacity
               style={styles.tabAction}
@@ -367,6 +384,7 @@ const WalletsList: React.FC = () => {
     stylesHook.listHeaderBack,
     wallets.length,
     activeTab,
+    selectTab,
     contactList.length,
     openTrackPayment,
     openAddContact,
@@ -374,11 +392,14 @@ const WalletsList: React.FC = () => {
     colors.textBrand,
   ]);
 
+  // Rows and the footer below them carry the tab swipe; the header and the wallet above stay put.
   const renderTransactionListsRow = useCallback(
     (item: ExtendedTransaction) => (
-      <TransactionListItem key={item.hash} item={item} itemPriceUnit={item.walletPreferredBalanceUnit} walletID={item.walletID} />
+      <Animated.View style={tabSwipeStyle} {...tabSwipeHandlers}>
+        <TransactionListItem item={item} itemPriceUnit={item.walletPreferredBalanceUnit} walletID={item.walletID} />
+      </Animated.View>
     ),
-    [],
+    [tabSwipeStyle, tabSwipeHandlers],
   );
 
   const openContactDetail = useCallback((address: string) => navigation.navigate('ContactDetail', { address }), [navigation]);
@@ -387,17 +408,18 @@ const WalletsList: React.FC = () => {
   // stays mounted underneath it.
   const renderContactRow = useCallback(
     (item: ContactListItem) => (
-      <ContactRow
-        key={item.address}
-        variant="card"
-        contact={item}
-        onPress={openContactDetail}
-        onPay={sendToAddress}
-        style={styles.contactCard}
-        testID={`HomeContact-${item.address}`}
-      />
+      <Animated.View style={tabSwipeStyle} {...tabSwipeHandlers}>
+        <ContactRow
+          variant="card"
+          contact={item}
+          onPress={openContactDetail}
+          onPay={sendToAddress}
+          style={styles.contactCard}
+          testID={`HomeContact-${item.address}`}
+        />
+      </Animated.View>
     ),
-    [openContactDetail, sendToAddress],
+    [openContactDetail, sendToAddress, tabSwipeStyle, tabSwipeHandlers],
   );
 
   const changeWalletBalanceUnit = useCallback(async () => {
@@ -586,7 +608,7 @@ const WalletsList: React.FC = () => {
     [sizeClass, renderListHeaderComponent],
   );
 
-  const renderEmptyCard = useCallback(() => {
+  const renderEmptyState = useCallback(() => {
     if (activeTab === HomeTab.Contacts) {
       return contactList.length === 0 ? <ContactsEmptyState onAdd={openAddContact} /> : null;
     }
@@ -650,13 +672,22 @@ const WalletsList: React.FC = () => {
   return (
     <>
       <SafeAreaSectionList<any | string, SectionData>
+        ref={listRef}
         testID="WalletsListScrollView"
         contentContainerStyle={styles.sectionListContent}
         renderItem={renderSectionItem}
         keyExtractor={sectionListKeyExtractor}
         renderSectionHeader={renderSectionHeader}
         initialNumToRender={10}
-        ListFooterComponent={renderEmptyCard}
+        // Rendered even with no empty state to show, so the space below a short list takes the
+        // swipe too, and an empty tab still leaves a view on the swipe's animated value, which
+        // stops animating once its last view goes. An element rather than a render callback,
+        // which the list would mount as a component and remount whenever the callback changed.
+        ListFooterComponent={
+          <Animated.View style={[styles.emptyCardOuter, tabSwipeStyle]} {...tabSwipeHandlers}>
+            {renderEmptyState()}
+          </Animated.View>
+        }
         ListFooterComponentStyle={styles.emptyCardOuter}
         sections={sections}
         maxToRenderPerBatch={10}

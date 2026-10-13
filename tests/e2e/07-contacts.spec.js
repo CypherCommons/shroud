@@ -1,4 +1,4 @@
-import { expectToBeVisible, helperAddContact, helperCreateWallet, launchAppForE2E, waitForId } from './helperz';
+import { expectToBeVisible, helperAddContact, helperCreateWallet, launchAppForE2E, sleep, waitForId } from './helperz';
 
 const ADDR_A = 'sp1qqfqnnv8czppwysafq3uwgwvsc638hc8rx3hscuddh0xa2yd746s7xqh6yy9ncjnqhqxazct0fzh98w7lpkm5fvlepqec2yy0sxlq4j6ccc3h6t0g';
 const ADDR_B = 'sp1qqvchcnrcqpdutxhpf57ptn3wajj0ymqxwzu9g6vj9uxx3wuvlykhyqh99hyh33y5593802pzw5rtw040zrw9f8re52tgcwngc5974w5evuufdy0m';
@@ -17,6 +17,24 @@ const returnToHome = async () => {
   await waitForId('HomeScreenReceiveButton');
 };
 
+// Scrolls until the view is on screen, then lets the list settle before anything touches it: on
+// Android 12+ a list scrolled into its end stretches, and the next touch goes to the list to catch
+// that stretch instead of to the view under the finger.
+const scrollIntoView = async (testID, scrollViewID, visiblePercent = 75) => {
+  await waitFor(element(by.id(testID)))
+    .toBeVisible(visiblePercent)
+    .whileElement(by.id(scrollViewID))
+    .scroll(200, 'down');
+  await sleep(1_000);
+};
+
+// Swipes the home list sideways on a view of the current tab, which Espresso wants at least 90% on
+// screen. It starts well inside the view, clear of the system back gesture at either screen edge.
+const swipeHomeTab = async (testID, direction) => {
+  await scrollIntoView(testID, 'WalletsListScrollView', 90);
+  await element(by.id(testID)).swipe(direction, 'fast', 0.6, direction === 'right' ? 0.3 : 0.7);
+};
+
 describe('Contacts', () => {
   beforeAll(async () => {
     await launchAppForE2E({ delete: true });
@@ -33,6 +51,32 @@ describe('Contacts', () => {
       .whileElement(by.id('WalletsListScrollView'))
       .scroll(200, 'down');
     await expect(element(by.id('NoContactsMessage'))).toBeVisible();
+  });
+
+  // Ends back on Contacts, where the next test picks up the empty state's add button.
+  it('swipes between the home tabs, and tracks a payment from the Transactions tab', async () => {
+    await swipeHomeTab('NoContactsMessage', 'right');
+    await waitFor(element(by.id('NoTransactionsMessage')))
+      .toExist()
+      .withTimeout(5_000);
+    await expect(element(by.id('NoContactsMessage'))).not.toExist();
+
+    await waitFor(element(by.id('HomeTrackPaymentButton')))
+      .toBeVisible()
+      .whileElement(by.id('WalletsListScrollView'))
+      .scroll(200, 'up');
+    await element(by.id('HomeTrackPaymentButton')).tap();
+    await waitFor(element(by.id('TrackPaymentTxidInput')))
+      .toBeVisible()
+      .withTimeout(15_000);
+    await device.pressBack();
+    await waitFor(element(by.id('HomeTrackPaymentButton')))
+      .toBeVisible()
+      .withTimeout(15_000);
+
+    await swipeHomeTab('NoTransactionsMessage', 'left');
+    await scrollIntoView('ContactsEmptyAddButton', 'WalletsListScrollView');
+    await expect(element(by.id('NoTransactionsMessage'))).not.toExist();
   });
 
   it('rejects an invalid address and accepts a valid one', async () => {
