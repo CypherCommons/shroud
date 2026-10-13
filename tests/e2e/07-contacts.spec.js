@@ -236,10 +236,7 @@ describe('Contacts', () => {
 
   it('removes a contact', async () => {
     await element(by.id(`ContactListContact-${ADDR_B}`)).tap();
-    await waitFor(element(by.id('ContactRemoveButton')))
-      .toBeVisible()
-      .whileElement(by.id('ContactDetailScrollView'))
-      .scroll(200, 'down');
+    await scrollIntoView('ContactRemoveButton', 'ContactDetailScrollView');
     await element(by.id('ContactRemoveButton')).tap();
 
     await waitFor(element(by.text(REMOVE_CONFIRM)))
@@ -271,11 +268,13 @@ describe('Contacts', () => {
         .withTimeout(30_000);
 
       await element(by.id('AddressInput')).replaceText(ADDR_B);
-      // The save row sits below the amount hero and address field, past the fold on a short screen.
+      // The save row only appears once the address checks out, so it's waited for before scrolling:
+      // on a screen the form fits, there's nothing to scroll while it renders. It sits below the
+      // amount hero and address field, past the fold on a short screen.
       await waitFor(element(by.id('SaveContactButton')))
-        .toBeVisible()
-        .whileElement(by.id('SendDetailsScrollView'))
-        .scroll(200, 'down');
+        .toExist()
+        .withTimeout(10_000);
+      await scrollIntoView('SaveContactButton', 'SendDetailsScrollView');
 
       await element(by.id('SaveContactButton')).tap();
       // already capitalised, so the field's autoCapitalize="words" cannot change what was typed
@@ -284,10 +283,15 @@ describe('Contacts', () => {
       await element(by.id('SaveContactConfirmButton')).tap();
 
       // the green receipt is deliberately short-lived, so assert what the save leaves behind:
-      // the address is now named by the chip, and has no save affordance left to offer
+      // the address is now named by the chip, and has no save affordance left to offer. The chip
+      // heads the address field, which scrolling down to the save row can leave above the fold.
+      await waitFor(element(by.id('SendDetailsContactChip')))
+        .toExist()
+        .withTimeout(10_000);
       await waitFor(element(by.id('SendDetailsContactChip')))
         .toBeVisible()
-        .withTimeout(10_000);
+        .whileElement(by.id('SendDetailsScrollView'))
+        .scroll(200, 'up');
       await expect(element(by.text('to Tanveer'))).toBeVisible();
       await expect(element(by.id('SaveContactButton'))).not.toBeVisible();
     } finally {
@@ -314,10 +318,7 @@ describe('Contacts', () => {
   it('returns home from a contact whose address was edited', async () => {
     // ADDR_B belongs to Tanveer until removed, and a duplicate address will not save.
     await element(by.id(`HomeContact-${ADDR_B}`)).tap();
-    await waitFor(element(by.id('ContactRemoveButton')))
-      .toBeVisible()
-      .whileElement(by.id('ContactDetailScrollView'))
-      .scroll(200, 'down');
+    await scrollIntoView('ContactRemoveButton', 'ContactDetailScrollView');
     await element(by.id('ContactRemoveButton')).tap();
     await waitFor(element(by.text(REMOVE_CONFIRM)))
       .toBeVisible()
