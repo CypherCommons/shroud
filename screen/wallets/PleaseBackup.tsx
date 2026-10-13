@@ -36,10 +36,9 @@ import CameraOffIcon from '../../components/icons/CameraOffIcon';
 import CheckboxUncheckedIcon from '../../components/icons/CheckboxUncheckedIcon';
 import CheckboxCheckedIcon from '../../components/icons/CheckboxCheckedIcon';
 import RevealEyeIcon from '../../components/icons/RevealEyeIcon';
+import { measureRectInWindow, Rect, rectRelativeTo } from '../../helpers/windowRect';
 
 type RouteProps = RouteProp<AddWalletStackParamList, 'PleaseBackup'>;
-
-type Rect = { top: number; left: number; width: number; height: number };
 
 enum BackupStep {
   INTRO = 'intro',
@@ -80,46 +79,35 @@ const PleaseBackup: React.FC = () => {
   // (hardcoded natively, not a prop) — rendered as a position-matched sibling overlay to keep the
   // blur visually scoped to the grid. Same capture-root issue means the reveal circle needs a
   // genuinely separate native window (Modal, below) — a same-window sibling still gets swept in.
-  const [gridOverlayLayout, setGridOverlayLayout] = useState<Rect | null>(null);
   const [revealWindowLayout, setRevealWindowLayout] = useState<Rect | null>(null);
+  const [stepRootWindowRect, setStepRootWindowRect] = useState<Rect | null>(null);
   const gridWrapperRef = useRef<View>(null);
+  const stepRootRef = useRef<View>(null);
   const insets = useSafeAreaInsets();
 
-  const handleGridLayout = useCallback(() => {
-    // measureInWindow gives screen-absolute coordinates. Retried via rAF on failure: the native
-    // view can still be mid-creation when this runs, and measureInWindow then calls back with no
-    // arguments at all (x/y come back undefined) — keeps retrying until the view actually exists.
-    // Self-terminates on unmount, since the ref goes null and further calls become no-ops.
-    const measure = () => {
-      gridWrapperRef.current?.measureInWindow((x, y, width, height) => {
-        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
-          requestAnimationFrame(measure);
-          return;
-        }
-        setRevealWindowLayout({ left: x, top: y, width, height });
-        // gridRevealOverlay renders inside stepRoot (not the Modal), so its position is relative
-        // to stepRoot — which, as SafeAreaView's direct unpadded child, starts exactly at the
-        // safe-area insets from the true screen origin (no native measurement needed for that).
-        setGridOverlayLayout({ left: x - insets.left, top: y - insets.top, width, height });
-      });
-    };
-    requestAnimationFrame(measure);
-  }, [insets.left, insets.top]);
+  // The grid and stepRoot, re-measured together: on the grid's layout, on scroll, and on stepRoot's
+  // layout. That last one catches the whole step moving, which the grid's own onLayout misses since
+  // it only fires when the grid moves within its parent — e.g. when the SafeAreaView's insets land a
+  // frame after mount, as they do right after the app-lock screen, and push stepRoot down.
+  const measureRevealArea = useCallback(() => {
+    measureRectInWindow(stepRootRef, setStepRootWindowRect);
+    measureRectInWindow(gridWrapperRef, setRevealWindowLayout);
+  }, []);
+
+  // gridRevealOverlay renders inside stepRoot (not the Modal), so its position is relative to
+  // stepRoot's measured origin.
+  const gridOverlayLayout = revealWindowLayout && stepRootWindowRect ? rectRelativeTo(revealWindowLayout, stepRootWindowRect) : null;
 
   // Modal's Dialog swallows all screen touches while visible (Android default), including the
   // header back button — this invisible same-position target restores it, using
-  // BackupStepHeader's own fixed offsets (no ref/measurement needed — see insets above).
+  // BackupStepHeader's own fixed offsets within stepRoot, which sits at the safe-area insets.
   // Window-absolute for the real Modal path (a genuinely separate window starting at the true
   // screen origin); under isE2E() these render as a plain sibling inside stepRoot instead (see
-  // revealContent below), which already starts at the safe-area insets — so no insets offset there.
+  // revealContent below) — so stepRoot-relative there.
   const backButtonLayout: Rect = isE2E()
     ? { left: 24, top: 16, width: 32, height: 32 }
     : { left: insets.left + 24, top: insets.top + 16, width: 32, height: 32 };
-  const revealLayout: Rect | null = revealWindowLayout
-    ? isE2E()
-      ? { ...revealWindowLayout, left: revealWindowLayout.left - insets.left, top: revealWindowLayout.top - insets.top }
-      : revealWindowLayout
-    : null;
+  const revealLayout: Rect | null = isE2E() ? gridOverlayLayout : revealWindowLayout;
 
   // Revealed: only the index box carries a fill — the word half is transparent, matching design.
   // rowBg is left undefined rather than pointed at a "transparent" token: RN drops an undefined
@@ -257,12 +245,12 @@ const PleaseBackup: React.FC = () => {
         )}
 
         {currentStep === BackupStep.SHOW_SEED && (
-          <View style={styles.stepRoot}>
+          <View ref={stepRootRef} onLayout={measureRevealArea} style={styles.stepRoot}>
             <BackupStepHeader onBack={handleBackToIntro} filledSteps={2} totalSteps={3} testID="RevealBackButton" />
 
             <ScrollView
               contentContainerStyle={styles.revealScrollContent}
-              onScroll={handleGridLayout}
+              onScroll={measureRevealArea}
               scrollEventThrottle={16}
               testID="PleaseBackupScrollView"
             >
@@ -279,7 +267,7 @@ const PleaseBackup: React.FC = () => {
 
               <View
                 style={[styles.wordGridWrapper, !isRevealed && { backgroundColor: colors.gridContainerBackground }]}
-                onLayout={handleGridLayout}
+                onLayout={measureRevealArea}
                 ref={gridWrapperRef}
               >
                 <View style={styles.wordsGrid}>

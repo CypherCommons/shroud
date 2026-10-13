@@ -926,6 +926,114 @@ describe('BIP-352 Silent Payments', () => {
       // the instant scan ran through every input's keys and found the change
       expect(wallet.getUTXOs().map(u => u.txid)).toEqual([tx!.getId()]);
     });
+
+    describe('a self-transfer', () => {
+      const pay = (wallet: HDSilentPaymentsWallet, coin: Utxo, address: string, changeAddress: string) =>
+        wallet.createTransaction([coin] as never[], [{ address, value: 20_000 }], 2, changeAddress, 0xfffffffd, false, 0);
+
+      const broadcast = async (wallet: HDSilentPaymentsWallet, tx: bitcoin.Transaction) => {
+        jest.spyOn(AbstractHDElectrumWallet.prototype, 'broadcastTx').mockResolvedValue(true);
+        jest.spyOn(wallet, 'fetchUtxo').mockResolvedValue(undefined);
+        expect(await wallet.broadcastTx(tx.toHex())).toBe(true);
+      };
+
+      const rowFor = (wallet: HDSilentPaymentsWallet, tx: bitcoin.Transaction) =>
+        wallet.getTransactions().find(t => t.txid === tx.getId())!;
+
+      const paymentAddress = (tx: bitcoin.Transaction) =>
+        bitcoin.address.fromOutputScript(tx.outs.find(out => Number(out.value) === 20_000)!.script);
+
+      // the transaction as Electrum reports it: input and output values in BTC
+      const electrumRow = (tx: bitcoin.Transaction, coin: Utxo): Transaction => ({
+        txid: tx.getId(),
+        hash: tx.getId(),
+        version: 2,
+        size: tx.byteLength(),
+        vsize: tx.virtualSize(),
+        weight: tx.weight(),
+        locktime: 0,
+        blockhash: 'ab'.repeat(32),
+        confirmations: 1,
+        time: 1_700_000_000,
+        blocktime: 1_700_000_000,
+        timestamp: 1_700_000_000,
+        inputs: [
+          {
+            txid: coin.txid,
+            vout: coin.vout,
+            scriptSig: { asm: '', hex: '' },
+            txinwitness: [],
+            sequence: 0xfffffffd,
+            addresses: [coin.address],
+            value: coin.value / 100_000_000,
+          },
+        ],
+        outputs: tx.outs.map((out, n) => ({
+          n,
+          value: Number(out.value) / 100_000_000,
+          scriptPubKey: {
+            asm: '',
+            hex: '',
+            reqSigs: 1,
+            type: 'witness_v1_taproot',
+            addresses: [bitcoin.address.fromOutputScript(out.script)],
+          },
+        })),
+      });
+
+      it('is what a spend paid our own silent payment address, without the label-0 change', async () => {
+        const wallet = newWallet();
+        const sp = spCoin(wallet, 30_000);
+        (wallet as any)._utxo = [sp];
+        const { tx, fee } = pay(wallet, sp, wallet.getSilentPaymentAddress()!, wallet.getSilentPaymentChangeAddress());
+        await broadcast(wallet, tx!);
+
+        const row = rowFor(wallet, tx!);
+        expect(row.value).toBe(-fee);
+        expect(row.selfTransfer).toEqual({ value: 20_000, address: paymentAddress(tx!) });
+      });
+
+      it('is what a spend paid one of our receive addresses, before and after Electrum reports it', async () => {
+        const wallet = newWallet();
+        const sp = spCoin(wallet, 30_000);
+        (wallet as any)._utxo = [sp];
+        const receiveAddress = wallet._getExternalAddressByIndex(0);
+        const { tx, fee } = pay(wallet, sp, receiveAddress, wallet.getSilentPaymentChangeAddress());
+        await broadcast(wallet, tx!);
+
+        expect(rowFor(wallet, tx!).selfTransfer).toEqual({ value: 20_000, address: receiveAddress });
+
+        (wallet as any)._txs_by_external_index = { 0: [electrumRow(tx!, sp)] };
+        const row = rowFor(wallet, tx!);
+        expect(row.confirmations).toBe(1); // Electrum's row now
+        expect(row.value).toBe(-fee);
+        expect(row.selfTransfer).toEqual({ value: 20_000, address: receiveAddress });
+      });
+
+      it('leaves out change to one of our BIP-86 change addresses', async () => {
+        const wallet = newWallet();
+        const regular = regularCoin(wallet, 50_000);
+        (wallet as any)._utxo = [regular];
+        const changeAddress = wallet.getChangeAddressForUtxos([regular] as never[], wallet._getInternalAddressByIndex(0));
+        const { tx, fee } = pay(wallet, regular, wallet.getSilentPaymentAddress()!, changeAddress);
+        await broadcast(wallet, tx!);
+        (wallet as any)._txs_by_external_index = { 0: [electrumRow(tx!, regular)] };
+
+        const row = rowFor(wallet, tx!);
+        expect(row.value).toBe(-fee);
+        expect(row.selfTransfer).toEqual({ value: 20_000, address: paymentAddress(tx!) });
+      });
+
+      it('is not a payment to someone else', async () => {
+        const wallet = newWallet();
+        const sp = spCoin(wallet, 30_000);
+        (wallet as any)._utxo = [sp];
+        const { tx } = pay(wallet, sp, RECIPIENT, wallet.getSilentPaymentChangeAddress());
+        await broadcast(wallet, tx!);
+
+        expect(rowFor(wallet, tx!).selfTransfer).toBeUndefined();
+      });
+    });
   });
 
   describe('sending to a silent payment address from regular taproot coins', () => {

@@ -9,8 +9,23 @@ export const shortenAddress = (address: string, lead = 4, tail = 4): string => `
 export const isIncomingTransaction = (value?: number): boolean => (value ?? 0) >= 0;
 
 /**
+ * A self-transfer as the two rows the list shows for it, newest first like the rest of the list:
+ * what it paid us, then the send it came from, carrying the fee like any other send. The two add up
+ * to the transaction's own value, so the list still sums to the balance. Anything else is one row.
+ */
+export const splitSelfTransfer = <T extends Transaction>(tx: T): T[] => {
+  if (!tx.selfTransfer) return [tx];
+  const received = tx.selfTransfer.value;
+  return [
+    { ...tx, value: received },
+    { ...tx, value: (tx.value ?? 0) - received },
+  ];
+};
+
+/**
  * Returns the most relevant address for display.
  *
+ * - **Self-transfer** (either of its rows): the address of ours it paid.
  * - **Outgoing**: the first non-change output address (i.e. not owned by our
  *   wallet).  Falls back to the first output address when every output is ours
  *   (e.g. self-send / consolidation).
@@ -19,6 +34,10 @@ export const isIncomingTransaction = (value?: number): boolean => (value ?? 0) >
  * Pass a `wallet` with `weOwnAddress` to enable change-address filtering.
  */
 export const getRelevantAddress = (item: Transaction, wallet?: { weOwnAddress: (address: string) => boolean }): string | null => {
+  if (item.selfTransfer?.address) {
+    return item.selfTransfer.address;
+  }
+
   if (!item.outputs || item.outputs.length === 0) {
     return null;
   }

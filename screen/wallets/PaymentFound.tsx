@@ -17,6 +17,7 @@ import SegmentedProgressBar from '../../components/SegmentedProgressBar';
 import FittedAmount from '../../components/FittedAmount';
 import { ClashFont } from '../../constants/fonts';
 import { splitForEmphasis } from '../../helpers/emphasis';
+import { splitSelfTransfer } from '../../utils/transactionHelpers';
 
 const CONFIRMATIONS_THRESHOLD = 6;
 // Estimate for the "usually takes about N minutes" message, not a guarantee.
@@ -32,7 +33,11 @@ const PaymentFound: React.FC<PaymentFoundProps> = ({ route }) => {
   const { colors } = useTheme();
 
   // Only needed for the "View Details" button; the amount/status above come from the scan result.
-  const tx = useMemo(() => wallet?.getTransactions().find(t => t.txid === txid) ?? null, [wallet, txid]);
+  // A self-transfer opens on its receive row: the payment this screen found.
+  const tx = useMemo(() => {
+    const found = wallet?.getTransactions().find(t => t.txid === txid);
+    return found ? splitSelfTransfer(found)[0] : null;
+  }, [wallet, txid]);
 
   const isConfirmed = confirmations >= CONFIRMATIONS_THRESHOLD;
   const confirmationsDisplay = Math.min(confirmations, CONFIRMATIONS_THRESHOLD);

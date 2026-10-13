@@ -14,6 +14,7 @@ import { ExtendedTransaction, Transaction, TWallet } from '../../class/wallets/t
 import presentAlert from '../../components/Alert';
 import { useTheme } from '../../components/themes';
 import { TransactionListItem } from '../../components/TransactionListItem';
+import { splitSelfTransfer } from '../../utils/transactionHelpers';
 import { useSizeClass, SizeClass } from '../../modules/sizeClass';
 import loc, { formatBalanceWithoutSuffix } from '../../loc';
 import { BitcoinUnit } from '../../models/bitcoinUnits';
@@ -133,7 +134,7 @@ const WalletsList: React.FC = () => {
   const { contactList } = useContacts();
   const sendToAddress = useSendToAddress();
   const [activeTab, setActiveTab] = useState(HomeTab.Transactions);
-  const dataSource = getTransactions(undefined, Infinity);
+  const dataSource = getTransactions(undefined, Infinity).flatMap(splitSelfTransfer);
   const walletsCount = useRef<number>(wallets.length);
   const [showZeroBalanceToast, setShowZeroBalanceToast] = useState(false);
   const toastOpacity = useRef(new Animated.Value(0)).current;

@@ -17,40 +17,12 @@ import useAppState from '../../hooks/useAppState';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
 import { useProtectedAction } from '../../hooks/useProtectedAction';
 import { isE2E } from '../../helpers/e2e';
+import { intersectRects, measureRectInWindow, Rect, rectRelativeTo } from '../../helpers/windowRect';
 import { ClashFont } from '../../constants/fonts';
 import loc from '../../loc';
 
-type Rect = { top: number; left: number; width: number; height: number };
-
 // Android's blur reads much stronger than iOS per unit (different underlying implementations).
 const GRID_BLUR_AMOUNT = Platform.select({ android: 8, default: 20 });
-
-// measureInWindow gives screen-absolute coordinates. Retried via rAF on failure: the native view can
-// still be mid-creation when this runs, and measureInWindow then calls back with no arguments at all
-// (x/y come back undefined) — keeps retrying until the view actually exists. Self-terminates on
-// unmount, since the ref goes null and further calls become no-ops.
-const measureRectInWindow = (ref: React.RefObject<View | null>, onMeasured: (rect: Rect) => void) => {
-  const measure = () => {
-    ref.current?.measureInWindow((x, y, width, height) => {
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
-        requestAnimationFrame(measure);
-        return;
-      }
-      onMeasured({ left: x, top: y, width, height });
-    });
-  };
-  requestAnimationFrame(measure);
-};
-
-// Overlap of two window rects, or null when they don't overlap.
-const intersectRects = (a: Rect, b: Rect): Rect | null => {
-  const left = Math.max(a.left, b.left);
-  const top = Math.max(a.top, b.top);
-  const right = Math.min(a.left + a.width, b.left + b.width);
-  const bottom = Math.min(a.top + a.height, b.top + b.height);
-  if (right <= left || bottom <= top) return null;
-  return { left, top, width: right - left, height: bottom - top };
-};
 
 const ViewRecoveryPhrase: React.FC = () => {
   const { colors } = useTheme();
@@ -68,9 +40,11 @@ const ViewRecoveryPhrase: React.FC = () => {
   // blur visually scoped to the grid. Same capture-root issue means the reveal circle and back
   // button need a genuinely separate native window (Modal, below) — a same-window sibling still
   // gets swept into the blur capture.
+  const [rootWindowRect, setRootWindowRect] = useState<Rect | null>(null);
   const [gridWindowRect, setGridWindowRect] = useState<Rect | null>(null);
   const [scrollAreaWindowRect, setScrollAreaWindowRect] = useState<Rect | null>(null);
   const [doneWindowLayout, setDoneWindowLayout] = useState<Rect | null>(null);
+  const rootRef = useRef<React.ComponentRef<typeof SafeAreaView>>(null);
   const gridWrapperRef = useRef<View>(null);
   const scrollAreaRef = useRef<View>(null);
   const footerRef = useRef<View>(null);
@@ -91,9 +65,16 @@ const ViewRecoveryPhrase: React.FC = () => {
     if (currentAppState !== 'active') setIsRevealed(false);
   }, [currentAppState]);
 
-  // Also re-run on scroll, so the blur overlay (outside the ScrollView) tracks the grid.
-  const handleGridLayout = useCallback(() => measureRectInWindow(gridWrapperRef, setGridWindowRect), []);
-  const handleScrollAreaLayout = useCallback(() => measureRectInWindow(scrollAreaRef, setScrollAreaWindowRect), []);
+  // Everything the overlay is placed from, re-measured together: on the grid's layout, on scroll (the
+  // blur sits outside the ScrollView), and on the scroll area's layout. That last one catches the
+  // whole screen moving, which the grid's own onLayout misses since it only fires when the grid moves
+  // within its parent — e.g. when the SafeAreaView's insets land a frame after mount, as they do
+  // right after the app-lock screen, and push everything down.
+  const measureRevealArea = useCallback(() => {
+    measureRectInWindow(rootRef, setRootWindowRect);
+    measureRectInWindow(scrollAreaRef, setScrollAreaWindowRect);
+    measureRectInWindow(gridWrapperRef, setGridWindowRect);
+  }, []);
 
   // Only the part of the grid inside the scroll area. On a small phone a 24-word grid runs past the
   // bottom, and the Modal blocks scrolling until reveal: sizing the reveal target to the whole grid
@@ -103,13 +84,9 @@ const ViewRecoveryPhrase: React.FC = () => {
     [gridWindowRect, scrollAreaWindowRect],
   );
   // gridRevealOverlay renders inside the SafeAreaView (not the Modal), so its position is relative to
-  // that — which, as a direct unpadded ancestor, starts exactly at the safe-area insets from the true
-  // screen origin (no native measurement needed for that).
-  const gridOverlayLayout = revealWindowLayout && {
-    ...revealWindowLayout,
-    left: revealWindowLayout.left - insets.left,
-    top: revealWindowLayout.top - insets.top,
-  };
+  // that: to its own origin, not to below the insets, since the insets are padding and an absolutely
+  // positioned child ignores its parent's padding.
+  const gridOverlayLayout = revealWindowLayout && rootWindowRect ? rectRelativeTo(revealWindowLayout, rootWindowRect) : null;
 
   const handleFooterLayout = useCallback(() => measureRectInWindow(footerRef, setDoneWindowLayout), []);
 
@@ -163,15 +140,15 @@ const ViewRecoveryPhrase: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView ref={rootRef} style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
       <View style={styles.headerRow}>
         <HeaderBackButton onPress={handleBack} color={colors.textPrimary} testID="RecoveryPhraseBackButton" />
       </View>
 
-      <View ref={scrollAreaRef} onLayout={handleScrollAreaLayout} style={styles.scrollArea}>
+      <View ref={scrollAreaRef} onLayout={measureRevealArea} style={styles.scrollArea}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
-          onScroll={handleGridLayout}
+          onScroll={measureRevealArea}
           scrollEventThrottle={16}
           testID="ViewRecoveryPhraseScrollView"
         >
@@ -186,7 +163,7 @@ const ViewRecoveryPhrase: React.FC = () => {
             containerStyle={styles.banner}
           />
 
-          <SeedWordsGrid ref={gridWrapperRef} words={words} revealed={isRevealed} onLayout={handleGridLayout} />
+          <SeedWordsGrid ref={gridWrapperRef} words={words} revealed={isRevealed} onLayout={measureRevealArea} />
         </ScrollView>
       </View>
 
