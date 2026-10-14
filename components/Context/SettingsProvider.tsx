@@ -98,9 +98,10 @@ interface SettingsContextType {
   /** The "Hide balance on home" setting: amounts start out hidden while it's on. */
   isHideBalanceEnabled: boolean;
   setIsHideBalanceEnabledStorage: (value: boolean) => Promise<void>;
-  /** Whether amounts are hidden right now. The home screen's eye flips it without touching the setting. */
+  /** Whether amounts are hidden right now: the setting, unless the home screen's eye has flipped it. */
   isBalanceHidden: boolean;
-  setIsBalanceHidden: (value: boolean) => void;
+  /** The home screen's eye. Leaves the setting alone, and lasts until the app goes to the background. */
+  toggleBalanceHidden: () => void;
 }
 
 const defaultSettingsContext: SettingsContextType = {
@@ -133,7 +134,7 @@ const defaultSettingsContext: SettingsContextType = {
   isHideBalanceEnabled: false,
   setIsHideBalanceEnabledStorage: async () => {},
   isBalanceHidden: false,
-  setIsBalanceHidden: () => {},
+  toggleBalanceHidden: () => {},
 };
 
 export const SettingsContext = createContext<SettingsContextType>(defaultSettingsContext);
@@ -155,9 +156,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
   const [selectedBlockExplorer, setSelectedBlockExplorer] = useState<BlockExplorer>(BLOCK_EXPLORERS.default);
   const [isPinLayoutScrambled, setIsPinLayoutScrambled] = useState<boolean>(false);
   const [isHideBalanceEnabled, setIsHideBalanceEnabled] = useState<boolean>(false);
-  // Intentionally not persisted: the home screen's eye changes it for this session only, and every
-  // launch starts from the setting.
-  const [isBalanceHidden, setIsBalanceHidden] = useState<boolean>(false);
+  // What the eye chose, over the setting. Intentionally not persisted: every launch starts from the setting.
+  const [balanceHiddenOverride, setBalanceHiddenOverride] = useState<boolean | null>(null);
+  const isBalanceHidden = balanceHiddenOverride ?? isHideBalanceEnabled;
 
   const { walletsInitialized } = useStorage();
 
@@ -203,7 +204,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
         }),
         getIsHideBalanceEnabled().then(hideBalance => {
           setIsHideBalanceEnabled(hideBalance);
-          setIsBalanceHidden(hideBalance);
         }),
       ];
 
@@ -244,15 +244,16 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
     return unsubscribe;
   }, []);
 
-  // A peek ends when the app leaves the foreground, so the amounts are hidden again for whoever opens
-  // it next and in the app switcher's snapshot.
+  // The eye's choice ends when the app goes to the background, so the next visit starts from the
+  // setting. Not on 'inactive': iOS goes inactive for Control Center, Face ID and permission prompts,
+  // which would undo it mid-use. The cost is the app switcher's snapshot, taken as the app leaves: it
+  // can still show amounts the eye revealed, as home has no capture protection.
   useEffect(() => {
-    if (!isHideBalanceEnabled) return;
     const subscription = AppState.addEventListener('change', state => {
-      if (state !== 'active') setIsBalanceHidden(true);
+      if (state === 'background') setBalanceHiddenOverride(null);
     });
     return () => subscription.remove();
-  }, [isHideBalanceEnabled]);
+  }, []);
 
   const setPreferredFiatCurrencyStorage = useCallback(async (currency: TFiatUnit): Promise<void> => {
     try {
@@ -361,16 +362,21 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
     }
   }, []);
 
-  // Flipping the setting also hides or shows the amounts straight away.
+  // The setting takes over from whatever the eye chose, so it applies straight away.
   const setIsHideBalanceEnabledStorage = useCallback(async (value: boolean): Promise<void> => {
     try {
       await persistIsHideBalanceEnabled(value);
       setIsHideBalanceEnabled(value);
-      setIsBalanceHidden(value);
+      setBalanceHiddenOverride(null);
     } catch (e) {
       console.error('Error setting isHideBalanceEnabled:', e);
     }
   }, []);
+
+  const toggleBalanceHidden = useCallback(
+    () => setBalanceHiddenOverride(override => !(override ?? isHideBalanceEnabled)),
+    [isHideBalanceEnabled],
+  );
 
   const value = useMemo(
     () => ({
@@ -403,7 +409,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       isHideBalanceEnabled,
       setIsHideBalanceEnabledStorage,
       isBalanceHidden,
-      setIsBalanceHidden,
+      toggleBalanceHidden,
     }),
     [
       preferredFiatCurrency,
@@ -434,6 +440,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       isHideBalanceEnabled,
       setIsHideBalanceEnabledStorage,
       isBalanceHidden,
+      toggleBalanceHidden,
     ],
   );
 

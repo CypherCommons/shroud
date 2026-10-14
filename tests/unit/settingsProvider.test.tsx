@@ -1,6 +1,6 @@
 import assert from 'assert';
 import React from 'react';
-import { AppState } from 'react-native';
+import { AppState, AppStateStatus } from 'react-native';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import DefaultPreference from 'react-native-default-preference';
 
@@ -30,9 +30,18 @@ const mockUseStorage = useStorage as jest.Mock;
 const wrapper = ({ children }: { children: React.ReactNode }) => <SettingsProvider>{children}</SettingsProvider>;
 
 describe('unit - SettingsProvider', () => {
+  // This test's live AppState listeners, so it can send the app to the background.
+  let appStateListeners: Set<(state: AppStateStatus) => void>;
+  const setAppState = (state: AppStateStatus) => act(() => appStateListeners.forEach(listener => listener(state)));
+
   beforeEach(async () => {
     mockUseStorage.mockReturnValue({ walletsInitialized: true });
     await DefaultPreference.clearAll();
+    appStateListeners = new Set();
+    (AppState.addEventListener as jest.Mock).mockImplementation((_type: string, listener: (state: AppStateStatus) => void) => {
+      appStateListeners.add(listener);
+      return { remove: () => appStateListeners.delete(listener) };
+    });
   });
 
   it('defaults themePreference to system and persists a change across a remount', async () => {
@@ -89,7 +98,7 @@ describe('unit - SettingsProvider', () => {
     });
     assert.strictEqual(result.current.isBalanceHidden, true);
 
-    act(() => result.current.setIsBalanceHidden(false));
+    act(() => result.current.toggleBalanceHidden());
     assert.strictEqual(result.current.isBalanceHidden, false);
     assert.strictEqual(result.current.isHideBalanceEnabled, true);
     unmount();
@@ -98,24 +107,47 @@ describe('unit - SettingsProvider', () => {
     await waitFor(() => assert.strictEqual(remounted.current.settingsLoaded, true));
     assert.strictEqual(remounted.current.isHideBalanceEnabled, true);
     assert.strictEqual(remounted.current.isBalanceHidden, true);
-
-    await act(async () => {
-      await remounted.current.setIsHideBalanceEnabledStorage(false);
-    });
-    assert.strictEqual(remounted.current.isBalanceHidden, false);
   });
 
-  it('hides the amounts again when the app leaves the foreground while hide balance is on', async () => {
+  it('lets a change to hide balance take over from the eye', async () => {
     const { result } = renderHook(() => useSettings(), { wrapper });
     await waitFor(() => assert.strictEqual(result.current.settingsLoaded, true));
     await act(async () => {
       await result.current.setIsHideBalanceEnabledStorage(true);
     });
-    act(() => result.current.setIsBalanceHidden(false));
+    act(() => result.current.toggleBalanceHidden());
+    assert.strictEqual(result.current.isBalanceHidden, false);
 
-    const changeListeners = (AppState.addEventListener as jest.Mock).mock.calls.filter(([type]) => type === 'change');
-    const onAppStateChange = changeListeners[changeListeners.length - 1][1];
-    act(() => onAppStateChange('background'));
+    await act(async () => {
+      await result.current.setIsHideBalanceEnabledStorage(false);
+    });
+    await act(async () => {
+      await result.current.setIsHideBalanceEnabledStorage(true);
+    });
+    assert.strictEqual(result.current.isBalanceHidden, true);
+  });
+
+  it("ends the eye's choice when the app goes to the background, with hide balance on or off", async () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    await waitFor(() => assert.strictEqual(result.current.settingsLoaded, true));
+
+    // Off: the eye hides the amounts, and a prompt or Control Center (inactive) leaves them hidden.
+    act(() => result.current.toggleBalanceHidden());
+    assert.strictEqual(result.current.isBalanceHidden, true);
+    setAppState('inactive');
+    assert.strictEqual(result.current.isBalanceHidden, true);
+    setAppState('background');
+    assert.strictEqual(result.current.isBalanceHidden, false);
+
+    // On: the eye shows them.
+    await act(async () => {
+      await result.current.setIsHideBalanceEnabledStorage(true);
+    });
+    act(() => result.current.toggleBalanceHidden());
+    assert.strictEqual(result.current.isBalanceHidden, false);
+    setAppState('inactive');
+    assert.strictEqual(result.current.isBalanceHidden, false);
+    setAppState('background');
     assert.strictEqual(result.current.isBalanceHidden, true);
   });
 
