@@ -10,15 +10,6 @@ jest.mock('../../modules/Electrum', () => {
   };
 });
 
-// helper function that promisifies function with a callback:
-const asyncNavigationRouteFor = async function (event) {
-  return new Promise(function (resolve) {
-    DeeplinkSchemaMatch.navigationRouteFor(event, navValue => {
-      resolve(navValue);
-    });
-  });
-};
-
 describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
   it('hasSchema', () => {
     assert.ok(DeeplinkSchemaMatch.hasSchema(`bitcoin:${suffix}12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG`));
@@ -44,46 +35,21 @@ describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
     assert.ok(DeeplinkSchemaMatch.isBitcoinAddress(`BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo`));
   });
 
-  it('navigationForRoute', async () => {
-    const events = [
+  it('sends payment input to SendDetails', () => {
+    const cases = [
+      { input: '12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG', expected: '12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' },
+      { input: `bitcoin:${suffix}12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG`, expected: 'bitcoin:12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' },
       {
-        argument: { url: `12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG` },
-        expected: ['SendDetailsRoot', { screen: 'SendDetails', params: { uri: '12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' } }],
+        input: `BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo`,
+        expected: 'BITCOIN:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo',
       },
       {
-        argument: { url: `bitcoin:${suffix}12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG` },
-        expected: ['SendDetailsRoot', { screen: 'SendDetails', params: { uri: 'bitcoin:12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' } }],
-      },
-      {
-        argument: { url: `BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo` },
-        expected: [
-          'SendDetailsRoot',
-          { screen: 'SendDetails', params: { uri: 'BITCOIN:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo' } },
-        ],
-      },
-      {
-        argument: { url: `shroud:BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo` },
-        expected: [
-          'SendDetailsRoot',
-          { screen: 'SendDetails', params: { uri: 'BITCOIN:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo' } },
-        ],
-      },
-      {
-        argument: {
-          url: 'shroud:setelectrumserver?server=electrum1.bluewallet.io%3A443%3As',
-        },
-        expected: [
-          'ElectrumServerSettings',
-          {
-            server: { host: 'electrum1.bluewallet.io', ssl: 443 },
-          },
-        ],
+        input: `shroud:BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo`,
+        expected: 'BITCOIN:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo',
       },
     ];
-
-    for (const event of events) {
-      const navValue = await asyncNavigationRouteFor(event.argument);
-      assert.deepStrictEqual(navValue, event.expected);
+    for (const { input, expected } of cases) {
+      assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { send: expected }, input);
     }
   });
 
@@ -168,14 +134,26 @@ describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
     assert.strictEqual(DeeplinkSchemaMatch.getServerFromSetElectrumServerAction('shroud:setelectrumserver?server=nonsense'), false);
     assert.strictEqual(DeeplinkSchemaMatch.getServerFromSetElectrumServerAction('shroud:setelectrumserver?server=%E0%A4%A'), false);
   });
+});
 
-  it('bitcoin BIP21 URI routes to on-chain SendDetails', async () => {
-    const response = await asyncNavigationRouteFor({
-      url: 'bitcoin:BC1QR7P8NSYPZEJY4KP7CJS0HL5T9X0VF3AYF6UQPC?amount=0.00185579',
+describe('unit - DeepLinkSchemaMatch.destinationFor', () => {
+  it('opens Electrum settings for a setelectrumserver link', () => {
+    assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor('shroud:setelectrumserver?server=electrum1.bluewallet.io%3A443%3As'), {
+      electrumServer: { host: 'electrum1.bluewallet.io', ssl: 443 },
     });
+  });
 
-    assert.strictEqual(response[0], 'SendDetailsRoot');
-    assert.strictEqual(response[1].screen, 'SendDetails');
-    assert.ok(response[1].params.uri.startsWith('bitcoin:BC1QR7P8NSYPZEJY4KP7CJS0HL5T9X0VF3AYF6UQPC'));
+  it('reports input it cannot route', () => {
+    const inputs = [
+      'not-an-address',
+      '',
+      '   ',
+      'shroud:setelectrumserver',
+      'shroud:setelectrumserver?server=nonsense',
+      'shroud:setelectrumserver?server=%E0%A4%A',
+    ];
+    for (const input of inputs) {
+      assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { error: 'unrecognized' }, input);
+    }
   });
 });

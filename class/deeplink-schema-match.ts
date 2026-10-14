@@ -3,7 +3,8 @@ import * as bitcoin from 'bitcoinjs-lib';
 import { ElectrumServerItem, parseElectrumServerString } from '../modules/Electrum';
 import { getActiveNetwork } from '../modules/network';
 
-type TCompletionHandlerParams = [string, object];
+export type TScanError = 'unrecognized';
+type TScanDestination = { send: string } | { electrumServer: ElectrumServerItem } | { error: TScanError };
 
 class DeeplinkSchemaMatch {
   static hasSchema(schemaString: string): boolean {
@@ -13,35 +14,32 @@ class DeeplinkSchemaMatch {
   }
 
   /**
-   * Examines the URL of the event and dispatches the appropriate navigation route.
+   * Maps scanned or pasted input to where it should open, or to the reason it can't.
    *
    * Supported schemes:
    *   bitcoin:           — standard on-chain payment URI (BIP21)
    *   shroud:bitcoin:    — same, wrapped in the app scheme
    *   shroud:setelectrumserver — configure the Electrum server
-   *
-   * @param event {{url: string}}
-   * @param completionHandler {function} Callback that receives [routeName, params]
    */
-  static navigationRouteFor(event: { url: string }, completionHandler: (args: TCompletionHandlerParams) => void) {
-    if (!event.url || typeof event.url !== 'string') return;
-
-    const lower = event.url.toLowerCase();
+  static destinationFor(input: string): TScanDestination {
+    let url = input;
+    const lower = url.toLowerCase();
 
     // rip out the shroud: wrapper from shroud:bitcoin: (or shroud:BITCOIN:) URIs.
     if (lower.startsWith('shroud:bitcoin:')) {
-      event.url = event.url.substring('shroud:'.length);
+      url = url.substring('shroud:'.length);
     }
 
-    if (DeeplinkSchemaMatch.isBitcoinAddress(event.url)) {
-      completionHandler(['SendDetailsRoot', { screen: 'SendDetails', params: { uri: event.url.replace('://', ':') } }]);
-      return;
+    if (DeeplinkSchemaMatch.isBitcoinAddress(url)) {
+      return { send: url.replace('://', ':') };
     }
 
     if (lower.startsWith('shroud:setelectrumserver')) {
-      const server = DeeplinkSchemaMatch.getServerFromSetElectrumServerAction(event.url);
-      if (server) completionHandler(['ElectrumServerSettings', { server }]);
+      const server = DeeplinkSchemaMatch.getServerFromSetElectrumServerAction(url);
+      return server ? { electrumServer: server } : { error: 'unrecognized' };
     }
+
+    return { error: 'unrecognized' };
   }
 
   /**
