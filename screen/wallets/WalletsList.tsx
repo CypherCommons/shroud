@@ -491,7 +491,7 @@ const WalletsList: React.FC = () => {
   }, [onBarScanned]);
 
   const sendButtonLongPress = useCallback(async () => {
-    const isClipboardEmpty = (await getClipboardContent())?.trim().length === 0;
+    const isClipboardEmpty = !(await getClipboardContent())?.trim();
 
     const options = [loc._.cancel, loc.wallets.list_long_choose, loc.wallets.list_long_scan];
     if (!isClipboardEmpty) {
