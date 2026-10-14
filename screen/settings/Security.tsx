@@ -191,6 +191,7 @@ const Security: React.FC = () => {
       <View style={cardStyle}>
         <SettingsToggleRow
           title={loc.settings.security_hide_balance}
+          subtitle={loc.settings.security_hide_balance_subtitle}
           value={isHideBalanceEnabled}
           onValueChange={setIsHideBalanceEnabledStorage}
           showSeparator={false}

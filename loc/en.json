@@ -311,6 +311,7 @@
         "security_scramble_pin": "Scramble PIN layout",
         "security_scramble_pin_requires_pin_warning": "Set a PIN before turning this on. Scramble PIN layout shuffles the keypad each time you unlock, once a PIN exists.",
         "security_hide_balance": "Hide balance on home",
+        "security_hide_balance_subtitle": "Hides your balance and transaction amounts each time you open Shroud. Tap the eye on the home screen to show them until you leave the app.",
         "security_view_recovery_phrase": "View recovery phrase",
         "security_recovery_phrase_body_title": "This is your recovery phrase",
         "security_recovery_phrase_body_subtitle": "Write these {count} words down in order. You'll need them to restore your wallet.",
@@ -486,6 +487,8 @@
         "pay_button": "Pay",
         "scan_qr_code": "Scan QR code",
         "no_balance_hint": "No balance yet",
+        "show_balance": "Show balance",
+        "hide_balance": "Hide balance",
         "balance_hidden": "Balance hidden"
     },
     "total_balance_view": {

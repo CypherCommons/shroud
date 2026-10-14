@@ -1,5 +1,6 @@
 import * as Electrum from '../../modules/Electrum';
 import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
+import { AppState } from 'react-native';
 import DefaultPreference from 'react-native-default-preference';
 import { isReadClipboardAllowed, setReadClipboardAllowed } from '../../modules/clipboard';
 import { getPreferredCurrency, GROUP_IO_SHROUD, initCurrencyDaemon, setPreferredCurrency } from '../../modules/currency';
@@ -97,8 +98,9 @@ interface SettingsContextType {
   /** The "Hide balance on home" setting: amounts start out hidden while it's on. */
   isHideBalanceEnabled: boolean;
   setIsHideBalanceEnabledStorage: (value: boolean) => Promise<void>;
-  /** Whether amounts are hidden right now. Display code reads this rather than the setting. */
+  /** Whether amounts are hidden right now. The home screen's eye flips it without touching the setting. */
   isBalanceHidden: boolean;
+  setIsBalanceHidden: (value: boolean) => void;
 }
 
 const defaultSettingsContext: SettingsContextType = {
@@ -131,6 +133,7 @@ const defaultSettingsContext: SettingsContextType = {
   isHideBalanceEnabled: false,
   setIsHideBalanceEnabledStorage: async () => {},
   isBalanceHidden: false,
+  setIsBalanceHidden: () => {},
 };
 
 export const SettingsContext = createContext<SettingsContextType>(defaultSettingsContext);
@@ -152,6 +155,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
   const [selectedBlockExplorer, setSelectedBlockExplorer] = useState<BlockExplorer>(BLOCK_EXPLORERS.default);
   const [isPinLayoutScrambled, setIsPinLayoutScrambled] = useState<boolean>(false);
   const [isHideBalanceEnabled, setIsHideBalanceEnabled] = useState<boolean>(false);
+  // Intentionally not persisted: the home screen's eye changes it for this session only, and every
+  // launch starts from the setting.
+  const [isBalanceHidden, setIsBalanceHidden] = useState<boolean>(false);
 
   const { walletsInitialized } = useStorage();
 
@@ -197,6 +203,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
         }),
         getIsHideBalanceEnabled().then(hideBalance => {
           setIsHideBalanceEnabled(hideBalance);
+          setIsBalanceHidden(hideBalance);
         }),
       ];
 
@@ -236,6 +243,16 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
     const unsubscribe = TorManager.getInstance().addStatusListener(setTorStatus);
     return unsubscribe;
   }, []);
+
+  // A peek ends when the app leaves the foreground, so the amounts are hidden again for whoever opens
+  // it next and in the app switcher's snapshot.
+  useEffect(() => {
+    if (!isHideBalanceEnabled) return;
+    const subscription = AppState.addEventListener('change', state => {
+      if (state !== 'active') setIsBalanceHidden(true);
+    });
+    return () => subscription.remove();
+  }, [isHideBalanceEnabled]);
 
   const setPreferredFiatCurrencyStorage = useCallback(async (currency: TFiatUnit): Promise<void> => {
     try {
@@ -344,10 +361,12 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
     }
   }, []);
 
+  // Flipping the setting also hides or shows the amounts straight away.
   const setIsHideBalanceEnabledStorage = useCallback(async (value: boolean): Promise<void> => {
     try {
       await persistIsHideBalanceEnabled(value);
       setIsHideBalanceEnabled(value);
+      setIsBalanceHidden(value);
     } catch (e) {
       console.error('Error setting isHideBalanceEnabled:', e);
     }
@@ -383,7 +402,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       setIsPinLayoutScrambledStorage,
       isHideBalanceEnabled,
       setIsHideBalanceEnabledStorage,
-      isBalanceHidden: isHideBalanceEnabled,
+      isBalanceHidden,
+      setIsBalanceHidden,
     }),
     [
       preferredFiatCurrency,
@@ -413,6 +433,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       setIsPinLayoutScrambledStorage,
       isHideBalanceEnabled,
       setIsHideBalanceEnabledStorage,
+      isBalanceHidden,
     ],
   );
 
