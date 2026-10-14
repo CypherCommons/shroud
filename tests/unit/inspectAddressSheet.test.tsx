@@ -33,14 +33,14 @@ describe('unit - InspectAddressSheet', () => {
   });
 
   it('lays the address out in groups of four once presented', () => {
-    const { getByText, queryByTestId, present } = renderSheet();
+    const { getByLabelText, getByText, queryByTestId, present } = renderSheet();
     expect(queryByTestId('InspectAddressSheet')).toBeNull();
 
     present();
 
-    for (const group of ['bc1q', 'fm3u', '2f2e', '2mqz', 'hc53', 'd24c', '0tqg', '2zlw', 'rgdq', 'mjuj', '0p']) {
-      getByText(group);
-    }
+    getByLabelText('bc1q fm3u 2f2e 2mqz hc53 d24c 0tqg 2zlw rgdq mjuj 0p');
+    getByText('bc1q');
+    getByText('mjuj');
   });
 
   it('copies the whole address', () => {

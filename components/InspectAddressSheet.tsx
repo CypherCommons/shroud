@@ -12,7 +12,12 @@ import loc from '../loc';
 // The app bundles no monospace face; these are the platforms' own. React Native on iOS doesn't
 // resolve the generic 'monospace' family, so it needs a real font name.
 const MONOSPACE = Platform.select({ ios: 'Menlo', default: 'monospace' });
+const GROUP_SIZE = 4;
 const GROUPS_PER_ROW = 4;
+// Invisible characters that pad a short or missing group to full width.
+const PADDING = '0'.repeat(GROUP_SIZE);
+// The grid is already large; past this the four groups of a row stop fitting a 320pt screen.
+const MAX_GRID_FONT_SCALE = 1.25;
 
 interface InspectAddressSheetProps {
   address?: string;
@@ -23,7 +28,7 @@ const InspectAddressSheet = forwardRef<BottomModalHandle, InspectAddressSheetPro
   const { colors } = useTheme();
   const { copied, copy } = useCopyToClipboard();
   // Groups of four, four to a row, in columns alternately bright and dim so the eye keeps its place.
-  const groups = address.match(/.{1,4}/g) ?? [];
+  const groups = address.match(new RegExp(`.{1,${GROUP_SIZE}}`, 'g')) ?? [];
   const rows: string[][] = [];
   for (let i = 0; i < groups.length; i += GROUPS_PER_ROW) rows.push(groups.slice(i, i + GROUPS_PER_ROW));
 
@@ -42,11 +47,25 @@ const InspectAddressSheet = forwardRef<BottomModalHandle, InspectAddressSheetPro
         <View style={styles.grid} accessible accessibilityLabel={groups.join(' ')}>
           {rows.map((row, rowIndex) => (
             <View key={rowIndex} style={styles.row}>
-              {row.map((group, column) => (
-                <Text key={column} style={[styles.group, { color: column % 2 === 0 ? colors.textPrimary : colors.textMuted }]}>
-                  {group}
-                </Text>
-              ))}
+              {Array.from({ length: GROUPS_PER_ROW }, (_, column) => {
+                const group = row[column] ?? '';
+                return (
+                  <View key={column} style={styles.cell}>
+                    <Text
+                      maxFontSizeMultiplier={MAX_GRID_FONT_SCALE}
+                      style={[styles.group, { color: column % 2 === 0 ? colors.textPrimary : colors.textMuted }]}
+                    >
+                      {group}
+                    </Text>
+                    {/* A sibling rather than a nested span: Android ignores a transparent colour on a span. */}
+                    {group.length < GROUP_SIZE && (
+                      <Text maxFontSizeMultiplier={MAX_GRID_FONT_SCALE} style={[styles.group, styles.padding]}>
+                        {PADDING.slice(group.length)}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
             </View>
           ))}
         </View>
@@ -71,10 +90,12 @@ const styles = StyleSheet.create({
   // The top padding clears the native grabber.
   container: { paddingTop: 28, paddingHorizontal: 24, paddingBottom: 24, gap: 24 },
   title: { fontFamily: ClashFont.medium, fontSize: 17, lineHeight: 26, textAlign: 'center' },
-  // As wide as a full row, so the block centres under the title. Every full group is the same width
-  // in a monospace face, which is what keeps the columns lined up without fixing their widths.
-  grid: { alignSelf: 'center' },
-  // Wraps only if very large text makes a row wider than the sheet.
-  row: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 28 },
+  // Capped so the columns don't drift apart on a wide screen, and centred under the title.
+  grid: { width: '100%', maxWidth: 300, alignSelf: 'center' },
+  // Every cell is four monospace characters wide, padding included, so spreading each row across
+  // the grid lines the columns up and narrows the gaps on a narrow screen instead of wrapping.
+  row: { flexDirection: 'row', justifyContent: 'space-between' },
+  cell: { flexDirection: 'row' },
   group: { fontFamily: MONOSPACE, fontSize: 22, lineHeight: 34 },
+  padding: { opacity: 0 },
 });
