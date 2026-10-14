@@ -22,20 +22,15 @@ class DeeplinkSchemaMatch {
    *   shroud:setelectrumserver — configure the Electrum server
    */
   static destinationFor(input: string): TScanDestination {
-    let url = input;
-    const lower = url.toLowerCase();
+    const uri = DeeplinkSchemaMatch.canonicalise(input);
+    const address = DeeplinkSchemaMatch.extractAddress(uri);
 
-    // rip out the shroud: wrapper from shroud:bitcoin: (or shroud:BITCOIN:) URIs.
-    if (lower.startsWith('shroud:bitcoin:')) {
-      url = url.substring('shroud:'.length);
+    if (DeeplinkSchemaMatch.isValidAddress(address, getActiveNetwork().bitcoinjs)) {
+      return { send: uri };
     }
 
-    if (DeeplinkSchemaMatch.isBitcoinAddress(url)) {
-      return { send: url.replace('://', ':') };
-    }
-
-    if (lower.startsWith('shroud:setelectrumserver')) {
-      const server = DeeplinkSchemaMatch.getServerFromSetElectrumServerAction(url);
+    if (uri.toLowerCase().startsWith('shroud:setelectrumserver')) {
+      const server = DeeplinkSchemaMatch.getServerFromSetElectrumServerAction(uri);
       return server ? { electrumServer: server } : { error: 'unrecognized' };
     }
 
@@ -63,10 +58,19 @@ class DeeplinkSchemaMatch {
     return parseElectrumServerString(server) ?? false;
   }
 
-  static isBitcoinAddress(address: string): boolean {
-    address = address.replace('://', ':').replace('bitcoin:', '').replace('BITCOIN:', '').replace('bitcoin=', '').split('?')[0];
+  /** Trims, unwraps `shroud:bitcoin:` and rewrites a leading `bitcoin:` / `bitcoin://` in any case to `bitcoin:`. */
+  private static canonicalise(input: string): string {
+    return input.trim().replace(/^(?:shroud:)?bitcoin:(?:\/\/)?/i, 'bitcoin:');
+  }
+
+  /** Takes a canonical URI or a bare address. */
+  private static extractAddress(uri: string): string {
+    return uri.replace(/^bitcoin:/, '').split('?')[0];
+  }
+
+  private static isValidAddress(address: string, network: bitcoin.Network): boolean {
     try {
-      bitcoin.address.toOutputScript(address, getActiveNetwork().bitcoinjs);
+      bitcoin.address.toOutputScript(address, network);
       return true;
     } catch {
       return false;
@@ -77,12 +81,7 @@ class DeeplinkSchemaMatch {
     if (!uri) {
       throw new Error('No URI provided');
     }
-    let replacedUri = uri;
-    for (const replaceMe of ['BITCOIN://', 'bitcoin://', 'BITCOIN:']) {
-      replacedUri = replacedUri.replace(replaceMe, 'bitcoin:');
-    }
-
-    return bip21.decode(replacedUri);
+    return bip21.decode(DeeplinkSchemaMatch.canonicalise(uri));
   }
 
   static bip21encode(address: string, options?: TOptions): string {

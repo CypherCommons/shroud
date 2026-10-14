@@ -25,27 +25,24 @@ describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
     assert.ok(DeeplinkSchemaMatch.hasSchema(`shroud:BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo`));
   });
 
-  it('isBitcoin Address', () => {
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress('12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG'));
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress('3GcKN7q7gZuZ8eHygAhHrvPa5zZbG5Q1rK'));
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress('bc1qykcp2x3djgdtdwelxn9z4j2y956npte0a4sref'));
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress('BC1QYKCP2X3DJGDTDWELXN9Z4J2Y956NPTE0A4SREF'));
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress(`bitcoin:${suffix}BC1QH6TF004TY7Z7UN2V5NTU4MKF630545GVHS45U7`));
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress(`BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE`));
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress(`BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo`));
-  });
-
-  it('sends payment input to SendDetails', () => {
+  it('sends payment input to SendDetails as a canonical URI', () => {
     const cases = [
       { input: '12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG', expected: '12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' },
+      { input: '3GcKN7q7gZuZ8eHygAhHrvPa5zZbG5Q1rK', expected: '3GcKN7q7gZuZ8eHygAhHrvPa5zZbG5Q1rK' },
+      { input: 'BC1QYKCP2X3DJGDTDWELXN9Z4J2Y956NPTE0A4SREF', expected: 'BC1QYKCP2X3DJGDTDWELXN9Z4J2Y956NPTE0A4SREF' },
       { input: `bitcoin:${suffix}12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG`, expected: 'bitcoin:12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' },
+      { input: `Bitcoin:${suffix}12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG`, expected: 'bitcoin:12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' },
       {
         input: `BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo`,
-        expected: 'BITCOIN:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo',
+        expected: 'bitcoin:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo',
       },
       {
         input: `shroud:BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo`,
-        expected: 'BITCOIN:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo',
+        expected: 'bitcoin:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo',
+      },
+      {
+        input: `bitcoin:${suffix}12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG?label=http://example.com`,
+        expected: 'bitcoin:12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG?label=http://example.com',
       },
     ];
     for (const { input, expected } of cases) {
@@ -71,6 +68,14 @@ describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
       options: {
         amount: 20.3,
         label: 'Foobar',
+      },
+    });
+
+    decoded = DeeplinkSchemaMatch.bip21decode(`Bitcoin:${suffix}1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH?label=bitcoin://x`);
+    assert.deepStrictEqual(decoded, {
+      address: '1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH',
+      options: {
+        label: 'bitcoin://x',
       },
     });
   });
@@ -148,6 +153,8 @@ describe('unit - DeepLinkSchemaMatch.destinationFor', () => {
       'not-an-address',
       '',
       '   ',
+      // Not BIP21: on master this opened Send with `bitcoin=…` as the address.
+      'bitcoin=12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG',
       'shroud:setelectrumserver',
       'shroud:setelectrumserver?server=nonsense',
       'shroud:setelectrumserver?server=%E0%A4%A',
