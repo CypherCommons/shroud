@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, memo } from '
 import Clipboard from '@react-native-clipboard/clipboard';
 import { View, ViewStyle, StyleSheet, Text } from 'react-native';
 import { Transaction } from '../class/wallets/types';
-import loc, { formatBalanceWithoutSuffix, transactionTimeToReadable } from '../loc';
+import loc, { formatBalanceWithoutSuffix, HIDDEN_AMOUNT, transactionTimeToReadable } from '../loc';
 import { BitcoinUnit } from '../models/bitcoinUnits';
 import ListItem from './ListItem';
 import { useTheme } from './themes';
@@ -11,6 +11,7 @@ import { useExtendedNavigation } from '../hooks/useExtendedNavigation';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { DetailViewStackParamList } from '../navigation/DetailViewStackParamList';
 import { useStorage } from '../hooks/context/useStorage';
+import { useSettings } from '../hooks/context/useSettings';
 import ToolTipMenu from './TooltipMenu';
 import { CommonToolTipActions } from '../typings/CommonToolTipActions';
 import { pop } from '../NavigationService';
@@ -86,6 +87,7 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
     const { navigate } = useExtendedNavigation<NavigationProps>();
     const menuRef = useRef<ToolTipMenuProps | null>(null);
     const { txMetadata } = useStorage();
+    const { isBalanceHidden } = useSettings();
     const insets = useSafeAreaInsets();
     const containerStyle = useMemo(
       () => ({
@@ -160,9 +162,10 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
     }, [timeText, txMemo, item.confirmations]);
 
     const formattedAmount = useMemo(() => {
+      if (isBalanceHidden) return HIDDEN_AMOUNT;
       const formatted = formatBalanceWithoutSuffix(item.value && item.value, itemPriceUnit, true).toString();
       return isIncoming ? `+${formatted}` : formatted;
-    }, [item.value, itemPriceUnit, isIncoming]);
+    }, [item.value, itemPriceUnit, isIncoming, isBalanceHidden]);
 
     const rowTitle = useMemo(() => {
       return formattedAmount;
@@ -234,6 +237,7 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
       const actions: (Action | Action[])[] = [
         {
           ...CommonToolTipActions.CopyAmount,
+          hidden: isBalanceHidden,
         },
         {
           ...CommonToolTipActions.CopyNote,
@@ -253,7 +257,7 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
       ];
 
       return actions as Action[];
-    }, [subtitle, item.hash, subtitleNumberOfLines]);
+    }, [isBalanceHidden, subtitle, item.hash, subtitleNumberOfLines]);
 
     const accessibilityState = useMemo(() => {
       return {
@@ -263,6 +267,9 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
 
     const subtitleProps = useMemo(() => ({ numberOfLines: subtitleNumberOfLines }), [subtitleNumberOfLines]);
 
+    // Spoken as a whole while hidden, rather than with a run of bullets for the amount.
+    const accessibilityLabel = isBalanceHidden ? [title, subtitle, loc.transactions.amount_hidden].filter(Boolean).join(', ') : undefined;
+
     return (
       <ToolTipMenu
         isButton
@@ -271,6 +278,7 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
         onPress={onPress}
         accessibilityRole="button"
         accessibilityState={accessibilityState}
+        accessibilityLabel={accessibilityLabel}
       >
         <ListItem
           title={title}

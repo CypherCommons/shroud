@@ -1,4 +1,17 @@
-import { helperCreateWallet, launchAppForE2E } from './helperz';
+import { helperCreateWallet, launchAppForE2E, scrollIntoView } from './helperz';
+
+// Flips Hide balance on home in Settings › Security, starting and ending on home.
+async function toggleHideBalanceSetting() {
+  await element(by.id('SettingsButton')).tap();
+  await waitFor(element(by.id('SecurityButton')))
+    .toBeVisible()
+    .withTimeout(10_000);
+  await element(by.id('SecurityButton')).tap();
+  await scrollIntoView('HideBalanceSwitch', 'SecurityScrollView');
+  await element(by.id('HideBalanceSwitch')).tap();
+  await device.pressBack();
+  await device.pressBack();
+}
 
 describe('Settings', () => {
   beforeAll(async () => {
@@ -82,5 +95,28 @@ describe('Settings', () => {
       .withTimeout(5_000);
     await element(by.id('DenominationSatsOption')).tap();
     await device.pressBack();
+  });
+
+  it('hides the balance on home, and the eye shows it without turning the setting off', async () => {
+    // Back home from the General settings the previous test leaves open.
+    await device.pressBack();
+    await device.pressBack();
+    await toggleHideBalanceSetting();
+    await waitFor(element(by.id('HomeBalance')))
+      .toHaveText('••••')
+      .withTimeout(10_000);
+
+    await element(by.id('BalanceVisibilityButton')).tap();
+    await expect(element(by.id('HomeBalance'))).not.toHaveText('••••');
+
+    // The setting is still on, so the next launch starts hidden again.
+    await launchAppForE2E({ delete: false });
+    await waitFor(element(by.id('HomeBalance')))
+      .toHaveText('••••')
+      .withTimeout(15_000);
+
+    // Off again, so a test added after this one doesn't start with the amounts hidden.
+    await toggleHideBalanceSetting();
+    await expect(element(by.id('HomeBalance'))).not.toHaveText('••••');
   });
 });

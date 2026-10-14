@@ -54,6 +54,9 @@ export const removeTrailingZeros = (value: number | string): string => {
   return ret;
 };
 
+/** Stands in for an amount while amounts are hidden. The same length for every amount, so it gives away nothing. */
+export const HIDDEN_AMOUNT = '••••';
+
 /**
  *
  * @param balance {number} Satoshis

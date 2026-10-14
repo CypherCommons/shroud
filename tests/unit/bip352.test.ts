@@ -1185,7 +1185,6 @@ describe('BIP-352 Silent Payments', () => {
         'chain',
         'external_addresses_cache',
         'gap_limit',
-        'hideBalance',
         'internal_addresses_cache',
         'label',
         'lastScannedBlock',

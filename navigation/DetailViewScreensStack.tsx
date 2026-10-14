@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import navigationStyle, { CloseButtonPosition } from '../components/navigationStyle';
 import { useTheme } from '../components/themes';
@@ -9,6 +10,7 @@ import TransactionDetails from '../screen/transactions/TransactionDetails';
 import WalletsList from '../screen/wallets/WalletsList';
 import { DetailViewStack } from './index';
 import SettingsButton from '../components/icons/SettingsButton';
+import BalanceVisibilityButton from '../components/BalanceVisibilityButton';
 import { ShroudApp } from '../class';
 import Settings from '../screen/settings/Settings';
 import Currency from '../screen/settings/Currency';
@@ -45,7 +47,17 @@ const DetailViewStackScreensStack = () => {
   const theme = useTheme();
   const { sizeClass } = useSizeClass();
   const { activeNetworkId, wallets } = useStorage();
-  const RightBarButtons = useMemo(() => <SettingsButton />, []);
+  // The eye sits in the bar rather than by the balance: it also hides the transaction amounts, and the
+  // bar stays on screen while the list scrolls (and on large screens, where the balance is in the drawer).
+  const RightBarButtons = useMemo(
+    () => (
+      <View style={styles.rightBarButtons}>
+        <BalanceVisibilityButton />
+        <SettingsButton />
+      </View>
+    ),
+    [],
+  );
 
   const walletListScreenOptions = useMemo<NativeStackNavigationOptions>(() => {
     return {
@@ -226,3 +238,10 @@ const DetailViewStackScreensStack = () => {
 };
 
 export default DetailViewStackScreensStack;
+
+const styles = StyleSheet.create({
+  rightBarButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+});

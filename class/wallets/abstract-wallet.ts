@@ -59,7 +59,6 @@ export class AbstractWallet {
   _lastBalanceFetch: number;
   preferredBalanceUnit: BitcoinUnit;
   chain: Chain;
-  hideBalance: boolean;
   userHasSavedExport: boolean;
   _hideTransactionsInWalletsList: boolean;
   _utxoMetadata: Record<string, UtxoMetadata>;
@@ -80,7 +79,6 @@ export class AbstractWallet {
     this._lastBalanceFetch = 0;
     this.preferredBalanceUnit = BitcoinUnit.BTC;
     this.chain = Chain.ONCHAIN;
-    this.hideBalance = false;
     this.userHasSavedExport = false;
     this._hideTransactionsInWalletsList = false;
     this._utxoMetadata = {};

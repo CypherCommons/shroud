@@ -1,5 +1,6 @@
 import * as Electrum from '../../modules/Electrum';
 import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
+import { AppState } from 'react-native';
 import DefaultPreference from 'react-native-default-preference';
 import { isReadClipboardAllowed, setReadClipboardAllowed } from '../../modules/clipboard';
 import { getPreferredCurrency, GROUP_IO_SHROUD, initCurrencyDaemon, setPreferredCurrency } from '../../modules/currency';
@@ -22,6 +23,7 @@ const TotalWalletsBalanceKey = 'TotalWalletsBalance';
 const TotalWalletsBalancePreferredUnit = 'TotalWalletsBalancePreferredUnit';
 const ThemePreferenceKey = 'ThemePreference';
 const PinLayoutScrambledKey = 'PinLayoutScrambled';
+const HideBalanceKey = 'HideBalance';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -62,6 +64,10 @@ const getIsPinLayoutScrambled = (): Promise<boolean> => readPref(PinLayoutScramb
 
 const persistIsPinLayoutScrambled = (value: boolean): Promise<void> => writePref(PinLayoutScrambledKey, value ? '1' : '0');
 
+const getIsHideBalanceEnabled = (): Promise<boolean> => readPref(HideBalanceKey, value => value === '1', false);
+
+const persistIsHideBalanceEnabled = (value: boolean): Promise<void> => writePref(HideBalanceKey, value ? '1' : '0');
+
 interface SettingsContextType {
   preferredFiatCurrency: TFiatUnit;
   setPreferredFiatCurrencyStorage: (currency: TFiatUnit) => Promise<void>;
@@ -89,6 +95,13 @@ interface SettingsContextType {
   setBlockExplorerStorage: (explorer: BlockExplorer) => Promise<boolean>;
   isPinLayoutScrambled: boolean;
   setIsPinLayoutScrambledStorage: (value: boolean) => Promise<void>;
+  /** The "Hide balance on home" setting: amounts start out hidden while it's on. */
+  isHideBalanceEnabled: boolean;
+  setIsHideBalanceEnabledStorage: (value: boolean) => Promise<void>;
+  /** Whether amounts are hidden right now: the setting, unless the home screen's eye has flipped it. */
+  isBalanceHidden: boolean;
+  /** The home screen's eye. Leaves the setting alone, and lasts until the app goes to the background. */
+  toggleBalanceHidden: () => void;
 }
 
 const defaultSettingsContext: SettingsContextType = {
@@ -118,6 +131,10 @@ const defaultSettingsContext: SettingsContextType = {
   setBlockExplorerStorage: async () => false,
   isPinLayoutScrambled: false,
   setIsPinLayoutScrambledStorage: async () => {},
+  isHideBalanceEnabled: false,
+  setIsHideBalanceEnabledStorage: async () => {},
+  isBalanceHidden: false,
+  toggleBalanceHidden: () => {},
 };
 
 export const SettingsContext = createContext<SettingsContextType>(defaultSettingsContext);
@@ -138,6 +155,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
   const [torStatus, setTorStatus] = useState<TorStatus>('disabled');
   const [selectedBlockExplorer, setSelectedBlockExplorer] = useState<BlockExplorer>(BLOCK_EXPLORERS.default);
   const [isPinLayoutScrambled, setIsPinLayoutScrambled] = useState<boolean>(false);
+  const [isHideBalanceEnabled, setIsHideBalanceEnabled] = useState<boolean>(false);
+  // What the eye chose, over the setting. Intentionally not persisted: every launch starts from the setting.
+  const [balanceHiddenOverride, setBalanceHiddenOverride] = useState<boolean | null>(null);
+  const isBalanceHidden = balanceHiddenOverride ?? isHideBalanceEnabled;
 
   const { walletsInitialized } = useStorage();
 
@@ -181,6 +202,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
         getIsPinLayoutScrambled().then(scrambled => {
           setIsPinLayoutScrambled(scrambled);
         }),
+        getIsHideBalanceEnabled().then(hideBalance => {
+          setIsHideBalanceEnabled(hideBalance);
+        }),
       ];
 
       const results = await Promise.allSettled(promises);
@@ -218,6 +242,17 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
   useEffect(() => {
     const unsubscribe = TorManager.getInstance().addStatusListener(setTorStatus);
     return unsubscribe;
+  }, []);
+
+  // The eye's choice ends when the app goes to the background, so the next visit starts from the
+  // setting. Not on 'inactive': iOS goes inactive for Control Center, Face ID and permission prompts,
+  // which would undo it mid-use. The cost is the app switcher's snapshot, taken as the app leaves: it
+  // can still show amounts the eye revealed, as home has no capture protection.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'background') setBalanceHiddenOverride(null);
+    });
+    return () => subscription.remove();
   }, []);
 
   const setPreferredFiatCurrencyStorage = useCallback(async (currency: TFiatUnit): Promise<void> => {
@@ -327,6 +362,22 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
     }
   }, []);
 
+  // The setting takes over from whatever the eye chose, so it applies straight away.
+  const setIsHideBalanceEnabledStorage = useCallback(async (value: boolean): Promise<void> => {
+    try {
+      await persistIsHideBalanceEnabled(value);
+      setIsHideBalanceEnabled(value);
+      setBalanceHiddenOverride(null);
+    } catch (e) {
+      console.error('Error setting isHideBalanceEnabled:', e);
+    }
+  }, []);
+
+  const toggleBalanceHidden = useCallback(
+    () => setBalanceHiddenOverride(override => !(override ?? isHideBalanceEnabled)),
+    [isHideBalanceEnabled],
+  );
+
   const value = useMemo(
     () => ({
       preferredFiatCurrency,
@@ -355,6 +406,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       setBlockExplorerStorage,
       isPinLayoutScrambled,
       setIsPinLayoutScrambledStorage,
+      isHideBalanceEnabled,
+      setIsHideBalanceEnabledStorage,
+      isBalanceHidden,
+      toggleBalanceHidden,
     }),
     [
       preferredFiatCurrency,
@@ -382,6 +437,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       setBlockExplorerStorage,
       isPinLayoutScrambled,
       setIsPinLayoutScrambledStorage,
+      isHideBalanceEnabled,
+      setIsHideBalanceEnabledStorage,
+      isBalanceHidden,
+      toggleBalanceHidden,
     ],
   );
 
