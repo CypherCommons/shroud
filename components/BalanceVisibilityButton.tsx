@@ -1,5 +1,4 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
 import HeaderBarButton from './HeaderBarButton';
 import EyeIcon from './icons/EyeIcon';
 import EyeOffIcon from './icons/EyeOffIcon';
@@ -21,7 +20,6 @@ const BalanceVisibilityButton: React.FC = () => {
       accessibilityLabel={isBalanceHidden ? loc.wallets.show_balance : loc.wallets.hide_balance}
       testID="BalanceVisibilityButton"
       onPress={toggleBalanceHidden}
-      backgroundStyle={[styles.circle, { backgroundColor: colors.fieldBackground }]}
     >
       {isBalanceHidden ? <EyeOffIcon size={24} color={colors.iconPrimary} /> : <EyeIcon size={24} color={colors.iconPrimary} />}
     </HeaderBarButton>
@@ -29,12 +27,3 @@ const BalanceVisibilityButton: React.FC = () => {
 };
 
 export default BalanceVisibilityButton;
-
-const styles = StyleSheet.create({
-  circle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    marginTop: 8,
-  },
-});
