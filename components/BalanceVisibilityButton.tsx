@@ -1,7 +1,6 @@
 import React from 'react';
 import HeaderBarButton from './HeaderBarButton';
 import EyeIcon from './icons/EyeIcon';
-import EyeOffIcon from './icons/EyeOffIcon';
 import { useTheme } from './themes';
 import { useSettings } from '../hooks/context/useSettings';
 import loc from '../loc';
@@ -21,7 +20,7 @@ const BalanceVisibilityButton: React.FC = () => {
       testID="BalanceVisibilityButton"
       onPress={toggleBalanceHidden}
     >
-      {isBalanceHidden ? <EyeOffIcon size={24} color={colors.iconPrimary} /> : <EyeIcon size={24} color={colors.iconPrimary} />}
+      <EyeIcon size={24} color={colors.iconPrimary} slashed={isBalanceHidden} />
     </HeaderBarButton>
   );
 };
