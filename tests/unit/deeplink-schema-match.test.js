@@ -1,6 +1,8 @@
 import assert from 'assert';
 
 import DeeplinkSchemaMatch from '../../class/deeplink-schema-match';
+import { DEFAULT_NETWORK_ID, setActiveNetwork } from '../../modules/network';
+import { SP_MAINNET, SP_SIGNET } from '../fixtures/addresses';
 
 jest.mock('../../modules/Electrum', () => {
   const actual = jest.requireActual('../../modules/Electrum');
@@ -9,6 +11,9 @@ jest.mock('../../modules/Electrum', () => {
     connectMain: jest.fn(),
   };
 });
+
+const BECH32_MAINNET = 'bc1qykcp2x3djgdtdwelxn9z4j2y956npte0a4sref';
+const BECH32_SIGNET = 'tb1q38gfnkegcnf63cqfef5f6xvk35nywefzknv070';
 
 describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
   it('hasSchema', () => {
@@ -26,6 +31,7 @@ describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
   });
 
   it('sends payment input to SendDetails as a canonical URI', () => {
+    const upper = SP_MAINNET.toUpperCase();
     const cases = [
       { input: '12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG', expected: '12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' },
       { input: '3GcKN7q7gZuZ8eHygAhHrvPa5zZbG5Q1rK', expected: '3GcKN7q7gZuZ8eHygAhHrvPa5zZbG5Q1rK' },
@@ -44,9 +50,21 @@ describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
         input: `bitcoin:${suffix}12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG?label=http://example.com`,
         expected: 'bitcoin:12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG?label=http://example.com',
       },
+      { input: SP_MAINNET, expected: SP_MAINNET },
+      { input: upper, expected: upper },
+      { input: ` ${SP_MAINNET}\n`, expected: SP_MAINNET },
+      { input: `bitcoin:${suffix}${SP_MAINNET}?amount=0.001&label=Yo`, expected: `bitcoin:${SP_MAINNET}?amount=0.001&label=Yo` },
+      { input: `BITCOIN:${suffix}${upper}`, expected: `bitcoin:${upper}` },
+      { input: `shroud:bitcoin:${suffix}${SP_MAINNET}`, expected: `bitcoin:${SP_MAINNET}` },
     ];
     for (const { input, expected } of cases) {
       assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { send: expected }, input);
+    }
+  });
+
+  it('reports addresses from another network', () => {
+    for (const input of [SP_SIGNET, BECH32_SIGNET, `bitcoin:${suffix}${SP_SIGNET}?amount=0.001`]) {
+      assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { error: 'wrong_network' }, input);
     }
   });
 
@@ -151,10 +169,13 @@ describe('unit - DeepLinkSchemaMatch.destinationFor', () => {
   it('reports input it cannot route', () => {
     const inputs = [
       'not-an-address',
+      'sp1nonsense',
       '',
       '   ',
       // Not BIP21: on master this opened Send with `bitcoin=…` as the address.
       'bitcoin=12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG',
+      // BIP-321 `sp=` with no on-chain address; see the TODO in destinationFor.
+      `bitcoin:?sp=${SP_MAINNET}`,
       'shroud:setelectrumserver',
       'shroud:setelectrumserver?server=nonsense',
       'shroud:setelectrumserver?server=%E0%A4%A',
@@ -162,5 +183,22 @@ describe('unit - DeepLinkSchemaMatch.destinationFor', () => {
     for (const input of inputs) {
       assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { error: 'unrecognized' }, input);
     }
+  });
+
+  describe('on signet', () => {
+    beforeEach(() => setActiveNetwork('signet'));
+    afterEach(() => setActiveNetwork(DEFAULT_NETWORK_ID));
+
+    it('sends signet addresses to SendDetails', () => {
+      for (const input of [SP_SIGNET, SP_SIGNET.toUpperCase(), BECH32_SIGNET, `bitcoin:${SP_SIGNET}?amount=0.001`]) {
+        assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { send: input }, input);
+      }
+    });
+
+    it('reports mainnet addresses as another network', () => {
+      for (const input of [SP_MAINNET, BECH32_MAINNET]) {
+        assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { error: 'wrong_network' }, input);
+      }
+    });
   });
 });

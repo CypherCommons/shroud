@@ -1,9 +1,10 @@
 import bip21, { TOptions } from 'bip21';
 import * as bitcoin from 'bitcoinjs-lib';
 import { ElectrumServerItem, parseElectrumServerString } from '../modules/Electrum';
-import { getActiveNetwork } from '../modules/network';
+import { getActiveNetwork, getAllNetworks } from '../modules/network';
+import { isSilentPaymentAddress } from '../helpers/silent-payments';
 
-export type TScanError = 'unrecognized';
+export type TScanError = 'wrong_network' | 'unrecognized';
 type TScanDestination = { send: string } | { electrumServer: ElectrumServerItem } | { error: TScanError };
 
 class DeeplinkSchemaMatch {
@@ -17,7 +18,7 @@ class DeeplinkSchemaMatch {
    * Maps scanned or pasted input to where it should open, or to the reason it can't.
    *
    * Supported schemes:
-   *   bitcoin:           — standard on-chain payment URI (BIP21)
+   *   bitcoin:           — payment URI (BIP21), including silent-payment addresses
    *   shroud:bitcoin:    — same, wrapped in the app scheme
    *   shroud:setelectrumserver — configure the Electrum server
    */
@@ -34,6 +35,13 @@ class DeeplinkSchemaMatch {
       return server ? { electrumServer: server } : { error: 'unrecognized' };
     }
 
+    // The active network already failed above, so any match is another chain. Disabled networks
+    // count too: their addresses are just as unpayable from here.
+    if (getAllNetworks().some(n => DeeplinkSchemaMatch.isValidAddress(address, n.bitcoinjs))) {
+      return { error: 'wrong_network' };
+    }
+
+    // TODO: BIP-321 `sp=` query param (e.g. `bitcoin:?sp=sp1q…`) is not routed yet.
     return { error: 'unrecognized' };
   }
 
@@ -68,7 +76,9 @@ class DeeplinkSchemaMatch {
     return uri.replace(/^bitcoin:/, '').split('?')[0];
   }
 
+  /** Includes silent-payment addresses. */
   private static isValidAddress(address: string, network: bitcoin.Network): boolean {
+    if (isSilentPaymentAddress(address, network)) return true;
     try {
       bitcoin.address.toOutputScript(address, network);
       return true;

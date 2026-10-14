@@ -7,6 +7,7 @@ import { Animated, InteractionManager, Modal, SectionList, StyleSheet, Text, Tou
 import A from '../../modules/analytics';
 import { getClipboardContent } from '../../modules/clipboard';
 import { isDesktop } from '../../modules/environment';
+import { getActiveNetwork } from '../../modules/network';
 import * as fs from '../../modules/fs';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
 import DeeplinkSchemaMatch, { TScanError } from '../../class/deeplink-schema-match';
@@ -127,6 +128,8 @@ type NavigationProps = NativeStackNavigationProp<DetailViewStackParamList, 'Wall
 
 const scanErrorMessage = (error: TScanError): string => {
   switch (error) {
+    case 'wrong_network':
+      return loc.formatString(loc.wallets.scan_wrong_network, { network: getActiveNetwork().displayName });
     case 'unrecognized':
       return loc.wallets.scan_unrecognized;
   }
