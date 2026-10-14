@@ -1,17 +1,19 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { RouteProp, useFocusEffect, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { BackHandler, InteractionManager, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { BackHandler, InteractionManager, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Share from 'react-native-share';
 import * as Electrum from '../../modules/Electrum';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
 import { ShroudText } from '../../ShroudComponents';
 import DeeplinkSchemaMatch from '../../class/deeplink-schema-match';
-import { computeResponsiveQRSize } from '../../helpers/computeResponsiveQRSize';
 import AddressCopyCard from '../../components/AddressCopyCard';
 import presentAlert from '../../components/Alert';
+import { BottomModalHandle } from '../../components/BottomModal';
 import ShareIcon from '../../components/icons/ShareIcon';
 import InfoBanner from '../../components/InfoBanner';
+import InspectAddressSheet from '../../components/InspectAddressSheet';
 import PillSegmentedControl from '../../components/PillSegmentedControl';
 import QRCard from '../../components/QRCard';
 import TabPager from '../../components/TabPager';
@@ -25,7 +27,6 @@ import { ReceiveDetailsStackParamList } from '../../navigation/ReceiveDetailsSta
 import { SuccessView } from '../send/success';
 import { Spacing40 } from '../../components/Spacing';
 import { Loading } from '../../components/Loading';
-import SafeAreaScrollView from '../../components/SafeAreaScrollView';
 import { ClashFont } from '../../constants/fonts';
 
 // One entry per tab: the pill's labels and the pager's pages both follow this order.
@@ -38,14 +39,13 @@ const TAB_LABELS = TABS.map(tab => tab.label);
 const HORIZONTAL_PADDING = 24;
 const qrLogo = require('../../img/logo.png');
 
-type StickyHeaderProps = {
+type TabsHeaderProps = {
   selectedIndex: number;
   onChange: (index: number) => void;
-  backgroundColor: string;
 };
 
-const StickyHeader = React.memo(({ selectedIndex, onChange, backgroundColor }: StickyHeaderProps) => (
-  <View style={[styles.tabsContainer, { backgroundColor }]}>
+const TabsHeader = React.memo(({ selectedIndex, onChange }: TabsHeaderProps) => (
+  <View style={styles.tabsContainer}>
     <PillSegmentedControl values={TAB_LABELS} selectedIndex={selectedIndex} onChange={onChange} />
   </View>
 ));
@@ -57,6 +57,8 @@ const ReceiveDetails = () => {
   const { walletID, address } = useRoute<RouteProps>().params;
   const { wallets, saveToDisk, sleep, fetchAndSaveWalletTransactions } = useStorage();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const inspectSheetRef = useRef<BottomModalHandle>(null);
   const [bip21encoded, setBip21encoded] = useState('');
   const [showPendingBalance, setShowPendingBalance] = useState(false);
   const [showConfirmedBalance, setShowConfirmedBalance] = useState(false);
@@ -68,7 +70,6 @@ const ReceiveDetails = () => {
   const [initialConfirmed, setInitialConfirmed] = useState(0);
   const [initialUnconfirmed, setInitialUnconfirmed] = useState(0);
   const [displayBalance, setDisplayBalance] = useState('');
-  const [qrCodeSize, setQRCodeSize] = useState(90);
 
   const wallet = walletID ? wallets.find(w => w.getID() === walletID) : undefined;
   const spAddress =
@@ -78,6 +79,7 @@ const ReceiveDetails = () => {
 
   const selectedTabIndex = TABS.findIndex(tab => tab.key === currentTab);
   const selectTab = useCallback((index: number) => setCurrentTab(TABS[index].key), []);
+  const presentInspectSheet = useCallback(() => inspectSheetRef.current?.present(), []);
 
   const stylesHook = StyleSheet.create({
     root: {
@@ -259,23 +261,13 @@ const ReceiveDetails = () => {
     );
   };
 
-  const onLayout = useCallback((e: { nativeEvent: { layout: { height: number; width: number } } }) => {
-    const { height, width } = e.nativeEvent.layout;
-    setQRCodeSize(
-      computeResponsiveQRSize(
-        { height, width },
-        { heightRatio: 0.6, widthRatio: 0.85, maxSize: 500, horizontalPadding: HORIZONTAL_PADDING },
-      ),
-    );
-  }, []);
-
   const renderTabPage = (tab: Tab) => {
     if (tab === 'silentPayments') {
       return spAddress ? (
         <View style={styles.addressBody}>
           <InfoBanner text={loc.bip352.explanation} emphasis={loc.bip352.explanation_emphasis} />
-          <QRCard value={spAddress} size={qrCodeSize} logo={qrLogo} />
-          <AddressCopyCard text={spAddress} />
+          <QRCard value={spAddress} logo={qrLogo} />
+          <AddressCopyCard text={spAddress} onInspect={presentInspectSheet} />
         </View>
       ) : (
         <ShroudText>{loc.bip352.not_supported}</ShroudText>
@@ -284,8 +276,8 @@ const ReceiveDetails = () => {
     return address ? (
       <View style={styles.addressBody}>
         <InfoBanner text={loc.receive.standard_address_notice} emphasis={loc.receive.standard_address_notice_emphasis} variant="caution" />
-        <QRCard value={bip21encoded} size={qrCodeSize} logo={qrLogo} />
-        <AddressCopyCard text={address} testID="StandardAddressCopyCard" />
+        <QRCard value={bip21encoded} logo={qrLogo} />
+        <AddressCopyCard text={address} onInspect={presentInspectSheet} testID="StandardAddressCopyCard" />
       </View>
     ) : null;
   };
@@ -337,18 +329,14 @@ const ReceiveDetails = () => {
 
   return (
     <View style={[styles.flex, stylesHook.root]}>
-      <SafeAreaScrollView
-        centerContent
-        contentInsetAdjustmentBehavior="automatic"
-        automaticallyAdjustsScrollIndicatorInsets
+      {wallet && <TabsHeader selectedIndex={selectedTabIndex} onChange={selectTab} />}
+      {/* The content is sized to fit, so this only scrolls when even the smallest QR code can't (e.g. landscape). */}
+      <ScrollView
         testID="ReceiveDetailsScrollView"
-        style={stylesHook.root}
-        contentContainerStyle={[styles.root, stylesHook.root]}
-        keyboardShouldPersistTaps="always"
-        onLayout={onLayout}
-        stickyHeaderIndices={wallet ? [0] : []}
+        style={styles.flex}
+        contentContainerStyle={styles.scrollContent}
+        alwaysBounceVertical={false}
       >
-        {wallet && <StickyHeader selectedIndex={selectedTabIndex} onChange={selectTab} backgroundColor={colors.background} />}
         {showAddress && renderTabContent()}
         {showConfirmedBalance && renderConfirmedBalance()}
         {showPendingBalance && renderPendingBalance()}
@@ -358,52 +346,52 @@ const ReceiveDetails = () => {
             <Loading />
           </View>
         )}
+      </ScrollView>
 
-        <View style={styles.share}>
-          <Pressable
-            onPress={handleShareButtonPressed}
-            disabled={shareDisabled}
-            accessibilityRole="button"
-            android_ripple={{ color: colors.textMuted }}
-            style={({ pressed }) => [
-              styles.shareButton,
-              { backgroundColor: shareDisabled ? colors.ctaDisabled : colors.brandPrimary },
-              pressed && !shareDisabled ? styles.sharePressed : null,
-            ]}
-          >
-            <ShareIcon size={19} color={colors.white} />
-            <ShroudText style={[styles.shareLabel, { color: colors.white }]}>{loc.receive.details_share}</ShroudText>
-          </Pressable>
-        </View>
-      </SafeAreaScrollView>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 32) }]}>
+        <Pressable
+          onPress={handleShareButtonPressed}
+          disabled={shareDisabled}
+          accessibilityRole="button"
+          android_ripple={{ color: colors.textMuted }}
+          testID="ReceiveShareButton"
+          style={({ pressed }) => [
+            styles.shareButton,
+            { backgroundColor: shareDisabled ? colors.ctaDisabled : colors.brandPrimary },
+            pressed && !shareDisabled ? styles.sharePressed : null,
+          ]}
+        >
+          <ShareIcon size={19} color={colors.white} />
+          <ShroudText style={[styles.shareLabel, { color: colors.white }]}>{loc.receive.details_share}</ShroudText>
+        </Pressable>
+      </View>
+
+      <InspectAddressSheet ref={inspectSheetRef} address={(currentTab === 'standard' ? address : spAddress) ?? undefined} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  root: {
-    flexGrow: 1,
-    justifyContent: 'space-between',
-  },
   flex: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   tabsContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: HORIZONTAL_PADDING,
     paddingVertical: 8,
-    backgroundColor: Platform.OS === 'ios' ? 'transparent' : undefined,
   },
   scrollBody: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  share: {
-    width: '100%',
+  footer: {
     paddingHorizontal: HORIZONTAL_PADDING,
-    marginBottom: 24,
+    paddingTop: 16,
   },
   shareButton: {
     flexDirection: 'row',
@@ -423,6 +411,7 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   addressBody: {
+    flex: 1,
     width: '100%',
     alignItems: 'center',
     gap: 8,
@@ -433,8 +422,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingBottom: 12,
   },
-  // Sized by its content: the pager measures its height from its pages, so a flex page collapses.
+  // Fills the pager, which fills the space between the tabs and the Share button; the QR card then
+  // takes whatever the banner and the address card leave.
   page: {
+    flex: 1,
     alignItems: 'center',
     paddingTop: 4,
   },

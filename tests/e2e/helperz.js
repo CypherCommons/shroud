@@ -141,6 +141,17 @@ export async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Scrolls until the view is on screen, then lets the list settle before anything touches it: on
+// Android 12+ a list scrolled into its end stretches, and the next touch goes to the list to catch
+// that stretch instead of to the view under the finger.
+export async function scrollIntoView(testID, scrollViewID, visiblePercent = 75) {
+  await waitFor(element(by.id(testID)))
+    .toBeVisible(visiblePercent)
+    .whileElement(by.id(scrollViewID))
+    .scroll(200, 'down');
+  await sleep(1_000);
+}
+
 export function hashIt(s) {
   return Buffer.from(sha256(s)).toString('hex');
 }
