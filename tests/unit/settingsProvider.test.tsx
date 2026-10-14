@@ -77,6 +77,24 @@ describe('unit - SettingsProvider', () => {
     assert.strictEqual(await DefaultPreference.get('donottrack'), null);
   });
 
+  it('persists hide balance, and hides amounts while it is on', async () => {
+    const { result, unmount } = renderHook(() => useSettings(), { wrapper });
+    await waitFor(() => assert.strictEqual(result.current.settingsLoaded, true));
+    assert.strictEqual(result.current.isHideBalanceEnabled, false);
+    assert.strictEqual(result.current.isBalanceHidden, false);
+
+    await act(async () => {
+      await result.current.setIsHideBalanceEnabledStorage(true);
+    });
+    assert.strictEqual(result.current.isBalanceHidden, true);
+    unmount();
+
+    const { result: remounted } = renderHook(() => useSettings(), { wrapper });
+    await waitFor(() => assert.strictEqual(remounted.current.settingsLoaded, true));
+    assert.strictEqual(remounted.current.isHideBalanceEnabled, true);
+    assert.strictEqual(remounted.current.isBalanceHidden, true);
+  });
+
   it('falls back themePreference to system when a stale/invalid value is persisted', async () => {
     await DefaultPreference.setName('group.com.shroudwallet.app');
     await DefaultPreference.set('ThemePreference', 'not-a-real-theme');

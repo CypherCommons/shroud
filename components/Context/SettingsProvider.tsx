@@ -22,6 +22,7 @@ const TotalWalletsBalanceKey = 'TotalWalletsBalance';
 const TotalWalletsBalancePreferredUnit = 'TotalWalletsBalancePreferredUnit';
 const ThemePreferenceKey = 'ThemePreference';
 const PinLayoutScrambledKey = 'PinLayoutScrambled';
+const HideBalanceKey = 'HideBalance';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -62,6 +63,10 @@ const getIsPinLayoutScrambled = (): Promise<boolean> => readPref(PinLayoutScramb
 
 const persistIsPinLayoutScrambled = (value: boolean): Promise<void> => writePref(PinLayoutScrambledKey, value ? '1' : '0');
 
+const getIsHideBalanceEnabled = (): Promise<boolean> => readPref(HideBalanceKey, value => value === '1', false);
+
+const persistIsHideBalanceEnabled = (value: boolean): Promise<void> => writePref(HideBalanceKey, value ? '1' : '0');
+
 interface SettingsContextType {
   preferredFiatCurrency: TFiatUnit;
   setPreferredFiatCurrencyStorage: (currency: TFiatUnit) => Promise<void>;
@@ -89,6 +94,11 @@ interface SettingsContextType {
   setBlockExplorerStorage: (explorer: BlockExplorer) => Promise<boolean>;
   isPinLayoutScrambled: boolean;
   setIsPinLayoutScrambledStorage: (value: boolean) => Promise<void>;
+  /** The "Hide balance on home" setting: amounts start out hidden while it's on. */
+  isHideBalanceEnabled: boolean;
+  setIsHideBalanceEnabledStorage: (value: boolean) => Promise<void>;
+  /** Whether amounts are hidden right now. Display code reads this rather than the setting. */
+  isBalanceHidden: boolean;
 }
 
 const defaultSettingsContext: SettingsContextType = {
@@ -118,6 +128,9 @@ const defaultSettingsContext: SettingsContextType = {
   setBlockExplorerStorage: async () => false,
   isPinLayoutScrambled: false,
   setIsPinLayoutScrambledStorage: async () => {},
+  isHideBalanceEnabled: false,
+  setIsHideBalanceEnabledStorage: async () => {},
+  isBalanceHidden: false,
 };
 
 export const SettingsContext = createContext<SettingsContextType>(defaultSettingsContext);
@@ -138,6 +151,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
   const [torStatus, setTorStatus] = useState<TorStatus>('disabled');
   const [selectedBlockExplorer, setSelectedBlockExplorer] = useState<BlockExplorer>(BLOCK_EXPLORERS.default);
   const [isPinLayoutScrambled, setIsPinLayoutScrambled] = useState<boolean>(false);
+  const [isHideBalanceEnabled, setIsHideBalanceEnabled] = useState<boolean>(false);
 
   const { walletsInitialized } = useStorage();
 
@@ -180,6 +194,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
         }),
         getIsPinLayoutScrambled().then(scrambled => {
           setIsPinLayoutScrambled(scrambled);
+        }),
+        getIsHideBalanceEnabled().then(hideBalance => {
+          setIsHideBalanceEnabled(hideBalance);
         }),
       ];
 
@@ -327,6 +344,15 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
     }
   }, []);
 
+  const setIsHideBalanceEnabledStorage = useCallback(async (value: boolean): Promise<void> => {
+    try {
+      await persistIsHideBalanceEnabled(value);
+      setIsHideBalanceEnabled(value);
+    } catch (e) {
+      console.error('Error setting isHideBalanceEnabled:', e);
+    }
+  }, []);
+
   const value = useMemo(
     () => ({
       preferredFiatCurrency,
@@ -355,6 +381,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       setBlockExplorerStorage,
       isPinLayoutScrambled,
       setIsPinLayoutScrambledStorage,
+      isHideBalanceEnabled,
+      setIsHideBalanceEnabledStorage,
+      isBalanceHidden: isHideBalanceEnabled,
     }),
     [
       preferredFiatCurrency,
@@ -382,6 +411,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       setBlockExplorerStorage,
       isPinLayoutScrambled,
       setIsPinLayoutScrambledStorage,
+      isHideBalanceEnabled,
+      setIsHideBalanceEnabledStorage,
     ],
   );
 

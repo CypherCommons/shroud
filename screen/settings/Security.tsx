@@ -22,9 +22,9 @@ import { ClashFont } from '../../constants/fonts';
 const Security: React.FC = () => {
   const { colors } = useTheme();
   const navigation = useExtendedNavigation();
-  const { wallets, saveToDisk, isStorageEncrypted, encryptStorage, decryptStorage } = useStorage();
+  const { saveToDisk, isStorageEncrypted, encryptStorage, decryptStorage } = useStorage();
   const { isDeviceBiometricCapable, biometricEnabled, setBiometricUseEnabled } = useBiometrics();
-  const { isPinLayoutScrambled, setIsPinLayoutScrambledStorage } = useSettings();
+  const { isPinLayoutScrambled, setIsPinLayoutScrambledStorage, isHideBalanceEnabled, setIsHideBalanceEnabledStorage } = useSettings();
   const [currentLoadingSwitch, setCurrentLoadingSwitch] = useState<string | null>(null);
   const [deviceBiometricCapable, setDeviceBiometricCapable] = useState(false);
   const [pinIsSet, setPinIsSet] = useState(false);
@@ -39,8 +39,6 @@ const Security: React.FC = () => {
       if (scramblePinWarningTimeout.current) clearTimeout(scramblePinWarningTimeout.current);
     };
   }, []);
-
-  const wallet = wallets[0];
 
   const cardStyle = [styles.card, { borderColor: colors.borderDefault, backgroundColor: colors.fieldBackground }];
 
@@ -132,12 +130,6 @@ const Security: React.FC = () => {
     }
   };
 
-  const onHideBalanceSwitch = async (value: boolean) => {
-    if (!wallet) return;
-    wallet.hideBalance = value;
-    await saveToDisk();
-  };
-
   return (
     <SafeAreaScrollView contentContainerStyle={styles.content} testID="SecurityScrollView">
       <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>{loc.settings.network_section_authentication}</Text>
@@ -199,8 +191,8 @@ const Security: React.FC = () => {
       <View style={cardStyle}>
         <SettingsToggleRow
           title={loc.settings.security_hide_balance}
-          value={!!wallet?.hideBalance}
-          onValueChange={onHideBalanceSwitch}
+          value={isHideBalanceEnabled}
+          onValueChange={setIsHideBalanceEnabledStorage}
           showSeparator={false}
           testID="HideBalanceSwitch"
         />

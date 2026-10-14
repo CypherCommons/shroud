@@ -418,7 +418,8 @@
         "eta_3h": "ETA: In ~3 hours",
         "eta_1d": "ETA: In ~1 day",
         "list_title": "Transactions",
-        "updating": "Updating..."
+        "updating": "Updating...",
+        "amount_hidden": "Amount hidden"
     },
     "wallets": {
         "add_import_wallet": "Import wallet",
@@ -484,7 +485,8 @@
         "request_button": "Request",
         "pay_button": "Pay",
         "scan_qr_code": "Scan QR code",
-        "no_balance_hint": "No balance yet"
+        "no_balance_hint": "No balance yet",
+        "balance_hidden": "Balance hidden"
     },
     "total_balance_view": {
         "display_in_bitcoin": "Display in Bitcoin",

@@ -16,7 +16,7 @@ import { useTheme } from '../../components/themes';
 import { TransactionListItem } from '../../components/TransactionListItem';
 import { splitSelfTransfer } from '../../utils/transactionHelpers';
 import { useSizeClass, SizeClass } from '../../modules/sizeClass';
-import loc, { formatBalanceWithoutSuffix } from '../../loc';
+import loc, { formatBalanceWithoutSuffix, HIDDEN_AMOUNT } from '../../loc';
 import { BitcoinUnit } from '../../models/bitcoinUnits';
 import ActionSheet from '../ActionSheet';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -24,6 +24,7 @@ import { DetailViewStackParamList } from '../../navigation/DetailViewStackParamL
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
 import { useSendToAddress } from '../../hooks/useSendToAddress';
 import { useStorage } from '../../hooks/context/useStorage';
+import { useSettings } from '../../hooks/context/useSettings';
 import SafeAreaSectionList from '../../components/SafeAreaSectionList';
 import TestnetBadge from '../../components/TestnetBadge';
 import { scanQrHelper } from '../../helpers/scan-qr.ts';
@@ -130,6 +131,7 @@ const WalletsList: React.FC = () => {
   const { isLoading } = state;
   const { sizeClass, isLarge } = useSizeClass();
   const { wallets, getTransactions, getBalance, refreshAllWalletTransactions, saveToDisk, scanState } = useStorage();
+  const { isBalanceHidden } = useSettings();
   const { currentAppState } = useAppState();
   const wasAutoPausedRef = useRef(false);
   const { colors } = useTheme();
@@ -509,16 +511,26 @@ const WalletsList: React.FC = () => {
 
     const balance = wallet.getBalance();
     const preferredUnit = wallet.getPreferredBalanceUnit();
-    const displayNum = String(formatBalanceWithoutSuffix(balance, preferredUnit, true));
-    const fiatLine = `≈ ${satoshiToLocalCurrency(balance)}`;
+    const displayNum = isBalanceHidden ? HIDDEN_AMOUNT : String(formatBalanceWithoutSuffix(balance, preferredUnit, true));
+    // No ≈ while hidden: it has nothing to qualify, and the dots alone center under the ones above.
+    const fiatLine = isBalanceHidden ? HIDDEN_AMOUNT : `≈ ${satoshiToLocalCurrency(balance)}`;
     const hasBalance = balance > 0;
 
     return (
       <View style={[styles.walletSection, stylesHook.walletContainer]}>
         <TestnetBadge style={styles.testnetBadge} />
-        <TouchableOpacity onPress={changeWalletBalanceUnit} style={styles.balanceHeader}>
+        <TouchableOpacity
+          onPress={changeWalletBalanceUnit}
+          style={styles.balanceHeader}
+          // Spoken as a whole while hidden, rather than as a run of bullets.
+          accessibilityLabel={isBalanceHidden ? loc.wallets.balance_hidden : undefined}
+        >
           <View style={styles.balanceRow}>
-            <FittedAmount style={stylesHook.foregroundText}>{displayNum}</FittedAmount>
+            {/* While hidden, a clear copy of the unit balances the visible one, centering the dots. */}
+            {isBalanceHidden && <Text style={[styles.balanceUnit, styles.balanceUnitCounterweight]}>{preferredUnit}</Text>}
+            <FittedAmount style={stylesHook.foregroundText} testID="HomeBalance">
+              {displayNum}
+            </FittedAmount>
             <Text style={[styles.balanceUnit, stylesHook.alternativeText]}>{preferredUnit}</Text>
           </View>
           <Text style={[styles.balanceFiat, stylesHook.alternativeText]}>{fiatLine}</Text>
@@ -562,6 +574,7 @@ const WalletsList: React.FC = () => {
     );
   }, [
     wallets,
+    isBalanceHidden,
     stylesHook,
     colors,
     changeWalletBalanceUnit,
@@ -750,6 +763,11 @@ const styles = StyleSheet.create({
     fontSize: 22,
     marginLeft: 10,
     fontFamily: ClashFont.regular,
+  },
+  balanceUnitCounterweight: {
+    opacity: 0,
+    marginLeft: 0,
+    marginRight: 10,
   },
   balanceFiat: {
     fontSize: 15,

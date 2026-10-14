@@ -18,6 +18,7 @@ import loc, { formatBalance, transactionTimeToReadable } from '../loc';
 import { BlurredBalanceView } from './BlurredBalanceView';
 import { useTheme } from './themes';
 import { useStorage } from '../hooks/context/useStorage';
+import { useSettings } from '../hooks/context/useSettings';
 import { WalletTransactionsStatus } from './Context/StorageProvider';
 import { Transaction, TWallet } from '../class/wallets/types';
 import { Spacing10 } from './Spacing';
@@ -97,6 +98,7 @@ export const WalletCarouselItem: React.FC<WalletCarouselItemProps> = React.memo(
     const scaleValue = useRef(new Animated.Value(1.0)).current;
     const { colors } = useTheme();
     const { walletTransactionUpdateStatus } = useStorage();
+    const { isBalanceHidden } = useSettings();
     const { width } = useWindowDimensions();
     const itemWidth = width * 0.82 > 375 ? 375 : width * 0.82;
     const { sizeClass } = useSizeClass();
@@ -137,7 +139,7 @@ export const WalletCarouselItem: React.FC<WalletCarouselItemProps> = React.memo(
       latestTransactionText = transactionTimeToReadable(item.getLatestTransactionTime());
     }
 
-    const balance = !item.hideBalance && formatBalance(Number(item.getBalance()), item.getPreferredBalanceUnit(), true);
+    const balance = !isBalanceHidden && formatBalance(Number(item.getBalance()), item.getPreferredBalanceUnit(), true);
 
     return (
       <Animated.View
@@ -170,7 +172,7 @@ export const WalletCarouselItem: React.FC<WalletCarouselItemProps> = React.memo(
                 {item.getLabel()}
               </Text>
               <View style={iStyles.balanceContainer}>
-                {item.hideBalance ? (
+                {isBalanceHidden ? (
                   <>
                     <Spacing10 />
                     <BlurredBalanceView />
