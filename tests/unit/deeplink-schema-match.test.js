@@ -11,15 +11,11 @@ jest.mock('../../modules/Electrum', () => {
 });
 
 // helper function that promisifies function with a callback:
-const asyncNavigationRouteFor = async function (event, context) {
+const asyncNavigationRouteFor = async function (event) {
   return new Promise(function (resolve) {
-    DeeplinkSchemaMatch.navigationRouteFor(
-      event,
-      navValue => {
-        resolve(navValue);
-      },
-      context,
-    );
+    DeeplinkSchemaMatch.navigationRouteFor(event, navValue => {
+      resolve(navValue);
+    });
   });
 };
 

@@ -1,17 +1,10 @@
 import bip21, { TOptions } from 'bip21';
 import * as bitcoin from 'bitcoinjs-lib';
 import URL from 'url';
-import { Chain } from '../models/bitcoinUnits';
 import { ElectrumServerItem, parseElectrumServerString } from '../modules/Electrum';
 import { getActiveNetwork } from '../modules/network';
-import type { TWallet } from './wallets/types';
 
 type TCompletionHandlerParams = [string, object];
-type TContext = {
-  wallets: TWallet[];
-  saveToDisk: () => void;
-  addWallet: (wallet: TWallet) => void;
-};
 
 class DeeplinkSchemaMatch {
   static hasSchema(schemaString: string): boolean {
@@ -26,17 +19,12 @@ class DeeplinkSchemaMatch {
    * Supported schemes:
    *   bitcoin:           — standard on-chain payment URI (BIP21)
    *   shroud:bitcoin:    — same, wrapped in the app scheme
-   *   shroud://widget?action=  — home-screen widget actions
    *   shroud:setelectrumserver — configure the Electrum server
    *
    * @param event {{url: string}}
    * @param completionHandler {function} Callback that receives [routeName, params]
    */
-  static navigationRouteFor(
-    event: { url: string },
-    completionHandler: (args: TCompletionHandlerParams) => void,
-    context: TContext = { wallets: [], saveToDisk: () => {}, addWallet: () => {} },
-  ) {
+  static navigationRouteFor(event: { url: string }, completionHandler: (args: TCompletionHandlerParams) => void) {
     if (!event.url || typeof event.url !== 'string') return;
 
     const lower = event.url.toLowerCase();
@@ -44,21 +32,6 @@ class DeeplinkSchemaMatch {
     // rip out the shroud: wrapper from shroud:bitcoin: (or shroud:BITCOIN:) URIs.
     if (lower.startsWith('shroud:bitcoin:')) {
       event.url = event.url.substring('shroud:'.length);
-    } else if (lower.startsWith('shroud://widget?action=')) {
-      event.url = event.url.substring('shroud://'.length);
-    }
-
-    if (DeeplinkSchemaMatch.isWidgetAction(event.url)) {
-      const wallet = context.wallets[0];
-      if (wallet?.chain === Chain.ONCHAIN) {
-        const action = event.url.split('widget?action=')[1];
-        if (action === 'openSend') {
-          completionHandler(['SendDetailsRoot', { screen: 'SendDetails', params: { walletID: wallet.getID() } }]);
-        } else if (action === 'openReceive') {
-          completionHandler(['DetailViewStackScreensStack', { screen: 'ReceiveDetails', params: { walletID: wallet.getID() } }]);
-        }
-      }
-      return;
     }
 
     if (DeeplinkSchemaMatch.isBitcoinAddress(event.url)) {
@@ -100,10 +73,6 @@ class DeeplinkSchemaMatch {
     } catch {
       return false;
     }
-  }
-
-  static isWidgetAction(text: string): boolean {
-    return text.startsWith('widget?action=');
   }
 
   static bip21decode(uri?: string) {
