@@ -1,13 +1,13 @@
+import en from '../../loc/en.json';
+import { SP_MAINNET, SP_MAINNET_2 } from '../fixtures/addresses';
 import { expectToBeVisible, helperAddContact, helperCreateWallet, launchAppForE2E, scrollIntoView, waitForId } from './helperz';
 
-const ADDR_A = 'sp1qqfqnnv8czppwysafq3uwgwvsc638hc8rx3hscuddh0xa2yd746s7xqh6yy9ncjnqhqxazct0fzh98w7lpkm5fvlepqec2yy0sxlq4j6ccc3h6t0g';
-const ADDR_B = 'sp1qqvchcnrcqpdutxhpf57ptn3wajj0ymqxwzu9g6vj9uxx3wuvlykhyqh99hyh33y5593802pzw5rtw040zrw9f8re52tgcwngc5974w5evuufdy0m';
+const ADDR_A = SP_MAINNET;
+const ADDR_B = SP_MAINNET_2;
 
-// Copied from loc/en.json rather than imported: pulling loc/ into the detox runner would drag the
-// whole react-native module graph into a plain node process.
-const ADDRESS_INVALID = "That doesn't look like a valid address";
-const ADDRESS_VALID = 'Valid silent payment address';
-const REMOVE_CONFIRM = 'Remove';
+const ADDRESS_INVALID = en.contacts.address_invalid;
+const ADDRESS_VALID = en.contacts.address_valid;
+const REMOVE_CONFIRM = en.contacts.remove_confirm_action;
 
 const returnToHome = async () => {
   for (let i = 0; i < 4; i++) {
