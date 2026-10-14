@@ -1,6 +1,5 @@
 import bip21, { TOptions } from 'bip21';
 import * as bitcoin from 'bitcoinjs-lib';
-import URL from 'url';
 import { ElectrumServerItem, parseElectrumServerString } from '../modules/Electrum';
 import { getActiveNetwork } from '../modules/network';
 
@@ -39,15 +38,9 @@ class DeeplinkSchemaMatch {
       return;
     }
 
-    const urlObject = URL.parse(event.url, true); // eslint-disable-line n/no-deprecated-api
-    if (urlObject.protocol === 'shroud:') {
-      switch (urlObject.host) {
-        case 'setelectrumserver': {
-          const server = DeeplinkSchemaMatch.getServerFromSetElectrumServerAction(event.url);
-          completionHandler(['ElectrumServerSettings', { server: server || undefined }]);
-          break;
-        }
-      }
+    if (lower.startsWith('shroud:setelectrumserver')) {
+      const server = DeeplinkSchemaMatch.getServerFromSetElectrumServerAction(event.url);
+      if (server) completionHandler(['ElectrumServerSettings', { server }]);
     }
   }
 
@@ -62,7 +55,14 @@ class DeeplinkSchemaMatch {
     }
     const parts = url.split('server=');
     if (!parts[1]) return false;
-    return parseElectrumServerString(decodeURIComponent(parts[1])) ?? false;
+    let server: string;
+    try {
+      server = decodeURIComponent(parts[1]);
+    } catch {
+      // Malformed `%` escape.
+      return false;
+    }
+    return parseElectrumServerString(server) ?? false;
   }
 
   static isBitcoinAddress(address: string): boolean {

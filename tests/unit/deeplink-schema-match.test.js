@@ -165,6 +165,8 @@ describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
       DeeplinkSchemaMatch.getServerFromSetElectrumServerAction('setTrololo?server=electrum1.bluewallet.io%3A443%3As'),
       false,
     );
+    assert.strictEqual(DeeplinkSchemaMatch.getServerFromSetElectrumServerAction('shroud:setelectrumserver?server=nonsense'), false);
+    assert.strictEqual(DeeplinkSchemaMatch.getServerFromSetElectrumServerAction('shroud:setelectrumserver?server=%E0%A4%A'), false);
   });
 
   it('bitcoin BIP21 URI routes to on-chain SendDetails', async () => {
