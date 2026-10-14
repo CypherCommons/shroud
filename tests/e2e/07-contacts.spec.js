@@ -1,4 +1,4 @@
-import { expectToBeVisible, helperAddContact, helperCreateWallet, launchAppForE2E, sleep, waitForId } from './helperz';
+import { expectToBeVisible, helperAddContact, helperCreateWallet, launchAppForE2E, scrollIntoView, waitForId } from './helperz';
 
 const ADDR_A = 'sp1qqfqnnv8czppwysafq3uwgwvsc638hc8rx3hscuddh0xa2yd746s7xqh6yy9ncjnqhqxazct0fzh98w7lpkm5fvlepqec2yy0sxlq4j6ccc3h6t0g';
 const ADDR_B = 'sp1qqvchcnrcqpdutxhpf57ptn3wajj0ymqxwzu9g6vj9uxx3wuvlykhyqh99hyh33y5593802pzw5rtw040zrw9f8re52tgcwngc5974w5evuufdy0m';
@@ -15,17 +15,6 @@ const returnToHome = async () => {
     await device.pressBack();
   }
   await waitForId('HomeScreenReceiveButton');
-};
-
-// Scrolls until the view is on screen, then lets the list settle before anything touches it: on
-// Android 12+ a list scrolled into its end stretches, and the next touch goes to the list to catch
-// that stretch instead of to the view under the finger.
-const scrollIntoView = async (testID, scrollViewID, visiblePercent = 75) => {
-  await waitFor(element(by.id(testID)))
-    .toBeVisible(visiblePercent)
-    .whileElement(by.id(scrollViewID))
-    .scroll(200, 'down');
-  await sleep(1_000);
 };
 
 // Swipes the home list sideways on a view of the current tab, which Espresso wants at least 90% on
