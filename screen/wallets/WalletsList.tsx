@@ -526,7 +526,8 @@ const WalletsList: React.FC = () => {
           accessibilityLabel={isBalanceHidden ? loc.wallets.balance_hidden : undefined}
         >
           <View style={styles.balanceRow}>
-            {/* While hidden, a clear copy of the unit balances the visible one, centering the dots. */}
+            {/* While hidden, a clear copy of the unit balances the visible one, centering the dots. The unit
+                stays rather than going like the fiat line's ≈, so tapping it still visibly switches BTC/sats. */}
             {isBalanceHidden && <Text style={[styles.balanceUnit, styles.balanceUnitCounterweight]}>{preferredUnit}</Text>}
             <FittedAmount style={stylesHook.foregroundText} testID="HomeBalance">
               {displayNum}
