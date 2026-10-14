@@ -1,17 +1,11 @@
 import bip21, { TOptions } from 'bip21';
 import * as bitcoin from 'bitcoinjs-lib';
-import URL from 'url';
-import { Chain } from '../models/bitcoinUnits';
 import { ElectrumServerItem, parseElectrumServerString } from '../modules/Electrum';
-import { getActiveNetwork } from '../modules/network';
-import type { TWallet } from './wallets/types';
+import { getActiveNetwork, getAllNetworks } from '../modules/network';
+import { isSilentPaymentAddress } from '../helpers/silent-payments';
 
-type TCompletionHandlerParams = [string, object];
-type TContext = {
-  wallets: TWallet[];
-  saveToDisk: () => void;
-  addWallet: (wallet: TWallet) => void;
-};
+export type TScanError = 'wrong_network' | 'unrecognized';
+type TScanDestination = { send: string } | { electrumServer: ElectrumServerItem } | { error: TScanError };
 
 class DeeplinkSchemaMatch {
   static hasSchema(schemaString: string): boolean {
@@ -21,61 +15,34 @@ class DeeplinkSchemaMatch {
   }
 
   /**
-   * Examines the URL of the event and dispatches the appropriate navigation route.
+   * Maps scanned or pasted input to where it should open, or to the reason it can't.
    *
    * Supported schemes:
-   *   bitcoin:           — standard on-chain payment URI (BIP21)
+   *   bitcoin:           — payment URI (BIP21), including silent-payment addresses
    *   shroud:bitcoin:    — same, wrapped in the app scheme
-   *   shroud://widget?action=  — home-screen widget actions
    *   shroud:setelectrumserver — configure the Electrum server
-   *
-   * @param event {{url: string}}
-   * @param completionHandler {function} Callback that receives [routeName, params]
    */
-  static navigationRouteFor(
-    event: { url: string },
-    completionHandler: (args: TCompletionHandlerParams) => void,
-    context: TContext = { wallets: [], saveToDisk: () => {}, addWallet: () => {} },
-  ) {
-    if (!event.url || typeof event.url !== 'string') return;
+  static destinationFor(input: string): TScanDestination {
+    const uri = DeeplinkSchemaMatch.canonicalise(input);
+    const address = DeeplinkSchemaMatch.extractAddress(uri);
 
-    const lower = event.url.toLowerCase();
-
-    // rip out the shroud: wrapper from shroud:bitcoin: (or shroud:BITCOIN:) URIs.
-    if (lower.startsWith('shroud:bitcoin:')) {
-      event.url = event.url.substring('shroud:'.length);
-    } else if (lower.startsWith('shroud://widget?action=')) {
-      event.url = event.url.substring('shroud://'.length);
+    if (DeeplinkSchemaMatch.isValidAddress(address, getActiveNetwork().bitcoinjs)) {
+      return { send: uri };
     }
 
-    if (DeeplinkSchemaMatch.isWidgetAction(event.url)) {
-      const wallet = context.wallets[0];
-      if (wallet?.chain === Chain.ONCHAIN) {
-        const action = event.url.split('widget?action=')[1];
-        if (action === 'openSend') {
-          completionHandler(['SendDetailsRoot', { screen: 'SendDetails', params: { walletID: wallet.getID() } }]);
-        } else if (action === 'openReceive') {
-          completionHandler(['DetailViewStackScreensStack', { screen: 'ReceiveDetails', params: { walletID: wallet.getID() } }]);
-        }
-      }
-      return;
+    if (uri.toLowerCase().startsWith('shroud:setelectrumserver')) {
+      const server = DeeplinkSchemaMatch.getServerFromSetElectrumServerAction(uri);
+      return server ? { electrumServer: server } : { error: 'unrecognized' };
     }
 
-    if (DeeplinkSchemaMatch.isBitcoinAddress(event.url)) {
-      completionHandler(['SendDetailsRoot', { screen: 'SendDetails', params: { uri: event.url.replace('://', ':') } }]);
-      return;
+    // The active network already failed above, so any match is another chain. Disabled networks
+    // count too: their addresses are just as unpayable from here.
+    if (getAllNetworks().some(n => DeeplinkSchemaMatch.isValidAddress(address, n.bitcoinjs))) {
+      return { error: 'wrong_network' };
     }
 
-    const urlObject = URL.parse(event.url, true); // eslint-disable-line n/no-deprecated-api
-    if (urlObject.protocol === 'shroud:') {
-      switch (urlObject.host) {
-        case 'setelectrumserver': {
-          const server = DeeplinkSchemaMatch.getServerFromSetElectrumServerAction(event.url);
-          completionHandler(['ElectrumServerSettings', { server: server || undefined }]);
-          break;
-        }
-      }
-    }
+    // TODO: BIP-321 `sp=` query param (e.g. `bitcoin:?sp=sp1q…`) is not routed yet.
+    return { error: 'unrecognized' };
   }
 
   /**
@@ -89,33 +56,42 @@ class DeeplinkSchemaMatch {
     }
     const parts = url.split('server=');
     if (!parts[1]) return false;
-    return parseElectrumServerString(decodeURIComponent(parts[1])) ?? false;
+    let server: string;
+    try {
+      server = decodeURIComponent(parts[1]);
+    } catch {
+      // Malformed `%` escape.
+      return false;
+    }
+    return parseElectrumServerString(server) ?? false;
   }
 
-  static isBitcoinAddress(address: string): boolean {
-    address = address.replace('://', ':').replace('bitcoin:', '').replace('BITCOIN:', '').replace('bitcoin=', '').split('?')[0];
+  /** Trims, unwraps `shroud:bitcoin:` and rewrites a leading `bitcoin:` / `bitcoin://` in any case to `bitcoin:`. */
+  private static canonicalise(input: string): string {
+    return input.trim().replace(/^(?:shroud:)?bitcoin:(?:\/\/)?/i, 'bitcoin:');
+  }
+
+  /** Takes a canonical URI or a bare address. */
+  private static extractAddress(uri: string): string {
+    return uri.replace(/^bitcoin:/, '').split('?')[0];
+  }
+
+  /** Includes silent-payment addresses. */
+  private static isValidAddress(address: string, network: bitcoin.Network): boolean {
+    if (isSilentPaymentAddress(address, network)) return true;
     try {
-      bitcoin.address.toOutputScript(address, getActiveNetwork().bitcoinjs);
+      bitcoin.address.toOutputScript(address, network);
       return true;
     } catch {
       return false;
     }
   }
 
-  static isWidgetAction(text: string): boolean {
-    return text.startsWith('widget?action=');
-  }
-
   static bip21decode(uri?: string) {
     if (!uri) {
       throw new Error('No URI provided');
     }
-    let replacedUri = uri;
-    for (const replaceMe of ['BITCOIN://', 'bitcoin://', 'BITCOIN:']) {
-      replacedUri = replacedUri.replace(replaceMe, 'bitcoin:');
-    }
-
-    return bip21.decode(replacedUri);
+    return bip21.decode(DeeplinkSchemaMatch.canonicalise(uri));
   }
 
   static bip21encode(address: string, options?: TOptions): string {

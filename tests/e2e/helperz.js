@@ -253,3 +253,8 @@ export async function scanText(text) {
   await element(by.id('scanQrBackdoorInput')).replaceText(text);
   await element(by.id('scanQrBackdoorOkButton')).tap();
 }
+
+export async function scanFromHome(text) {
+  await element(by.id('HomeScreenScanButton')).tap();
+  await scanText(text);
+}

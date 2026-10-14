@@ -3,13 +3,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import useAppState from '../../hooks/useAppState';
 import ScanProgressBar from '../../components/ScanProgressBar';
 import { useScanActions, useScannableWallet } from '../../hooks/useScannableWallet';
-import { Alert, Animated, InteractionManager, Modal, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, InteractionManager, Modal, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import A from '../../modules/analytics';
 import { getClipboardContent } from '../../modules/clipboard';
 import { isDesktop } from '../../modules/environment';
+import { getActiveNetwork } from '../../modules/network';
 import * as fs from '../../modules/fs';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
-import DeeplinkSchemaMatch from '../../class/deeplink-schema-match';
+import DeeplinkSchemaMatch, { TScanError } from '../../class/deeplink-schema-match';
 import { ExtendedTransaction, Transaction, TWallet } from '../../class/wallets/types';
 import presentAlert from '../../components/Alert';
 import { useTheme } from '../../components/themes';
@@ -124,6 +125,15 @@ function reducer(state: WalletListState, action: WalletListAction) {
 }
 
 type NavigationProps = NativeStackNavigationProp<DetailViewStackParamList, 'WalletsList'>;
+
+const scanErrorMessage = (error: TScanError): string => {
+  switch (error) {
+    case 'wrong_network':
+      return loc.formatString(loc.wallets.scan_wrong_network, { network: getActiveNetwork().displayName });
+    case 'unrecognized':
+      return loc.wallets.scan_unrecognized;
+  }
+};
 
 const WalletsList: React.FC = () => {
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -329,19 +339,30 @@ const WalletsList: React.FC = () => {
   }, [currentAppState, scanState.status, scanWallet]);
 
   const onBarScanned = useCallback(
-    (value: any) => {
+    (value?: string) => {
+      // Empty when the image picker is cancelled.
       if (!value) return;
-      try {
-        DeeplinkSchemaMatch.navigationRouteFor({ url: value }, completionValue => {
-          triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
-          // @ts-ignore: for now
-          navigation.navigate(...completionValue);
+      const destination = DeeplinkSchemaMatch.destinationFor(value);
+      if ('error' in destination) {
+        presentAlert({
+          title: loc.errors.error,
+          message: scanErrorMessage(destination.error),
+          hapticFeedback: HapticFeedbackTypes.NotificationError,
         });
-      } catch (e: any) {
-        Alert.alert(loc.errors.error, e.message);
+        return;
+      }
+      triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
+      if ('send' in destination) {
+        if (wallets.length === 0) return;
+        navigation.navigate('SendDetailsRoot', {
+          screen: 'SendDetails',
+          params: { walletID: wallets[0].getID(), uri: destination.send },
+        });
+      } else {
+        navigation.navigate('ElectrumServerSettings', { server: destination.electrumServer });
       }
     },
-    [navigation],
+    [navigation, wallets],
   );
 
   const openAddContact = useCallback(() => {
@@ -470,7 +491,7 @@ const WalletsList: React.FC = () => {
   }, [onBarScanned]);
 
   const sendButtonLongPress = useCallback(async () => {
-    const isClipboardEmpty = (await getClipboardContent())?.trim().length === 0;
+    const isClipboardEmpty = !(await getClipboardContent())?.trim();
 
     const options = [loc._.cancel, loc.wallets.list_long_choose, loc.wallets.list_long_scan];
     if (!isClipboardEmpty) {

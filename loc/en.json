@@ -468,6 +468,8 @@
         "paste_from_clipboard": "Paste",
         "import_file": "Import File",
         "list_long_scan": "Scan QR Code",
+        "scan_wrong_network": "This address is for a different Bitcoin network. Your wallet is on {network}.",
+        "scan_unrecognized": "Shroud doesn't recognize this code or text.",
         "list_title": "Wallets",
         "list_tryagain": "Try again",
         "single_wallet_limit": "Only one wallet is supported. Please delete the existing wallet first.",

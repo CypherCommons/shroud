@@ -1,6 +1,8 @@
 import assert from 'assert';
 
 import DeeplinkSchemaMatch from '../../class/deeplink-schema-match';
+import { DEFAULT_NETWORK_ID, setActiveNetwork } from '../../modules/network';
+import { SP_MAINNET, SP_SIGNET } from '../fixtures/addresses';
 
 jest.mock('../../modules/Electrum', () => {
   const actual = jest.requireActual('../../modules/Electrum');
@@ -10,18 +12,8 @@ jest.mock('../../modules/Electrum', () => {
   };
 });
 
-// helper function that promisifies function with a callback:
-const asyncNavigationRouteFor = async function (event, context) {
-  return new Promise(function (resolve) {
-    DeeplinkSchemaMatch.navigationRouteFor(
-      event,
-      navValue => {
-        resolve(navValue);
-      },
-      context,
-    );
-  });
-};
+const BECH32_MAINNET = 'bc1qykcp2x3djgdtdwelxn9z4j2y956npte0a4sref';
+const BECH32_SIGNET = 'tb1q38gfnkegcnf63cqfef5f6xvk35nywefzknv070';
 
 describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
   it('hasSchema', () => {
@@ -38,56 +30,41 @@ describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
     assert.ok(DeeplinkSchemaMatch.hasSchema(`shroud:BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo`));
   });
 
-  it('isBitcoin Address', () => {
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress('12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG'));
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress('3GcKN7q7gZuZ8eHygAhHrvPa5zZbG5Q1rK'));
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress('bc1qykcp2x3djgdtdwelxn9z4j2y956npte0a4sref'));
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress('BC1QYKCP2X3DJGDTDWELXN9Z4J2Y956NPTE0A4SREF'));
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress(`bitcoin:${suffix}BC1QH6TF004TY7Z7UN2V5NTU4MKF630545GVHS45U7`));
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress(`BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE`));
-    assert.ok(DeeplinkSchemaMatch.isBitcoinAddress(`BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo`));
+  it('sends payment input to SendDetails as a canonical URI', () => {
+    const upper = SP_MAINNET.toUpperCase();
+    const cases = [
+      { input: '12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG', expected: '12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' },
+      { input: '3GcKN7q7gZuZ8eHygAhHrvPa5zZbG5Q1rK', expected: '3GcKN7q7gZuZ8eHygAhHrvPa5zZbG5Q1rK' },
+      { input: 'BC1QYKCP2X3DJGDTDWELXN9Z4J2Y956NPTE0A4SREF', expected: 'BC1QYKCP2X3DJGDTDWELXN9Z4J2Y956NPTE0A4SREF' },
+      { input: `bitcoin:${suffix}12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG`, expected: 'bitcoin:12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' },
+      { input: `Bitcoin:${suffix}12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG`, expected: 'bitcoin:12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' },
+      {
+        input: `BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo`,
+        expected: 'bitcoin:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo',
+      },
+      {
+        input: `shroud:BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo`,
+        expected: 'bitcoin:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo',
+      },
+      {
+        input: `bitcoin:${suffix}12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG?label=http://example.com`,
+        expected: 'bitcoin:12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG?label=http://example.com',
+      },
+      { input: SP_MAINNET, expected: SP_MAINNET },
+      { input: upper, expected: upper },
+      { input: ` ${SP_MAINNET}\n`, expected: SP_MAINNET },
+      { input: `bitcoin:${suffix}${SP_MAINNET}?amount=0.001&label=Yo`, expected: `bitcoin:${SP_MAINNET}?amount=0.001&label=Yo` },
+      { input: `BITCOIN:${suffix}${upper}`, expected: `bitcoin:${upper}` },
+      { input: `shroud:bitcoin:${suffix}${SP_MAINNET}`, expected: `bitcoin:${SP_MAINNET}` },
+    ];
+    for (const { input, expected } of cases) {
+      assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { send: expected }, input);
+    }
   });
 
-  it('navigationForRoute', async () => {
-    const events = [
-      {
-        argument: { url: `12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG` },
-        expected: ['SendDetailsRoot', { screen: 'SendDetails', params: { uri: '12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' } }],
-      },
-      {
-        argument: { url: `bitcoin:${suffix}12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG` },
-        expected: ['SendDetailsRoot', { screen: 'SendDetails', params: { uri: 'bitcoin:12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG' } }],
-      },
-      {
-        argument: { url: `BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo` },
-        expected: [
-          'SendDetailsRoot',
-          { screen: 'SendDetails', params: { uri: 'BITCOIN:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo' } },
-        ],
-      },
-      {
-        argument: { url: `shroud:BITCOIN:${suffix}BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo` },
-        expected: [
-          'SendDetailsRoot',
-          { screen: 'SendDetails', params: { uri: 'BITCOIN:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE?amount=666&label=Yo' } },
-        ],
-      },
-      {
-        argument: {
-          url: 'shroud:setelectrumserver?server=electrum1.bluewallet.io%3A443%3As',
-        },
-        expected: [
-          'ElectrumServerSettings',
-          {
-            server: { host: 'electrum1.bluewallet.io', ssl: 443 },
-          },
-        ],
-      },
-    ];
-
-    for (const event of events) {
-      const navValue = await asyncNavigationRouteFor(event.argument);
-      assert.deepStrictEqual(navValue, event.expected);
+  it('reports addresses from another network', () => {
+    for (const input of [SP_SIGNET, BECH32_SIGNET, `bitcoin:${suffix}${SP_SIGNET}?amount=0.001`]) {
+      assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { error: 'wrong_network' }, input);
     }
   });
 
@@ -109,6 +86,14 @@ describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
       options: {
         amount: 20.3,
         label: 'Foobar',
+      },
+    });
+
+    decoded = DeeplinkSchemaMatch.bip21decode(`Bitcoin:${suffix}1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH?label=bitcoin://x`);
+    assert.deepStrictEqual(decoded, {
+      address: '1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH',
+      options: {
+        label: 'bitcoin://x',
       },
     });
   });
@@ -169,15 +154,51 @@ describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
       DeeplinkSchemaMatch.getServerFromSetElectrumServerAction('setTrololo?server=electrum1.bluewallet.io%3A443%3As'),
       false,
     );
+    assert.strictEqual(DeeplinkSchemaMatch.getServerFromSetElectrumServerAction('shroud:setelectrumserver?server=nonsense'), false);
+    assert.strictEqual(DeeplinkSchemaMatch.getServerFromSetElectrumServerAction('shroud:setelectrumserver?server=%E0%A4%A'), false);
+  });
+});
+
+describe('unit - DeepLinkSchemaMatch.destinationFor', () => {
+  it('opens Electrum settings for a setelectrumserver link', () => {
+    assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor('shroud:setelectrumserver?server=electrum1.bluewallet.io%3A443%3As'), {
+      electrumServer: { host: 'electrum1.bluewallet.io', ssl: 443 },
+    });
   });
 
-  it('bitcoin BIP21 URI routes to on-chain SendDetails', async () => {
-    const response = await asyncNavigationRouteFor({
-      url: 'bitcoin:BC1QR7P8NSYPZEJY4KP7CJS0HL5T9X0VF3AYF6UQPC?amount=0.00185579',
+  it('reports input it cannot route', () => {
+    const inputs = [
+      'not-an-address',
+      'sp1nonsense',
+      '',
+      '   ',
+      // Not BIP21: on master this opened Send with `bitcoin=…` as the address.
+      'bitcoin=12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG',
+      // BIP-321 `sp=` with no on-chain address; see the TODO in destinationFor.
+      `bitcoin:?sp=${SP_MAINNET}`,
+      'shroud:setelectrumserver',
+      'shroud:setelectrumserver?server=nonsense',
+      'shroud:setelectrumserver?server=%E0%A4%A',
+    ];
+    for (const input of inputs) {
+      assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { error: 'unrecognized' }, input);
+    }
+  });
+
+  describe('on signet', () => {
+    beforeEach(() => setActiveNetwork('signet'));
+    afterEach(() => setActiveNetwork(DEFAULT_NETWORK_ID));
+
+    it('sends signet addresses to SendDetails', () => {
+      for (const input of [SP_SIGNET, SP_SIGNET.toUpperCase(), BECH32_SIGNET, `bitcoin:${SP_SIGNET}?amount=0.001`]) {
+        assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { send: input }, input);
+      }
     });
 
-    assert.strictEqual(response[0], 'SendDetailsRoot');
-    assert.strictEqual(response[1].screen, 'SendDetails');
-    assert.ok(response[1].params.uri.startsWith('bitcoin:BC1QR7P8NSYPZEJY4KP7CJS0HL5T9X0VF3AYF6UQPC'));
+    it('reports mainnet addresses as another network', () => {
+      for (const input of [SP_MAINNET, BECH32_MAINNET]) {
+        assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { error: 'wrong_network' }, input);
+      }
+    });
   });
 });
