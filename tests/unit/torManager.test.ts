@@ -2,6 +2,7 @@ import assert from 'assert';
 import { EventEmitter } from 'events';
 import TcpSocket from 'react-native-tcp-socket';
 import DefaultPreference from 'react-native-default-preference';
+import { Linking, Platform } from 'react-native';
 import TorManager from '../../modules/torManager';
 
 jest.mock('react-native-tcp-socket', () => {
@@ -146,5 +147,35 @@ describe('unit - TorManager', () => {
     await torManager.setTorOnly(true);
 
     assert.strictEqual(torManager.settings.torOnly, false);
+  });
+});
+
+describe('unit - TorManager.isOrbotInstalled on iOS', () => {
+  const canOpenURL = Linking.canOpenURL as jest.Mock;
+
+  beforeEach(() => {
+    assert.strictEqual(Platform.OS, 'ios');
+    canOpenURL.mockClear();
+  });
+
+  it('detects Orbot through the orbot: scheme it registers', async () => {
+    canOpenURL.mockResolvedValueOnce(true);
+
+    assert.strictEqual(await TorManager.isOrbotInstalled(), true);
+    assert.strictEqual(canOpenURL.mock.calls.length, 1);
+    assert.strictEqual(canOpenURL.mock.calls[0][0], 'orbot:show');
+  });
+
+  it('reports Orbot missing when nothing handles the scheme', async () => {
+    canOpenURL.mockResolvedValueOnce(false);
+
+    assert.strictEqual(await TorManager.isOrbotInstalled(), false);
+  });
+
+  it('reports Orbot missing when canOpenURL rejects', async () => {
+    // React Native rejects for a scheme missing from LSApplicationQueriesSchemes.
+    canOpenURL.mockRejectedValueOnce(new Error('Unable to open URL: orbot:show'));
+
+    assert.strictEqual(await TorManager.isOrbotInstalled(), false);
   });
 });

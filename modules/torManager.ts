@@ -1,7 +1,7 @@
 import { Buffer } from 'buffer';
 import DefaultPreference from 'react-native-default-preference';
 import TcpSocket from 'react-native-tcp-socket';
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import Share from 'react-native-share';
 import { openLink } from '../helpers/openLink';
 import { GROUP_IO_SHROUD } from './currency';
@@ -12,6 +12,8 @@ const TOR_SOCKS_PORT_KEY = 'tor_socks_port';
 export const DEFAULT_SOCKS_HOST = '127.0.0.1';
 const DEFAULT_SOCKS_PORT = 9050;
 const ORBOT_PACKAGE = 'org.torproject.android';
+// Orbot for iOS registers the orbot: scheme - the same URL Guardian Project's OrbotKit probes.
+const ORBOT_IOS_URL = 'orbot:show';
 
 export type TorStatus = 'disabled' | 'checking' | 'connected' | 'unavailable';
 
@@ -195,10 +197,15 @@ class TorManager {
     }
   }
 
-  /** Android only. On iOS, returns false — users must configure manually. */
+  /**
+   * The OS only reveals Orbot to apps that declare it: the <queries> package in
+   * AndroidManifest.xml, and the orbot scheme under LSApplicationQueriesSchemes in Info.plist.
+   */
   static async isOrbotInstalled(): Promise<boolean> {
-    if (Platform.OS !== 'android') return false;
     try {
+      if (Platform.OS === 'ios') {
+        return await Linking.canOpenURL(ORBOT_IOS_URL);
+      }
       const { isInstalled } = await Share.isPackageInstalled(ORBOT_PACKAGE);
       return isInstalled;
     } catch {
