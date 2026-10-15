@@ -80,6 +80,21 @@ export async function helperCreateWallet() {
   }
 }
 
+// waitFor().toBeVisible() with synchronization off, made to survive one trap: a wait that starts
+// while the view is still being laid out or animated in (a sheet sliding up, a screen coming back
+// from under a modal) can miss it arriving. Short waits started afresh until the deadline don't.
+export async function waitUntilVisible(view, timeout = 60_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    try {
+      await waitFor(view).toBeVisible().withTimeout(2_000);
+      return view;
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+    }
+  }
+}
+
 export async function helperImportWallet(mnemonic, { birthDate } = {}) {
   await device.disableSynchronization();
   try {
@@ -114,13 +129,10 @@ export async function helperImportWallet(mnemonic, { birthDate } = {}) {
     // from the keyboard the paste dismissed.
     await sleep(1_000);
     await element(by.id('DoImport')).tap();
-    await waitFor(element(by.id('RestoreSuccessDoneButton')))
-      .toBeVisible()
-      .withTimeout(60_000);
-    await element(by.id('RestoreSuccessDoneButton')).tap();
-    await waitFor(element(by.id('HomeScreenReceiveButton')))
-      .toBeVisible()
-      .withTimeout(60_000);
+    // TrueSheet reports the sheet's content as children of its host view as well as of the
+    // sheet itself, so Espresso finds every view in the sheet twice. Both matches are the same view.
+    await (await waitUntilVisible(element(by.id('RestoreSuccessDoneButton')).atIndex(0))).tap();
+    await waitUntilVisible(element(by.id('HomeScreenReceiveButton')));
   } finally {
     await device.enableSynchronization();
   }
