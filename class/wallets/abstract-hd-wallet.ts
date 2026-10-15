@@ -6,57 +6,6 @@ import * as Electrum from '../../modules/Electrum';
 import { AbstractWallet } from './abstract-wallet';
 import { Transaction } from './types';
 
-// Prefixes that uniquely identify one word in the default (English) wordlist. Lazily built
-// and memoised on first use rather than eagerly at module load, since AbstractHDWallet is
-// imported at app boot (via class/index.ts) regardless of whether setSecret is ever called.
-let englishPrefixCompletions: Map<string, string> | undefined;
-function getEnglishPrefixCompletions(): Map<string, string> {
-  if (!englishPrefixCompletions) {
-    const completions = new Map<string, string>();
-    const ambiguousPrefixes = new Set<string>();
-
-    for (const word of bip39.wordlists[bip39.getDefaultWordlist()]) {
-      for (const prefix of [word.slice(0, 3), word.slice(0, 4)]) {
-        if (ambiguousPrefixes.has(prefix)) continue;
-        if (completions.has(prefix)) {
-          completions.delete(prefix);
-          ambiguousPrefixes.add(prefix);
-        } else {
-          completions.set(prefix, word);
-        }
-      }
-    }
-
-    englishPrefixCompletions = completions;
-  }
-
-  return englishPrefixCompletions;
-}
-
-// Strips visible ASCII punctuation plus Unicode whitespace/invisible separators (general
-// punctuation block, C0/C1 controls, DEL), leaving wordlist characters (CJK, accented Latin,
-// Hangul, etc.) untouched. Not \p{L}/\p{N} (Unicode property escapes): Hermes's regex engine
-// has broken support for them (facebook/hermes#850, facebook/hermes#1027). Verified against
-// all 10 supported wordlists: no wordlist character falls in the stripped ranges.
-// eslint-disable-next-line no-control-regex -- \x00-\x1f/\x7f are intentionally stripped, not accidental
-const MNEMONIC_SEPARATOR_PATTERN = /[\x00-\x2f\x3a-\x40\x5b-\x60\x7b-\xa0\u2000-\u206f]/g;
-
-function normalizeMnemonicInput(secret: string): string {
-  return secret.trim().toLowerCase().replace(MNEMONIC_SEPARATOR_PATTERN, ' ').replace(/\s+/g, ' ').trim();
-}
-
-// Completes a partial English word only when it isn't already a complete word in some
-// supported wordlist — otherwise a short word from another Latin-script wordlist (e.g.
-// Spanish "luna") can collide with a unique English prefix and get silently rewritten
-// (e.g. to "lunar"), even when only some other word in the phrase has a typo.
-function completePartialWords(secret: string): string {
-  const prefixCompletions = getEnglishPrefixCompletions();
-  return secret
-    .split(' ')
-    .map(word => (bip39custom.ALL_WORDS.has(word) ? word : prefixCompletions.get(word) || word))
-    .join(' ');
-}
-
 type AbstractHDWalletStatics = {
   /**
    * Account-level derivation path for this wallet type, as a function of the BIP-44 coin type so
@@ -148,25 +97,7 @@ export class AbstractHDWallet extends AbstractWallet {
   }
 
   setSecret(newSecret: string): this {
-    // first, checking if it's a SeedQR:
-    try {
-      // compact seedQR should be between 32 - 64 chars long in hex format
-      if (newSecret.length === 64 || newSecret.length === 32) {
-        // not supported as mobile scanners dont recognize such QRs at all.
-        // nop
-      } else if (newSecret.length === 96 || newSecret.length === 48) {
-        // standard seedQR
-        const wordlist = bip39.wordlists[bip39.getDefaultWordlist()];
-        const words = newSecret.match(/[\d]{4}/g);
-
-        if (words) {
-          newSecret = words.map(num => wordlist[parseInt(num, 10)]).join(' ');
-        }
-      }
-    } catch (e) {}
-    // end SeedQR
-
-    this.secret = completePartialWords(normalizeMnemonicInput(newSecret));
+    this.secret = bip39custom.normalizeMnemonic(newSecret);
 
     return this;
   }

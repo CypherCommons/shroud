@@ -10,10 +10,12 @@ export const KEYBOARD_BOTTOM_OFFSET = 24;
 
 interface SafeAreaScrollViewProps extends ScrollViewProps {
   floatingButtonHeight?: number;
+  /** Space kept between the focused input and the keyboard, for screens with something on top of it. */
+  bottomOffset?: number;
 }
 
 const SafeAreaScrollView = forwardRef<KeyboardAwareScrollViewRef, SafeAreaScrollViewProps>((props, ref) => {
-  const { style, contentContainerStyle, floatingButtonHeight = 0, ...otherProps } = props;
+  const { style, contentContainerStyle, floatingButtonHeight = 0, bottomOffset = KEYBOARD_BOTTOM_OFFSET, ...otherProps } = props;
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -51,7 +53,7 @@ const SafeAreaScrollView = forwardRef<KeyboardAwareScrollViewRef, SafeAreaScroll
     <KeyboardAwareScrollView
       ref={ref}
       style={componentStyle}
-      bottomOffset={KEYBOARD_BOTTOM_OFFSET}
+      bottomOffset={bottomOffset}
       contentInsetAdjustmentBehavior="automatic"
       automaticallyAdjustsScrollIndicatorInsets
       contentContainerStyle={contentStyle}

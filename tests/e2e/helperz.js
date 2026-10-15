@@ -87,13 +87,32 @@ export async function helperImportWallet(mnemonic, { birthDate } = {}) {
       .toBeVisible()
       .withTimeout(60_000);
     await element(by.id('ImportWallet')).tap();
-    await waitFor(element(by.id('MnemonicInput')))
+    await waitFor(element(by.id('MnemonicWordInput1')))
       .toBeVisible()
       .withTimeout(15_000);
-    await element(by.id('MnemonicInput')).replaceText(mnemonic);
+    // The whole phrase goes into the first pill, which spreads it over the grid the way a paste does.
+    await element(by.id('MnemonicWordInput1')).replaceText(mnemonic);
+    // Restore is enabled in the same render that puts the last word in its pill, so wait for that:
+    // with synchronization off, a tap straight after replaceText can land on a still-disabled button.
+    const words = mnemonic.trim().toLowerCase().split(/\s+/);
+    await waitFor(element(by.id(`MnemonicWordInput${words.length}`)))
+      .toHaveText(words[words.length - 1])
+      .withTimeout(15_000);
     if (birthDate) {
+      await waitFor(element(by.id('BirthDateInput')))
+        .toBeVisible()
+        .whileElement(by.id('ImportWalletScrollView'))
+        .scroll(200, 'down');
       await element(by.id('BirthDateInput')).replaceText(birthDate);
     }
+    // A 24-word grid pushes the footer below the fold on smaller screens.
+    await waitFor(element(by.id('DoImport')))
+      .toBeVisible()
+      .whileElement(by.id('ImportWalletScrollView'))
+      .scroll(200, 'down');
+    // Android drops a touch that lands while the scroll view is still settling, from that scroll or
+    // from the keyboard the paste dismissed.
+    await sleep(1_000);
     await element(by.id('DoImport')).tap();
     await waitFor(element(by.id('RestoreSuccessDoneButton')))
       .toBeVisible()
