@@ -14,7 +14,8 @@ interface EyeIconProps extends IconProps {
 }
 
 const EyeIcon: React.FC<EyeIconProps> = ({ size = 20, color = 'white', slashed = false }) => (
-  <Svg width={size} height={size} viewBox={`0 0 ${BOX} ${BOX}`} fill="none">
+  // A 24-unit frame with the eye 20 units wide and centred; it is 12.5 tall, the shape isn't square.
+  <Svg width={size} height={size} viewBox="0.4 0.4 19.2 19.2" fill="none">
     {slashed && (
       <Defs>
         <ClipPath id="eye_slash_gap">

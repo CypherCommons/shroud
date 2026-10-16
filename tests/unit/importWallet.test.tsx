@@ -303,6 +303,57 @@ describe('unit - ImportWallet', () => {
     });
   });
 
+  describe('passphrase', () => {
+    it('restores with the passphrase and shows the wallet fingerprint', async () => {
+      const { getByTestId } = renderScreen();
+
+      enterPhrase(getByTestId, VALID_MNEMONIC);
+      fireEvent(getByTestId('UsePassphraseToggle'), 'press');
+      fireEvent.changeText(getByTestId('RestorePassphraseInput'), 'TREZOR');
+      fireEvent.press(getByTestId('DoImport'));
+
+      await waitFor(() => assert.strictEqual(addAndSaveWallet.mock.calls.length, 1));
+      const [savedWallet] = addAndSaveWallet.mock.calls[0];
+      assert.strictEqual(savedWallet.getPassphrase(), 'TREZOR');
+      assert.ok(savedWallet.passphraseFingerprint);
+
+      await waitFor(() => getByTestId('RestoreSuccessFingerprint'));
+    });
+
+    it('only fills in scanned words while a passphrase is switched on', async () => {
+      jest.useFakeTimers();
+      const { getByTestId, rerender } = renderScreen();
+      fireEvent(getByTestId('UsePassphraseToggle'), 'press');
+      // A complete passphrase, so a restore started by the scan would go through.
+      fireEvent.changeText(getByTestId('RestorePassphraseInput'), 'TREZOR');
+
+      mockRoute.params = { onBarScanned: VALID_MNEMONIC };
+      rerender(
+        <SafeAreaProvider>
+          <NavigationContainer>
+            <ImportWallet />
+          </NavigationContainer>
+        </SafeAreaProvider>,
+      );
+      act(() => jest.advanceTimersByTime(1000));
+      jest.useRealTimers();
+
+      await waitFor(() => assert.strictEqual(getByTestId('MnemonicWordInput12').props.value, 'about'));
+      await new Promise(resolve => setTimeout(resolve, 100));
+      assert.strictEqual(addAndSaveWallet.mock.calls.length, 0);
+    });
+
+    it('does not restore while the passphrase is switched on but empty', () => {
+      const { getByTestId } = renderScreen();
+
+      enterPhrase(getByTestId, VALID_MNEMONIC);
+      fireEvent(getByTestId('UsePassphraseToggle'), 'press');
+      fireEvent.press(getByTestId('DoImport'));
+
+      assert.strictEqual(addAndSaveWallet.mock.calls.length, 0);
+    });
+  });
+
   describe('paste button', () => {
     const mockClipboard = Clipboard as jest.Mocked<typeof Clipboard>;
 

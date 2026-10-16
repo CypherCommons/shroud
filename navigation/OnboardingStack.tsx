@@ -1,26 +1,19 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import OnboardingScreen from '../screen/wallets/OnboardingScreen';
-import PleaseBackup from '../screen/wallets/PleaseBackup';
-import { RouteProp } from '@react-navigation/native';
 
 type OnboardingStackParamList = {
   OnboardingMain: undefined;
-  PleaseBackup: { walletID: string };
 };
 
 const Stack = createNativeStackNavigator<OnboardingStackParamList>();
 
-const OnboardingStack = ({ route }: { route?: RouteProp<any, any> }) => {
-  const initialRouteName = route?.params?.screen || 'OnboardingMain';
-  const initialParams = route?.params?.params || undefined;
+// The backup screen lives in AddWalletStack: it reads the wallet being created from the storage
+// provider, so it can't be opened from here with route params.
+const OnboardingStack = () => {
   return (
-    <Stack.Navigator
-      screenOptions={{ headerShown: false, gestureEnabled: false, headerBackVisible: false }}
-      initialRouteName={initialRouteName}
-    >
+    <Stack.Navigator screenOptions={{ headerShown: false, gestureEnabled: false, headerBackVisible: false }}>
       <Stack.Screen name="OnboardingMain" component={OnboardingScreen} />
-      <Stack.Screen name="PleaseBackup" component={PleaseBackup} initialParams={initialParams} />
     </Stack.Navigator>
   );
 };

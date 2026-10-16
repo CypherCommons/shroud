@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { RouteProp, useRoute } from '@react-navigation/native';
 import Clipboard from '@react-native-clipboard/clipboard';
-import { ActivityIndicator, Keyboard, Platform, StyleSheet, Text, TouchableWithoutFeedback, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ActionButton from '../../components/ActionButton';
 import { useTheme } from '../../components/themes';
@@ -15,6 +15,7 @@ import { AddressInputScanButton } from '../../components/AddressInputScanButton'
 import { useScreenProtect } from '../../hooks/useScreenProtect';
 import SafeAreaScrollView, { KEYBOARD_BOTTOM_OFFSET } from '../../components/SafeAreaScrollView';
 import InfoBanner from '../../components/InfoBanner';
+import PassphraseField, { UsePassphraseToggle } from '../../components/PassphraseField';
 import PillSegmentedControl from '../../components/PillSegmentedControl';
 import RecoveryPhraseGrid from '../../components/RecoveryPhraseGrid';
 import WordSuggestionBar, { WORD_SUGGESTION_BAR_HEIGHT } from '../../components/WordSuggestionBar';
@@ -96,8 +97,10 @@ const ImportWallet = () => {
   const phraseInput = useRecoveryPhraseInput();
   const { fillFromText, clear: clearPhrase } = phraseInput;
   const [birthDate, setBirthDate] = useState<string>('');
+  const [usePassphrase, setUsePassphrase] = useState<boolean>(false);
+  const [passphrase, setPassphrase] = useState<string>('');
+  const [restoredFingerprint, setRestoredFingerprint] = useState<string | undefined>();
   const [isToolbarVisibleForAndroid, setIsToolbarVisibleForAndroid] = useState<boolean>(false);
-  const [, setSpeedBackdoor] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const { isScreenCaptureAllowed, isClipboardGetContentEnabled } = useSettings();
   const { enableScreenProtect, disableScreenProtect } = useScreenProtect();
@@ -129,7 +132,15 @@ const ImportWallet = () => {
 
       let restored = false;
       try {
-        const wallet = HDSilentPaymentsWallet.fromMnemonic(phrase);
+        // Without this a restore would quietly open the wallet that has no passphrase.
+        if (usePassphrase && !passphrase) {
+          presentAlert({ title: loc.errors.error, message: loc.passphrase.restore_passphrase_empty });
+          return;
+        }
+
+        // Lets the spinner render before key derivation blocks the JS thread.
+        if (usePassphrase && passphrase) await new Promise(resolve => setTimeout(resolve, 0));
+        const wallet = HDSilentPaymentsWallet.fromMnemonic(phrase, usePassphrase ? passphrase : undefined);
 
         const birthHeightResult = await resolveBirthHeight(birthDate);
         if (!birthHeightResult.ok) {
@@ -147,6 +158,7 @@ const ImportWallet = () => {
         });
 
         await addAndSaveWallet(wallet);
+        setRestoredFingerprint(wallet.passphraseFingerprint);
         restored = true;
       } catch (error: any) {
         console.error('Import error:', error);
@@ -162,11 +174,12 @@ const ImportWallet = () => {
       // Outside the try: the wallet is saved by now, so a sheet failure must not read as a failed restore.
       if (restored) {
         clearPhrase();
+        setPassphrase('');
         triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
         await successSheetRef.current?.present();
       }
     },
-    [birthDate, addAndSaveWallet, clearPhrase],
+    [birthDate, usePassphrase, passphrase, addAndSaveWallet, clearPhrase],
   );
 
   const handleImport = useCallback(() => {
@@ -178,11 +191,12 @@ const ImportWallet = () => {
       // no objects here, only strings
       const newValue: string = typeof value !== 'string' ? value.data + '' : value;
       // A scanned phrase restores straight away. Anything else stays in the pills, where the
-      // words that are wrong show up in red.
+      // words that are wrong show up in red. With a passphrase to enter, the scan only fills in
+      // the words; the user restores when ready.
       const phrase = fillFromText(newValue);
-      if (phrase) setTimeout(() => restoreWallet(phrase), 500);
+      if (phrase && !usePassphrase) setTimeout(() => restoreWallet(phrase), 500);
     },
-    [fillFromText, restoreWallet],
+    [fillFromText, restoreWallet, usePassphrase],
   );
 
   useEffect(() => {
@@ -192,15 +206,6 @@ const ImportWallet = () => {
       navigation.setParams({ onBarScanned: undefined });
     }
   }, [route.name, onBarScanned, route.params?.onBarScanned, navigation]);
-
-  const speedBackdoorTap = () => {
-    setSpeedBackdoor(v => {
-      v += 1;
-      if (v < 5) return v;
-      navigation.navigate('ImportSpeed');
-      return 0;
-    });
-  };
 
   useEffect(() => {
     if (!isScreenCaptureAllowed) {
@@ -224,7 +229,7 @@ const ImportWallet = () => {
     navigation.navigateToWalletsList();
   }, [navigation]);
 
-  const canImport = phraseInput.phrase !== null && !isLoading;
+  const canImport = phraseInput.phrase !== null && (!usePassphrase || passphrase.length > 0) && !isLoading;
   const note = phraseInput.note;
   const isProblem = note?.kind === 'unknown_words' || note?.kind === 'invalid_phrase';
 
@@ -252,12 +257,10 @@ const ImportWallet = () => {
         testID="ImportWalletScrollView"
       >
         <View style={styles.body}>
-          <TouchableWithoutFeedback accessibilityRole="button" onPress={speedBackdoorTap} testID="SpeedBackdoor">
-            <View style={styles.header}>
-              <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.wallets.restore_headline}</Text>
-              <Text style={[styles.subtitle, { color: colors.textMuted }]}>{loc.wallets.restore_subtitle}</Text>
-            </View>
-          </TouchableWithoutFeedback>
+          <View style={styles.header}>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.wallets.restore_headline}</Text>
+            <Text style={[styles.subtitle, { color: colors.textMuted }]}>{loc.wallets.restore_subtitle}</Text>
+          </View>
 
           <PillSegmentedControl
             values={GRID_SIZES.map(count => loc.formatString(loc.wallets.restore_word_count, { count }) as string)}
@@ -298,6 +301,20 @@ const ImportWallet = () => {
 
           <WalletBirthSection birthDate={birthDate} setBirthDate={setBirthDate} />
 
+          <UsePassphraseToggle
+            value={usePassphrase}
+            onValueChange={value => {
+              setUsePassphrase(value);
+              if (!value) setPassphrase('');
+            }}
+          />
+          {usePassphrase && (
+            <>
+              <PassphraseField value={passphrase} onChangeText={setPassphrase} testID="RestorePassphraseInput" />
+              <InfoBanner variant="caution" text={loc.passphrase.restore_warning} emphasis={loc.passphrase.restore_warning_emphasis} />
+            </>
+          )}
+
           <InfoBanner text={loc.wallets.restore_history_notice} emphasis={loc.wallets.restore_history_notice_emphasis} />
 
           {isLoading && <ActivityIndicator size="large" color={colors.brandPrimary} style={styles.activityIndicator} />}
@@ -307,7 +324,7 @@ const ImportWallet = () => {
 
         {Platform.select({ android: !isToolbarVisibleForAndroid && footer, default: footer })}
 
-        <RestoreSuccessSheet ref={successSheetRef} onDone={onDoneFromSuccessSheet} />
+        <RestoreSuccessSheet ref={successSheetRef} onDone={onDoneFromSuccessSheet} fingerprint={restoredFingerprint} />
       </SafeAreaScrollView>
 
       <WordSuggestionBar
