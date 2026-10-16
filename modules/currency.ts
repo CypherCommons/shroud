@@ -27,6 +27,22 @@ let lastTimeUpdateExchangeRateWasCalled: number = 0;
 let skipUpdateExchangeRate: boolean = false;
 
 let currencyFormatter: Intl.NumberFormat | null = null;
+let fractionDigitsCache: { code: string; digits: number } | null = null;
+
+// Screens read the rate during render; these let them re-render when it changes (see hooks/useExchangeRate).
+const exchangeRateListeners = new Set<() => void>();
+
+function notifyExchangeRateListeners(): void {
+  exchangeRateListeners.forEach(listener => listener());
+}
+
+/** Calls `listener` whenever the rate or the preferred currency may have changed. Returns the unsubscribe. */
+function subscribeToExchangeRate(listener: () => void): () => void {
+  exchangeRateListeners.add(listener);
+  return () => {
+    exchangeRateListeners.delete(listener);
+  };
+}
 
 function getCurrencyFormatter(): Intl.NumberFormat {
   if (
@@ -60,6 +76,7 @@ async function setPreferredCurrency(item: FiatUnitType): Promise<void> {
     throw error;
   }
   currencyFormatter = null;
+  notifyExchangeRateListeners();
 }
 
 async function updateExchangeRate(): Promise<void> {
@@ -82,6 +99,7 @@ async function updateExchangeRate(): Promise<void> {
     exchangeRates[LAST_UPDATED] = Date.now();
     exchangeRates[BTC_PREFIX + preferredFiatCurrency.endPointKey] = rate;
     exchangeRates.LAST_UPDATED_ERROR = false;
+    notifyExchangeRateListeners();
 
     try {
       const exchangeRatesString = JSON.stringify(exchangeRates);
@@ -90,6 +108,7 @@ async function updateExchangeRate(): Promise<void> {
     } catch (error) {
       await DefaultPreference.clear(EXCHANGE_RATES_STORAGE_KEY);
       exchangeRates = { LAST_UPDATED_ERROR: false };
+      notifyExchangeRateListeners();
     }
   } catch (error) {
     try {
@@ -117,6 +136,7 @@ async function updateExchangeRate(): Promise<void> {
       await DefaultPreference.set(EXCHANGE_RATES_STORAGE_KEY, JSON.stringify(rate));
     } catch (storageError) {
       exchangeRates = { LAST_UPDATED_ERROR: true };
+      notifyExchangeRateListeners();
       throw storageError;
     }
   }
@@ -152,6 +172,7 @@ async function getPreferredCurrency(): Promise<FiatUnitType> {
   }
 
   await DefaultPreference.set(PREFERRED_CURRENCY_LOCALE_STORAGE_KEY, preferredFiatCurrency.locale.replace('-', '_'));
+  notifyExchangeRateListeners();
   return preferredFiatCurrency;
 }
 
@@ -184,6 +205,7 @@ async function _restoreSavedExchangeRatesFromStorage(): Promise<void> {
     exchangeRates = { LAST_UPDATED_ERROR: false };
     await updateExchangeRate();
   }
+  notifyExchangeRateListeners();
 }
 
 async function _restoreSavedPreferredFiatCurrencyFromStorage(): Promise<void> {
@@ -221,6 +243,7 @@ async function _restoreSavedPreferredFiatCurrencyFromStorage(): Promise<void> {
       preferredFiatCurrency = FiatUnit.USD;
     }
   }
+  notifyExchangeRateListeners();
 }
 
 async function isRateOutdated(): Promise<boolean> {
@@ -362,12 +385,51 @@ function getCurrencySymbol(): string {
   return preferredFiatCurrency.symbol;
 }
 
+function getCurrencyCode(): string {
+  return preferredFiatCurrency.endPointKey;
+}
+
+/** How many decimals the preferred currency is written with: 2 for most, 0 for e.g. JPY, 3 for e.g. KWD. */
+function getCurrencyFractionDigits(): number {
+  const code = preferredFiatCurrency.endPointKey;
+  if (fractionDigitsCache?.code !== code) {
+    let digits = 2;
+    try {
+      digits = new Intl.NumberFormat('en-US', { style: 'currency', currency: code }).resolvedOptions().maximumFractionDigits ?? 2;
+    } catch (_) {}
+    fractionDigitsCache = { code, digits };
+  }
+  return fractionDigitsCache.digits;
+}
+
+/** The price of 1 BTC in the preferred currency, or undefined until a rate has loaded. */
+function getExchangeRate(): number | undefined {
+  const rate = exchangeRates[BTC_PREFIX + preferredFiatCurrency.endPointKey];
+  return typeof rate === 'number' ? rate : undefined;
+}
+
+/** `satoshi` in the preferred currency, unrounded; undefined until a rate has loaded. */
+function satoshiToFiat(satoshi: number): BigNumber | undefined {
+  const rate = getExchangeRate();
+  return rate === undefined ? undefined : new BigNumber(satoshi).dividedBy(100000000).multipliedBy(rate);
+}
+
+/** A fiat amount in whole sats, rounded half up; 0 without a rate, or when `fiat` isn't a positive number. */
+function fiatToSatoshi(fiat: BigNumber.Value): number {
+  const rate = getExchangeRate();
+  const value = new BigNumber(fiat);
+  if (rate === undefined || !value.isGreaterThan(0)) return 0;
+  return value.dividedBy(rate).multipliedBy(100000000).integerValue(BigNumber.ROUND_HALF_UP).toNumber();
+}
+
 function _setPreferredFiatCurrency(currency: FiatUnitType): void {
   preferredFiatCurrency = currency;
+  notifyExchangeRateListeners();
 }
 
 function _setExchangeRate(pair: string, rate: number): void {
   exchangeRates[pair] = rate;
+  notifyExchangeRateListeners();
 }
 
 function _setSkipUpdateExchangeRate(): void {
@@ -382,7 +444,11 @@ export {
   btcToSatoshi,
   EXCHANGE_RATES_STORAGE_KEY,
   fiatToBTC,
+  fiatToSatoshi,
+  getCurrencyCode,
+  getCurrencyFractionDigits,
   getCurrencySymbol,
+  getExchangeRate,
   getPreferredCurrency,
   initCurrencyDaemon,
   isRateOutdated,
@@ -391,7 +457,9 @@ export {
   PREFERRED_CURRENCY_STORAGE_KEY,
   restoreSavedPreferredFiatCurrencyAndExchangeFromStorage,
   satoshiToBTC,
+  satoshiToFiat,
   satoshiToLocalCurrency,
   setPreferredCurrency,
+  subscribeToExchangeRate,
   updateExchangeRate,
 };
