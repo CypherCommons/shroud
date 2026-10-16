@@ -80,6 +80,21 @@ export async function helperCreateWallet() {
   }
 }
 
+// waitFor().toBeVisible() with synchronization off, made to survive one trap: a wait that starts
+// while the view is still being laid out or animated in (a sheet sliding up, a screen coming back
+// from under a modal) can miss it arriving. Short waits started afresh until the deadline don't.
+export async function waitUntilVisible(view, timeout = 60_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    try {
+      await waitFor(view).toBeVisible().withTimeout(2_000);
+      return view;
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+    }
+  }
+}
+
 export async function helperImportWallet(mnemonic, { birthDate } = {}) {
   await device.disableSynchronization();
   try {
@@ -87,21 +102,37 @@ export async function helperImportWallet(mnemonic, { birthDate } = {}) {
       .toBeVisible()
       .withTimeout(60_000);
     await element(by.id('ImportWallet')).tap();
-    await waitFor(element(by.id('MnemonicInput')))
+    await waitFor(element(by.id('MnemonicWordInput1')))
       .toBeVisible()
       .withTimeout(15_000);
-    await element(by.id('MnemonicInput')).replaceText(mnemonic);
+    // The whole phrase goes into the first pill, which spreads it over the grid the way a paste does.
+    await element(by.id('MnemonicWordInput1')).replaceText(mnemonic);
+    // Restore is enabled in the same render that puts the last word in its pill, so wait for that:
+    // with synchronization off, a tap straight after replaceText can land on a still-disabled button.
+    const words = mnemonic.trim().toLowerCase().split(/\s+/);
+    await waitFor(element(by.id(`MnemonicWordInput${words.length}`)))
+      .toHaveText(words[words.length - 1])
+      .withTimeout(15_000);
     if (birthDate) {
+      await waitFor(element(by.id('BirthDateInput')))
+        .toBeVisible()
+        .whileElement(by.id('ImportWalletScrollView'))
+        .scroll(200, 'down');
       await element(by.id('BirthDateInput')).replaceText(birthDate);
     }
+    // A 24-word grid pushes the footer below the fold on smaller screens.
+    await waitFor(element(by.id('DoImport')))
+      .toBeVisible()
+      .whileElement(by.id('ImportWalletScrollView'))
+      .scroll(200, 'down');
+    // Android drops a touch that lands while the scroll view is still settling, from that scroll or
+    // from the keyboard the paste dismissed.
+    await sleep(1_000);
     await element(by.id('DoImport')).tap();
-    await waitFor(element(by.id('RestoreSuccessDoneButton')))
-      .toBeVisible()
-      .withTimeout(60_000);
-    await element(by.id('RestoreSuccessDoneButton')).tap();
-    await waitFor(element(by.id('HomeScreenReceiveButton')))
-      .toBeVisible()
-      .withTimeout(60_000);
+    // TrueSheet reports the sheet's content as children of its host view as well as of the
+    // sheet itself, so Espresso finds every view in the sheet twice. Both matches are the same view.
+    await (await waitUntilVisible(element(by.id('RestoreSuccessDoneButton')).atIndex(0))).tap();
+    await waitUntilVisible(element(by.id('HomeScreenReceiveButton')));
   } finally {
     await device.enableSynchronization();
   }

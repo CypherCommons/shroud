@@ -1,5 +1,5 @@
 import React, { forwardRef } from 'react';
-import { Platform, StyleSheet, TextInput, TextInputProps } from 'react-native';
+import { StyleSheet, TextInput, TextInputProps } from 'react-native';
 
 import { ClashFont } from '../constants/fonts';
 import { caretProps, useTheme } from './themes';
@@ -24,19 +24,6 @@ const FieldTextInput = forwardRef<TextInput, TextInputProps>(({ style, ...props 
 // The same input configured for a bitcoin address: long, wrapped, and never autocorrected.
 export const FieldAddressInput: React.FC<TextInputProps> = ({ style, ...props }) => (
   <FieldTextInput style={[styles.address, style]} multiline autoCapitalize="none" autoCorrect={false} {...props} />
-);
-
-// The same input configured for a seed phrase. visible-password keeps Android keyboards from
-// learning the words into their personal dictionary; autoCorrect alone doesn't stop that.
-export const FieldMnemonicInput: React.FC<TextInputProps> = props => (
-  <FieldTextInput
-    multiline
-    autoCapitalize="none"
-    autoCorrect={false}
-    spellCheck={false}
-    keyboardType={Platform.OS === 'android' ? 'visible-password' : 'default'}
-    {...props}
-  />
 );
 
 export default FieldTextInput;

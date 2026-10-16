@@ -10,8 +10,6 @@ import { ScanQRCodeParamList } from './DetailViewStackParamList';
 
 export type AddWalletStackParamList = {
   ImportWallet?: {
-    label?: string;
-    triggerImport?: boolean;
     onBarScanned?: string;
   };
   ImportSpeed: undefined;

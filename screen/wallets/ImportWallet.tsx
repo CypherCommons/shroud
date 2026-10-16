@@ -4,10 +4,6 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import { ActivityIndicator, Keyboard, Platform, StyleSheet, Text, TouchableWithoutFeedback, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ActionButton from '../../components/ActionButton';
-import {
-  DoneAndDismissKeyboardInputAccessory,
-  DoneAndDismissKeyboardInputAccessoryViewID,
-} from '../../components/DoneAndDismissKeyboardInputAccessory';
 import { useTheme } from '../../components/themes';
 import { useSettings } from '../../hooks/context/useSettings';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
@@ -17,10 +13,13 @@ import { AddWalletStackParamList } from '../../navigation/AddWalletStack';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AddressInputScanButton } from '../../components/AddressInputScanButton';
 import { useScreenProtect } from '../../hooks/useScreenProtect';
-import SafeAreaScrollView from '../../components/SafeAreaScrollView';
-import { FieldMnemonicInput } from '../../components/FieldTextInput';
-import LabeledField from '../../components/LabeledField';
+import SafeAreaScrollView, { KEYBOARD_BOTTOM_OFFSET } from '../../components/SafeAreaScrollView';
 import InfoBanner from '../../components/InfoBanner';
+import PillSegmentedControl from '../../components/PillSegmentedControl';
+import RecoveryPhraseGrid from '../../components/RecoveryPhraseGrid';
+import WordSuggestionBar, { WORD_SUGGESTION_BAR_HEIGHT } from '../../components/WordSuggestionBar';
+import { useRecoveryPhraseInput } from '../../hooks/useRecoveryPhraseInput';
+import { GRID_SIZES, PhraseNote } from '../../helpers/recoveryPhrase';
 import ClipboardIcon from '../../components/icons/ClipboardIcon';
 import RestoreSuccessSheet from '../../components/RestoreSuccessSheet';
 import { BottomModalHandle } from '../../components/BottomModal';
@@ -76,14 +75,26 @@ async function resolveBirthHeight(dateStr: string): Promise<BirthHeightResult> {
   }
 }
 
+const noteText = (note: PhraseNote): string => {
+  switch (note.kind) {
+    case 'unknown_words':
+      return loc.wallets.restore_unknown_words;
+    case 'invalid_phrase':
+      return loc.wallets.restore_invalid_phrase;
+    case 'missing_word':
+      return loc.formatString(loc.wallets.restore_missing_word, { number: note.number }) as string;
+    case 'progress':
+      return loc.formatString(loc.wallets.restore_words_entered, { entered: note.entered, total: note.total }) as string;
+  }
+};
+
 const ImportWallet = () => {
   const navigation = useExtendedNavigation<NavigationProps>();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const route = useRoute<RouteProps>();
-  const label = route?.params?.label ?? '';
-  const triggerImport = route?.params?.triggerImport ?? false;
-  const [importText, setImportText] = useState<string>(label);
+  const phraseInput = useRecoveryPhraseInput();
+  const { fillFromText, clear: clearPhrase } = phraseInput;
   const [birthDate, setBirthDate] = useState<string>('');
   const [isToolbarVisibleForAndroid, setIsToolbarVisibleForAndroid] = useState<boolean>(false);
   const [, setSpeedBackdoor] = useState<number>(0);
@@ -92,12 +103,6 @@ const ImportWallet = () => {
   const { enableScreenProtect, disableScreenProtect } = useScreenProtect();
   const { addAndSaveWallet } = useStorage();
   const successSheetRef = useRef<BottomModalHandle>(null);
-
-  const onBlur = useCallback(() => {
-    const valueWithSingleWhitespace = importText.replace(/^\s+|\s+$|\s+(?=\s)/g, '');
-    setImportText(valueWithSingleWhitespace);
-    return valueWithSingleWhitespace;
-  }, [importText]);
 
   useKeyboard({
     onKeyboardDidShow: () => {
@@ -108,8 +113,9 @@ const ImportWallet = () => {
     },
   });
 
-  const importMnemonic = useCallback(
-    async (text: string) => {
+  // Takes a phrase the recovery-phrase input has already checked against the wordlists and checksum.
+  const restoreWallet = useCallback(
+    async (phrase: string) => {
       try {
         if (await Clipboard.hasString()) {
           Clipboard.setString('');
@@ -123,17 +129,7 @@ const ImportWallet = () => {
 
       let restored = false;
       try {
-        if (!text.trim()) {
-          presentAlert({ title: loc.errors.error, message: loc.wallet_birth.error_empty_mnemonic });
-          return;
-        }
-
-        const wallet = HDSilentPaymentsWallet.fromMnemonic(text);
-
-        if (!wallet.validateMnemonic()) {
-          presentAlert({ title: loc.errors.error, message: loc.wallet_birth.error_invalid_mnemonic });
-          return;
-        }
+        const wallet = HDSilentPaymentsWallet.fromMnemonic(phrase);
 
         const birthHeightResult = await resolveBirthHeight(birthDate);
         if (!birthHeightResult.ok) {
@@ -165,30 +161,28 @@ const ImportWallet = () => {
 
       // Outside the try: the wallet is saved by now, so a sheet failure must not read as a failed restore.
       if (restored) {
-        setImportText('');
+        clearPhrase();
         triggerHapticFeedback(HapticFeedbackTypes.NotificationSuccess);
         await successSheetRef.current?.present();
       }
     },
-    [birthDate, addAndSaveWallet],
+    [birthDate, addAndSaveWallet, clearPhrase],
   );
 
   const handleImport = useCallback(() => {
-    const textToImport = onBlur();
-    if (textToImport.trim().length === 0) {
-      return;
-    }
-    importMnemonic(textToImport);
-  }, [importMnemonic, onBlur]);
+    if (phraseInput.phrase) restoreWallet(phraseInput.phrase);
+  }, [restoreWallet, phraseInput.phrase]);
 
   const onBarScanned = useCallback(
     (value: string | { data: any }) => {
       // no objects here, only strings
       const newValue: string = typeof value !== 'string' ? value.data + '' : value;
-      setImportText(newValue);
-      setTimeout(() => importMnemonic(newValue), 500);
+      // A scanned phrase restores straight away. Anything else stays in the pills, where the
+      // words that are wrong show up in red.
+      const phrase = fillFromText(newValue);
+      if (phrase) setTimeout(() => restoreWallet(phrase), 500);
     },
-    [importMnemonic],
+    [fillFromText, restoreWallet],
   );
 
   useEffect(() => {
@@ -217,24 +211,22 @@ const ImportWallet = () => {
     };
   }, [isScreenCaptureAllowed, enableScreenProtect, disableScreenProtect]);
 
-  useEffect(() => {
-    if (triggerImport) handleImport();
-  }, [triggerImport, handleImport]);
-
   const onPasteFromClipboard = useCallback(async () => {
     try {
-      setImportText(await readClipboardForPaste());
+      fillFromText(await readClipboardForPaste());
     } catch (error) {
       presentAlert({ message: (error as Error).message });
     }
-  }, []);
+  }, [fillFromText]);
 
   const onDoneFromSuccessSheet = useCallback(async () => {
     await successSheetRef.current?.dismiss();
     navigation.navigateToWalletsList();
   }, [navigation]);
 
-  const canImport = importText.trim().length > 0 && !isLoading;
+  const canImport = phraseInput.phrase !== null && !isLoading;
+  const note = phraseInput.note;
+  const isProblem = note?.kind === 'unknown_words' || note?.kind === 'invalid_phrase';
 
   const footer = (
     <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 32) }]}>
@@ -246,86 +238,97 @@ const ImportWallet = () => {
         color={colors.white}
         testID="DoImport"
       />
-      <AddressInputScanButton onChangeText={setImportText} testID="ScanImport" />
+      <AddressInputScanButton onChangeText={fillFromText} testID="ScanImport" />
     </View>
   );
 
   return (
-    <SafeAreaScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="always">
-      <View style={styles.body}>
-        <TouchableWithoutFeedback accessibilityRole="button" onPress={speedBackdoorTap} testID="SpeedBackdoor">
-          <View style={styles.header}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.wallets.restore_headline}</Text>
-            <Text style={[styles.subtitle, { color: colors.textMuted }]}>{loc.wallets.restore_subtitle}</Text>
+    <View style={styles.root}>
+      <SafeAreaScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="always"
+        // Keeps the word being typed clear of the suggestion bar as well as the keyboard.
+        bottomOffset={KEYBOARD_BOTTOM_OFFSET + WORD_SUGGESTION_BAR_HEIGHT}
+        testID="ImportWalletScrollView"
+      >
+        <View style={styles.body}>
+          <TouchableWithoutFeedback accessibilityRole="button" onPress={speedBackdoorTap} testID="SpeedBackdoor">
+            <View style={styles.header}>
+              <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.wallets.restore_headline}</Text>
+              <Text style={[styles.subtitle, { color: colors.textMuted }]}>{loc.wallets.restore_subtitle}</Text>
+            </View>
+          </TouchableWithoutFeedback>
+
+          <PillSegmentedControl
+            values={GRID_SIZES.map(count => loc.formatString(loc.wallets.restore_word_count, { count }) as string)}
+            selectedIndex={GRID_SIZES.indexOf(phraseInput.wordCount)}
+            onChange={index => phraseInput.setWordCount(GRID_SIZES[index])}
+          />
+
+          <View style={styles.phrase}>
+            <RecoveryPhraseGrid
+              words={phraseInput.words}
+              statuses={phraseInput.statuses}
+              focusedIndex={phraseInput.focusedIndex}
+              handlers={phraseInput.handlers}
+            />
+            {note && (
+              <Text
+                style={[styles.note, { color: isProblem ? colors.statusError : colors.textMuted }]}
+                // Problems are announced; the running word count isn't, it changes with every word.
+                accessibilityLiveRegion={isProblem ? 'polite' : 'none'}
+                testID="RecoveryPhraseNote"
+              >
+                {noteText(note)}
+              </Text>
+            )}
           </View>
-        </TouchableWithoutFeedback>
 
-        <LabeledField>
-          <FieldMnemonicInput
-            value={importText}
-            onBlur={onBlur}
-            onChangeText={setImportText}
-            placeholder={loc.wallets.restore_mnemonic_placeholder}
-            accessibilityLabel={loc.wallets.restore_mnemonic_label}
-            testID="MnemonicInput"
-            inputAccessoryViewID={DoneAndDismissKeyboardInputAccessoryViewID}
-            style={styles.mnemonicInput}
-          />
-        </LabeledField>
+          {isClipboardGetContentEnabled && (
+            <ActionButton
+              title={loc.wallets.restore_paste_button}
+              Icon={ClipboardIcon}
+              iconSize={20}
+              onPress={onPasteFromClipboard}
+              backgroundColor={colors.fieldBackground}
+              color={colors.textPrimary}
+              testID="PasteFromClipboardButton"
+            />
+          )}
 
-        {isClipboardGetContentEnabled && (
-          <ActionButton
-            title={loc.wallets.restore_paste_button}
-            Icon={ClipboardIcon}
-            iconSize={20}
-            onPress={onPasteFromClipboard}
-            backgroundColor={colors.fieldBackground}
-            color={colors.textPrimary}
-            testID="PasteFromClipboardButton"
-          />
-        )}
+          <WalletBirthSection birthDate={birthDate} setBirthDate={setBirthDate} />
 
-        <WalletBirthSection birthDate={birthDate} setBirthDate={setBirthDate} />
+          <InfoBanner text={loc.wallets.restore_history_notice} emphasis={loc.wallets.restore_history_notice_emphasis} />
 
-        <InfoBanner text={loc.wallets.restore_history_notice} emphasis={loc.wallets.restore_history_notice_emphasis} />
+          {isLoading && <ActivityIndicator size="large" color={colors.brandPrimary} style={styles.activityIndicator} />}
+        </View>
 
-        {isLoading && <ActivityIndicator size="large" color={colors.brandPrimary} style={styles.activityIndicator} />}
-      </View>
+        <View style={styles.spacer} />
 
-      <View style={styles.spacer} />
+        {Platform.select({ android: !isToolbarVisibleForAndroid && footer, default: footer })}
 
-      {Platform.select({ android: !isToolbarVisibleForAndroid && footer, default: footer })}
-      {Platform.select({
-        ios: (
-          <DoneAndDismissKeyboardInputAccessory
-            onClearTapped={() => {
-              setImportText('');
-            }}
-            onPasteTapped={
-              isClipboardGetContentEnabled
-                ? text => {
-                    setImportText(text);
-                    Keyboard.dismiss();
-                  }
-                : undefined
-            }
-          />
-        ),
-        default: null,
-      })}
+        <RestoreSuccessSheet ref={successSheetRef} onDone={onDoneFromSuccessSheet} />
+      </SafeAreaScrollView>
 
-      <RestoreSuccessSheet ref={successSheetRef} onDone={onDoneFromSuccessSheet} />
-    </SafeAreaScrollView>
+      <WordSuggestionBar
+        enabled={phraseInput.ownsKeyboard}
+        typed={phraseInput.activeWord}
+        suggestions={phraseInput.suggestions}
+        onPick={phraseInput.acceptSuggestion}
+      />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   content: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 0 },
   body: { gap: 20 },
   header: { marginBottom: 4 },
   title: { fontFamily: ClashFont.medium, fontSize: 32, letterSpacing: -1, marginBottom: 8 },
   subtitle: { fontFamily: ClashFont.regular, fontSize: 15, lineHeight: 20 },
-  mnemonicInput: { minHeight: 72, textAlignVertical: 'top' },
+  phrase: { gap: 12 },
+  note: { fontFamily: ClashFont.regular, fontSize: 14, lineHeight: 20 },
   spacer: { flex: 1 },
   footer: { paddingTop: 16, gap: 12 },
   activityIndicator: { marginTop: 4 },
