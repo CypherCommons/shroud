@@ -6,8 +6,15 @@ import { ShroudText } from '../ShroudComponents';
 import { ClashFont } from '../constants/fonts';
 import { shadowSm, useTheme } from './themes';
 
+export interface PillSegment {
+  label: string;
+  /** Keeps its place but can't be picked. */
+  disabled?: boolean;
+  testID?: string;
+}
+
 interface PillSegmentedControlProps {
-  values: string[];
+  segments: PillSegment[];
   selectedIndex: number;
   onChange: (index: number) => void;
 }
@@ -15,13 +22,13 @@ interface PillSegmentedControlProps {
 const TRACK_PADDING = 4;
 const SEGMENT_GAP = 8;
 
-const PillSegmentedControl: React.FC<PillSegmentedControlProps> = ({ values, selectedIndex, onChange }) => {
+const PillSegmentedControl: React.FC<PillSegmentedControlProps> = ({ segments, selectedIndex, onChange }) => {
   const { colors } = useTheme();
   const [trackWidth, setTrackWidth] = useState(0);
   const translateX = useRef(new Animated.Value(0)).current;
 
   const segmentWidth =
-    values.length > 0 && trackWidth > 0 ? (trackWidth - TRACK_PADDING * 2 - SEGMENT_GAP * (values.length - 1)) / values.length : 0;
+    segments.length > 0 && trackWidth > 0 ? (trackWidth - TRACK_PADDING * 2 - SEGMENT_GAP * (segments.length - 1)) / segments.length : 0;
 
   useEffect(() => {
     Animated.spring(translateX, {
@@ -39,6 +46,9 @@ const PillSegmentedControl: React.FC<PillSegmentedControlProps> = ({ values, sel
     labelUnselected: {
       color: colors.textMuted,
     },
+    labelDisabled: {
+      color: colors.textDisabled,
+    },
   });
 
   const onTrackLayout = (e: LayoutChangeEvent) => {
@@ -51,7 +61,7 @@ const PillSegmentedControl: React.FC<PillSegmentedControlProps> = ({ values, sel
     onChange(index);
   };
 
-  if (!Array.isArray(values) || values.length === 0) return null;
+  if (!Array.isArray(segments) || segments.length === 0) return null;
 
   return (
     <View style={[styles.track, { backgroundColor: colors.surfaceBrandSubtle, borderColor: colors.accentSubtle }]} onLayout={onTrackLayout}>
@@ -69,13 +79,16 @@ const PillSegmentedControl: React.FC<PillSegmentedControlProps> = ({ values, sel
           ]}
         />
       )}
-      {values.map((value, index) => (
+      {segments.map(({ label, disabled = false, testID }, index) => (
         <Pressable
-          key={value}
+          // Segments are positional (selection is by index), so their index is their identity.
+          key={index}
           style={styles.segment}
           accessibilityRole="button"
-          accessibilityState={{ selected: index === selectedIndex }}
+          accessibilityState={{ selected: index === selectedIndex, disabled }}
+          disabled={disabled}
           onPress={() => handlePress(index)}
+          testID={testID}
         >
           <ShroudText
             numberOfLines={1}
@@ -83,10 +96,10 @@ const PillSegmentedControl: React.FC<PillSegmentedControlProps> = ({ values, sel
               styles.label,
               index === selectedIndex
                 ? [styles.labelSelected, stylesHook.labelSelected]
-                : [styles.labelUnselected, stylesHook.labelUnselected],
+                : [styles.labelUnselected, disabled ? stylesHook.labelDisabled : stylesHook.labelUnselected],
             ]}
           >
-            {value}
+            {label}
           </ShroudText>
         </Pressable>
       ))}

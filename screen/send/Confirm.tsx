@@ -174,7 +174,7 @@ const Confirm: React.FC = () => {
     <SafeArea style={[styles.root, stylesHook.root]}>
       <View style={styles.content}>
         <TestnetBadge style={styles.testnetBadge} />
-        <AmountHero amount={satoshiToBTC(amountSats)} fiat={`≈ ${satoshiToLocalCurrency(amountSats)}`} />
+        <AmountHero amount={satoshiToBTC(amountSats)} estimate={`≈ ${satoshiToLocalCurrency(amountSats)}`} />
 
         <View style={[styles.divider, stylesHook.divider]} />
 

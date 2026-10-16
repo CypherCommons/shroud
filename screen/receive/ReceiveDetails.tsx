@@ -46,7 +46,7 @@ type TabsHeaderProps = {
 
 const TabsHeader = React.memo(({ selectedIndex, onChange }: TabsHeaderProps) => (
   <View style={styles.tabsContainer}>
-    <PillSegmentedControl values={TAB_LABELS} selectedIndex={selectedIndex} onChange={onChange} />
+    <PillSegmentedControl segments={TAB_LABELS.map(label => ({ label }))} selectedIndex={selectedIndex} onChange={onChange} />
   </View>
 ));
 

@@ -10,8 +10,16 @@ import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboa
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isSilentPaymentAddress } from '../../helpers/silent-payments';
 import { getActiveNetwork } from '../../modules/network';
-import { btcToSatoshi, satoshiToBTC, satoshiToLocalCurrency } from '../../modules/currency';
-import triggerHapticFeedback, { HapticFeedbackTypes, triggerSelectionHapticFeedback } from '../../modules/hapticFeedback';
+import {
+  btcToSatoshi,
+  fiatToSatoshi,
+  getCurrencyCode,
+  getCurrencyFractionDigits,
+  satoshiToBTC,
+  satoshiToFiat,
+  satoshiToLocalCurrency,
+} from '../../modules/currency';
+import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
 import DeeplinkSchemaMatch from '../../class/deeplink-schema-match';
 import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
 import { CreateTransactionTarget, CreateTransactionUtxo, TWallet } from '../../class/wallets/types';
@@ -26,6 +34,7 @@ import ScanQRIcon from '../../components/icons/ScanQRIcon';
 import ContactIcon from '../../components/icons/ContactIcon';
 import ContactChip from '../../components/ContactChip';
 import ContactPickerSheet from '../../components/ContactPickerSheet';
+import PillSegmentedControl from '../../components/PillSegmentedControl';
 import SaveContactRow from '../../components/SaveContactRow';
 import { BottomModalHandle } from '../../components/BottomModal';
 import FieldTextInput, { FieldAddressInput } from '../../components/FieldTextInput';
@@ -35,9 +44,10 @@ import { KEYBOARD_BOTTOM_OFFSET } from '../../components/SafeAreaScrollView';
 import { shadowSm, useTheme } from '../../components/themes';
 import { Action } from '../../components/types';
 import { ClashFont } from '../../constants/fonts';
-import { isAmountEmpty, sanitizeAmountInput, displayAmountForUnit, feeSpeedTierForRate } from '../../helpers/send/format';
+import { amountFieldText, FiatDraft, feeSpeedTierForRate, isAmountEmpty, sanitizeAmountInput } from '../../helpers/send/format';
 import { useStorage } from '../../hooks/context/useStorage';
 import { useContacts } from '../../hooks/context/useContacts';
+import { useExchangeRate } from '../../hooks/useExchangeRate';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
 import { useKeyboard } from '../../hooks/useKeyboard';
 import loc, { formatBalance } from '../../loc';
@@ -64,6 +74,20 @@ export interface IFee {
 type NavigationProps = NativeStackNavigationProp<SendDetailsStackParamList, 'SendDetails'>;
 type RouteProps = RouteProp<SendDetailsStackParamList, 'SendDetails'>;
 
+/** The wallet to send from: the one the route names if it can send, else the first that can. */
+const findSendWallet = (wallets: TWallet[], walletID?: string): TWallet | undefined => {
+  const sendable = wallets.filter(w => w.chain === Chain.ONCHAIN && w.allowSend());
+  return sendable.find(w => w.getID() === walletID) ?? sendable[0];
+};
+
+// The units the amount can be entered in, in the picker's order.
+const AMOUNT_UNITS: BitcoinUnit[] = [BitcoinUnit.SATS, BitcoinUnit.BTC, BitcoinUnit.LOCAL_CURRENCY];
+
+const amountUnitLabel = (unit: BitcoinUnit): string => {
+  if (unit === BitcoinUnit.LOCAL_CURRENCY) return getCurrencyCode();
+  return unit === BitcoinUnit.SATS ? loc.units[BitcoinUnit.SATS] : loc.units[BitcoinUnit.BTC];
+};
+
 const SendDetails = () => {
   const { wallets, sleep, txMetadata, saveToDisk } = useStorage();
   const navigation = useExtendedNavigation<NavigationProps>();
@@ -86,7 +110,7 @@ const SendDetails = () => {
   // The Next bar rides the keyboard, so a focused input has to clear the bar as well.
   const [nextBarHeight, setNextBarHeight] = useState(0);
   const contactSheetRef = useRef<BottomModalHandle>(null);
-  const [wallet, setWallet] = useState<TWallet | null>(null);
+  const [wallet, setWallet] = useState<TWallet | null>(() => findSendWallet(wallets, routeParams.walletID) ?? null);
   const { isVisible } = useKeyboard();
   const [addresses, setAddresses] = useState<IPaymentDestinations[]>([{ address: '', key: String(Math.random()), unit: amountUnit }]);
   const [networkTransactionFees, setNetworkTransactionFees] = useState(new NetworkTransactionFee(3, 2, 1));
@@ -95,47 +119,65 @@ const SendDetails = () => {
   const [feePrecalc, setFeePrecalc] = useState<IFee>({ current: null, slowFee: null, mediumFee: null, fastestFee: null });
   const [changeAddress, setChangeAddress] = useState<string | null>(null);
   const [dumb, setDumb] = useState(false);
-  const [displayUnit, setDisplayUnit] = useState<BitcoinUnit>(BitcoinUnit.BTC);
+  // The bitcoin unit the rest of the app shows: the amount starts in it, and a fiat amount is restated in it.
+  const walletUnit = wallet?.getPreferredBalanceUnit() === BitcoinUnit.SATS ? BitcoinUnit.SATS : BitcoinUnit.BTC;
+  // Local to this screen on purpose: switching units here never writes the wallet's preferred unit,
+  // so home and everywhere else keep showing theirs.
+  const [displayUnit, setDisplayUnit] = useState<BitcoinUnit>(walletUnit);
+  // The fiat text as typed, so "0." or "95.9" isn't rewritten from sats mid-typing.
+  const [fiatDraft, setFiatDraft] = useState<FiatDraft | null>(null);
+  // Re-renders when a rate arrives, so fiat becomes pickable and the estimate fills in.
+  const exchangeRate = useExchangeRate();
+  const fiatFractionDigits = getCurrencyFractionDigits();
   const { isEditable } = routeParams;
   // if utxo is limited we use it to calculate available balance
   const balance: number = utxos ? utxos.reduce((prev, curr) => prev + curr.value, 0) : (wallet?.getBalance() ?? 0);
   // single-recipient helpers
   const recipient = addresses[0];
   const isMaxActive = recipient?.amount === BitcoinUnit.MAX;
-  const displayAmount = isMaxActive
-    ? displayAmountForUnit(String(satoshiToBTC(balance)), balance, displayUnit)
-    : displayAmountForUnit(recipient?.amount ? String(recipient.amount) : '', Number(recipient?.amountSats), displayUnit);
-  // when sending max, amountSats holds the 'MAX' sentinel, so derive the fiat estimate from the full balance
-  const amountSatsNum = isMaxActive ? balance : Number(recipient?.amountSats) || 0;
-  const fiatEstimate = `≈ ${satoshiToLocalCurrency(amountSatsNum)}`;
+  // when sending max, amountSats holds the 'MAX' sentinel, so derive the amounts from the full balance
+  const sats = isMaxActive ? balance : Number(recipient?.amountSats);
+  const amountSatsNum = Number.isFinite(sats) ? sats : 0;
+  const displayAmount = amountFieldText({
+    unit: displayUnit,
+    stored: recipient?.amount,
+    sats,
+    fiatDraft,
+    fiat: satoshiToFiat(amountSatsNum),
+    fiatFractionDigits,
+  });
+  // The other side of the amount: fiat for a bitcoin amount, bitcoin for a fiat one.
+  const estimate =
+    displayUnit === BitcoinUnit.LOCAL_CURRENCY
+      ? `≈ ${formatBalance(amountSatsNum, walletUnit, true)}`
+      : `≈ ${satoshiToLocalCurrency(amountSatsNum)}`;
   const isFormValid = !!recipient?.address && amountSatsNum > 0;
   const hasFeeEstimate = !!feePrecalc.current && amountSatsNum > 0;
 
   const onChangeAmount = useCallback(
     (text: string) => {
-      const sanitized = sanitizeAmountInput(text, displayUnit);
+      const sanitized = sanitizeAmountInput(text, displayUnit, fiatFractionDigits);
+      let amount = sanitized;
+      let amountSats: number;
+      if (displayUnit === BitcoinUnit.BTC) {
+        amountSats = btcToSatoshi(sanitized);
+      } else {
+        // sats and fiat both come to whole sats, stored as their BTC amount
+        amountSats = displayUnit === BitcoinUnit.SATS ? Number(sanitized) : fiatToSatoshi(sanitized);
+        amount = sanitized === '' ? '' : satoshiToBTC(amountSats);
+      }
+      // The draft records exactly what gets stored, so it shows only until something else replaces the amount.
+      if (displayUnit === BitcoinUnit.LOCAL_CURRENCY) setFiatDraft({ text: sanitized, amount });
       setAddresses(addrs => {
-        const a = { ...addrs[0] };
-        if (displayUnit === BitcoinUnit.SATS) {
-          const sats = sanitized === '' ? 0 : Number(sanitized);
-          a.amountSats = sats;
-          a.amount = sanitized === '' ? '' : satoshiToBTC(sats);
-        } else {
-          a.amount = sanitized;
-          a.amountSats = btcToSatoshi(sanitized);
-        }
         // canonical storage is always BTC; displayUnit is a view concern only
-        a.unit = BitcoinUnit.BTC;
+        const a = { ...addrs[0], amount, amountSats, unit: BitcoinUnit.BTC };
         return [a, ...addrs.slice(1)];
       });
     },
-    [displayUnit],
+    [displayUnit, fiatFractionDigits],
   );
 
-  const onToggleUnit = useCallback(() => {
-    triggerSelectionHapticFeedback();
-    setDisplayUnit(u => (u === BitcoinUnit.SATS ? BitcoinUnit.BTC : BitcoinUnit.SATS));
-  }, []);
+  const onSelectUnit = useCallback((index: number) => setDisplayUnit(AMOUNT_UNITS[index]), []);
 
   const onChangeAddress = useCallback(
     (text: string) => {
@@ -281,14 +323,13 @@ const SendDetails = () => {
 
   useEffect(() => {
     // check if we have a suitable wallet
-    const suitable = wallets.filter(w => w.chain === Chain.ONCHAIN && w.allowSend());
-    if (suitable.length === 0) {
+    const newWallet = findSendWallet(wallets, routeParams.walletID);
+    if (!newWallet) {
       triggerHapticFeedback(HapticFeedbackTypes.NotificationError);
       presentAlert({ title: loc.errors.error, message: loc.send.details_wallet_before_tx });
       navigation.goBack();
       return;
     }
-    const newWallet = (routeParams.walletID && wallets.find(w => w.getID() === routeParams.walletID)) || suitable[0];
     setWallet(newWallet);
     setParams({ feeUnit: newWallet.getPreferredBalanceUnit(), amountUnit: newWallet.getPreferredBalanceUnit() });
 
@@ -884,10 +925,23 @@ const SendDetails = () => {
         <AmountHero
           editable
           amount={displayAmount}
-          fiat={fiatEstimate}
-          unit={displayUnit}
+          estimate={estimate}
+          unitLabel={amountUnitLabel(displayUnit)}
           unitMarginBottom={8}
-          onToggleUnit={onToggleUnit}
+          unitPicker={
+            <View style={styles.unitPicker}>
+              <PillSegmentedControl
+                segments={AMOUNT_UNITS.map(unit => ({
+                  label: amountUnitLabel(unit),
+                  // Fiat keeps its place until a rate has loaded, so the other units never shift.
+                  disabled: unit === BitcoinUnit.LOCAL_CURRENCY && exchangeRate === undefined,
+                  testID: `AmountUnit-${unit}`,
+                }))}
+                selectedIndex={AMOUNT_UNITS.indexOf(displayUnit)}
+                onChange={onSelectUnit}
+              />
+            </View>
+          }
           onChangeAmount={onChangeAmount}
           showHint={isAmountEmpty(recipient?.amount)}
           onUseMax={onUseAllPressed}
@@ -1095,5 +1149,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 26,
     marginHorizontal: 0,
+  },
+  // A fixed width keeps every unit in one spot. Each segment gets 64pt: room for "sats", "BTC" or any
+  // 3-letter currency code.
+  unitPicker: {
+    width: 216,
   },
 });

@@ -260,7 +260,7 @@ const ImportWallet = () => {
           </TouchableWithoutFeedback>
 
           <PillSegmentedControl
-            values={GRID_SIZES.map(count => loc.formatString(loc.wallets.restore_word_count, { count }) as string)}
+            segments={GRID_SIZES.map(count => ({ label: loc.formatString(loc.wallets.restore_word_count, { count }) as string }))}
             selectedIndex={GRID_SIZES.indexOf(phraseInput.wordCount)}
             onChange={index => phraseInput.setWordCount(GRID_SIZES[index])}
           />

@@ -1,4 +1,7 @@
+import BigNumber from 'bignumber.js';
+
 import {
+  amountFieldText,
   formatFeeOptionSubtitle,
   computeTotalSats,
   isAmountEmpty,
@@ -6,6 +9,7 @@ import {
   displayAmountForUnit,
   feeSpeedTierForRate,
   estimateFeeForRate,
+  formatFiatInput,
 } from '../../helpers/send/format';
 import { BitcoinUnit } from '../../models/bitcoinUnits';
 
@@ -56,6 +60,75 @@ describe('send/format', () => {
     it('returns empty string for empty input in either unit', () => {
       expect(sanitizeAmountInput('', BitcoinUnit.BTC)).toBe('');
       expect(sanitizeAmountInput('', BitcoinUnit.SATS)).toBe('');
+    });
+    it('stops BTC at 8 decimals, so an amount is always whole sats', () => {
+      expect(sanitizeAmountInput('0.000012345', BitcoinUnit.BTC)).toBe('0.00001234');
+      expect(sanitizeAmountInput('0.00000001', BitcoinUnit.BTC)).toBe('0.00000001');
+    });
+    it('keeps digits and a single dot in local currency, stopping at 2 decimals by default', () => {
+      expect(sanitizeAmountInput('95.987', BitcoinUnit.LOCAL_CURRENCY)).toBe('95.98');
+      expect(sanitizeAmountInput('1,5', BitcoinUnit.LOCAL_CURRENCY)).toBe('1.5');
+      expect(sanitizeAmountInput('₹100', BitcoinUnit.LOCAL_CURRENCY)).toBe('100');
+      expect(sanitizeAmountInput('0.', BitcoinUnit.LOCAL_CURRENCY)).toBe('0.');
+    });
+    it("follows the currency's own decimals", () => {
+      expect(sanitizeAmountInput('1500.5', BitcoinUnit.LOCAL_CURRENCY, 0)).toBe('15005');
+      expect(sanitizeAmountInput('1,500', BitcoinUnit.LOCAL_CURRENCY, 0)).toBe('1500');
+      expect(sanitizeAmountInput('1.2345', BitcoinUnit.LOCAL_CURRENCY, 3)).toBe('1.234');
+    });
+  });
+
+  describe('formatFiatInput', () => {
+    it('keeps cents and drops them from whole amounts', () => {
+      expect(formatFiatInput(new BigNumber('95.98'))).toBe('95.98');
+      expect(formatFiatInput(new BigNumber('95.9'))).toBe('95.90');
+      expect(formatFiatInput(new BigNumber('7778'))).toBe('7778');
+    });
+    it('rounds half up to the currency decimals', () => {
+      expect(formatFiatInput(new BigNumber('95.985'))).toBe('95.99');
+      expect(formatFiatInput(new BigNumber('15000.6'), 0)).toBe('15001');
+      expect(formatFiatInput(new BigNumber('1.5'), 3)).toBe('1.500');
+      expect(formatFiatInput(new BigNumber('2.0001'), 3)).toBe('2');
+    });
+    it('rounds an amount below the smallest unit to 0', () => {
+      expect(formatFiatInput(new BigNumber('0.0011'))).toBe('0');
+    });
+    it('returns empty string without an amount, as before a rate has loaded', () => {
+      expect(formatFiatInput(undefined)).toBe('');
+      expect(formatFiatInput(new BigNumber(NaN))).toBe('');
+    });
+  });
+
+  describe('amountFieldText', () => {
+    const base = { sats: 1234, fiatDraft: null, fiat: new BigNumber('123.4'), fiatFractionDigits: 2 };
+
+    it('restates the stored amount in bitcoin units', () => {
+      expect(amountFieldText({ ...base, unit: BitcoinUnit.SATS, stored: '0.00001234' })).toBe('1234');
+      expect(amountFieldText({ ...base, unit: BitcoinUnit.BTC, stored: '0.00001234' })).toBe('0.00001234');
+      expect(amountFieldText({ ...base, unit: BitcoinUnit.BTC, stored: undefined, sats: NaN })).toBe('');
+    });
+    it('shows Max as the whole balance it stands for', () => {
+      const max = { ...base, stored: BitcoinUnit.MAX, sats: 7106, fiat: new BigNumber('554.66') };
+      expect(amountFieldText({ ...max, unit: BitcoinUnit.SATS })).toBe('7106');
+      expect(amountFieldText({ ...max, unit: BitcoinUnit.BTC })).toBe('0.00007106');
+      expect(amountFieldText({ ...max, unit: BitcoinUnit.LOCAL_CURRENCY })).toBe('554.66');
+    });
+    it('keeps fiat as typed while the recipient still holds what that typing stored', () => {
+      const fiatDraft = { text: '95.9', amount: '0.00000959' };
+      expect(amountFieldText({ ...base, unit: BitcoinUnit.LOCAL_CURRENCY, stored: '0.00000959', sats: 959, fiatDraft })).toBe('95.9');
+      expect(
+        amountFieldText({ ...base, unit: BitcoinUnit.LOCAL_CURRENCY, stored: '0', sats: 0, fiatDraft: { text: '0.', amount: '0' } }),
+      ).toBe('0.');
+    });
+    it('restates fiat from sats once something else replaced the amount, even with the same sats', () => {
+      const fiatDraft = { text: '0.', amount: '0' };
+      // a scanned URI stores a number, Max off stores '', and both mean 0 sats like the draft did
+      expect(amountFieldText({ ...base, unit: BitcoinUnit.LOCAL_CURRENCY, stored: 0, sats: 0, fiatDraft })).toBe('');
+      expect(amountFieldText({ ...base, unit: BitcoinUnit.LOCAL_CURRENCY, stored: '', sats: 0, fiatDraft })).toBe('');
+      expect(amountFieldText({ ...base, unit: BitcoinUnit.LOCAL_CURRENCY, stored: '0.00001234', fiatDraft })).toBe('123.40');
+    });
+    it('leaves fiat empty before a rate has loaded', () => {
+      expect(amountFieldText({ ...base, unit: BitcoinUnit.LOCAL_CURRENCY, stored: '0.00001234', fiat: undefined })).toBe('');
     });
   });
 
