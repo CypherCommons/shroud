@@ -14,6 +14,12 @@ import type {
 // range queries; inheriting it here makes create/import/track hang for minutes on a dead indexer.
 const FAST_LOOKUP = { timeout: 8000, retries: 1 };
 
+// Mirrors the indexer's MAX_BLOCK_RANGE. Scan windows are aligned to multiples of it because the
+// indexer stores 1000 blocks per partition and 1000 is a multiple of 50, so an aligned window never
+// straddles a partition boundary (a straddling query has to read two partitions). This is only an
+// optimisation: any window is still correct if the indexer uses a different partition width.
+const RANGE_BATCH_SIZE = 50;
+
 /** Invoked once per scanned range, empty or not, so the caller can track progress. */
 export type RangeProcessedCallback = (transactions: IndexerTransaction[], rangeEnd: number) => Promise<number>;
 
@@ -94,17 +100,18 @@ export class SilentPaymentIndexer {
     onProgress?: ScanProgressCallback,
     cancelCallback?: () => boolean,
   ): Promise<void> {
-    const RANGE_BATCH_SIZE = 50;
     const totalBlocks = endHeight - startHeight + 1;
     let blocksScanned = 0;
     let utxosFound = 0;
 
-    for (let rangeStart = startHeight; rangeStart <= endHeight; rangeStart += RANGE_BATCH_SIZE) {
+    let rangeStart = startHeight;
+    while (rangeStart <= endHeight) {
       if (cancelCallback?.()) {
         throw new Error('SCAN_CANCELLED');
       }
 
-      const rangeEnd = Math.min(rangeStart + RANGE_BATCH_SIZE - 1, endHeight);
+      // End on the last height of this window's RANGE_BATCH_SIZE bucket, so only the first window can be short.
+      const rangeEnd = Math.min(rangeStart - (rangeStart % RANGE_BATCH_SIZE) + RANGE_BATCH_SIZE - 1, endHeight);
       const rangeSize = rangeEnd - rangeStart + 1;
 
       let response: TransactionResponse;
@@ -133,6 +140,8 @@ export class SilentPaymentIndexer {
           utxosFound,
         });
       }
+
+      rangeStart = rangeEnd + 1;
     }
   }
 }

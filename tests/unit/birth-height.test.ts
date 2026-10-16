@@ -104,7 +104,7 @@ describe('scanBlocks range handling', () => {
       .mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
     await expect(sp.scanForwardWithCallback(1, 100, jest.fn().mockResolvedValue(0))).rejects.toThrow(
-      /Failed to fetch range 51-100: ECONNREFUSED/,
+      /Failed to fetch range 50-99: ECONNREFUSED/,
     );
   });
 
@@ -126,6 +126,55 @@ describe('scanBlocks range handling', () => {
 
     await sp.scanForwardWithCallback(1, 100, onRange);
 
-    expect(onRange.mock.calls.map(([, rangeEnd]) => rangeEnd)).toEqual([50, 100]);
+    expect(onRange.mock.calls.map(([, rangeEnd]) => rangeEnd)).toEqual([49, 99, 100]);
+  });
+
+  describe('window alignment', () => {
+    const PARTITION_BLOCKS = 1000;
+
+    const scannedWindows = async (startHeight: number, endHeight: number) => {
+      const sp = indexer();
+      const fetch = jest.spyOn(sp, 'getTransactionsByRange').mockResolvedValue({ transactions: [] } as any);
+      await sp.scanForwardWithCallback(startHeight, endHeight, jest.fn().mockResolvedValue(0));
+      return fetch.mock.calls.map(([start, end]) => ({ start, end }));
+    };
+
+    it('never straddles a partition boundary, whatever the start height', async () => {
+      const windows = await scannedWindows(1234, 3100);
+
+      for (const { start, end } of windows) {
+        expect(end - start + 1).toBeLessThanOrEqual(50);
+        expect(Math.floor(start / PARTITION_BLOCKS)).toBe(Math.floor(end / PARTITION_BLOCKS));
+      }
+    });
+
+    it('only shortens the first window and covers the range exactly once', async () => {
+      const windows = await scannedWindows(1234, 3100);
+
+      expect(windows[0]).toEqual({ start: 1234, end: 1249 });
+      expect(windows.slice(1).every(({ start }) => start % 50 === 0)).toBe(true);
+      windows.slice(1, -1).forEach(({ start, end }) => expect(end - start + 1).toBe(50));
+      windows.slice(1).forEach(({ start }, i) => expect(start).toBe(windows[i].end + 1));
+      expect(windows[windows.length - 1].end).toBe(3100);
+    });
+
+    it('splits an aligned start into full windows', async () => {
+      expect(await scannedWindows(1000, 1099)).toEqual([
+        { start: 1000, end: 1049 },
+        { start: 1050, end: 1099 },
+      ]);
+    });
+
+    it('splits a range that spans a boundary at the boundary', async () => {
+      expect(await scannedWindows(999, 1000)).toEqual([
+        { start: 999, end: 999 },
+        { start: 1000, end: 1000 },
+      ]);
+    });
+
+    it('clamps to the end height and handles a single block', async () => {
+      expect(await scannedWindows(1010, 1020)).toEqual([{ start: 1010, end: 1020 }]);
+      expect(await scannedWindows(1010, 1010)).toEqual([{ start: 1010, end: 1010 }]);
+    });
   });
 });
