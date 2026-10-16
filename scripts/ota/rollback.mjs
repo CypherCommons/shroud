@@ -115,6 +115,6 @@ console.log(`\nChannel ${values.channel} rolled back to the embedded code:`);
 for (const { platform, runtimeVersion } of staged) console.log(`  ${platform.padEnd(8)} runtime ${runtimeVersion}`);
 console.log(
   values.upload
-    ? '\nUploaded. Apps return to their built-in code on the launch after their next check.'
+    ? '\nUploaded. Apps ask to restart into their built-in code after their next check.'
     : `\nStaged in ${stageDir}. Nothing was uploaded; rerun with --upload.`,
 );
