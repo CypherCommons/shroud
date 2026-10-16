@@ -12,6 +12,9 @@
 //   directives/<id>/directive.json, directives/<id>/signature
 //   channels/<channel>/<runtime version>/<platform>.json
 //       the current pointer: {"kind":"update","id":…} or {"kind":"rollBackToEmbedded","id":…}
+//   policies/<channel>.json
+//       the oldest native build allowed to run, per platform: {"minimumBuild":{"ios":…,"android":…}}.
+//       Unsigned; the app checks the numbers (written by scripts/ota/minimum-build.mjs).
 
 import { open, readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
@@ -38,6 +41,7 @@ async function handle(req, res, root) {
   if (req.method !== 'GET') return sendJson(res, 405, { error: 'Expected GET' });
   if (pathname === '/health') return sendText(res, 200, 'ok');
   if (pathname === '/manifest') return serveManifest(req, res, root);
+  if (pathname === '/policy') return servePolicy(req, res, root);
   if (pathname.startsWith('/assets/')) return serveAsset(res, root, pathname.slice('/assets/'.length));
   return sendJson(res, 404, { error: 'Not found' });
 }
@@ -51,9 +55,8 @@ async function serveManifest(req, res, root) {
   if (platform !== 'ios' && platform !== 'android') return sendJson(res, 400, { error: 'Expected expo-platform: ios or android' });
   const runtimeVersion = header('expo-runtime-version');
   if (!runtimeVersion || !RUNTIME_VERSION.test(runtimeVersion)) return sendJson(res, 400, { error: 'Invalid expo-runtime-version' });
-  // Builds name their channel in their request headers; production is the default in the app's native config.
-  const channel = header('expo-channel-name') ?? 'production';
-  if (!CHANNEL.test(channel)) return sendJson(res, 400, { error: 'Invalid expo-channel-name' });
+  const channel = channelOf(req);
+  if (!channel) return sendJson(res, 400, { error: 'Invalid expo-channel-name' });
 
   const pointer = await readJsonOrNull(path.join(root, 'channels', channel, runtimeVersion, `${platform}.json`));
   // Nothing published for this channel and runtime: a 204 tells the client to keep what it runs.
@@ -81,6 +84,27 @@ async function serveManifest(req, res, root) {
     ]);
   }
   throw new Error(`Unknown pointer kind ${JSON.stringify(pointer.kind)} for ${channel}/${runtimeVersion}/${platform}`);
+}
+
+async function servePolicy(req, res, root) {
+  const channel = channelOf(req);
+  if (!channel) return sendJson(res, 400, { error: 'Invalid expo-channel-name' });
+  // A file that doesn't parse throws, so it's logged and answered with a 500 like a broken pointer, and
+  // apps keep the policy they have. The app checks the numbers.
+  const policy = await readJsonOrNull(path.join(root, 'policies', `${channel}.json`));
+  // Nothing set for this channel: every build may run.
+  if (policy === null) return noContent(res);
+  sendJson(res, 200, policy, { 'cache-control': 'private, max-age=0' });
+}
+
+/**
+ * The channel a build names in its request headers, or null if it isn't one. Production is the default
+ * in the app's native config. Node joins a repeated header into one comma-separated value, which the
+ * check rejects.
+ */
+function channelOf(req) {
+  const channel = req.headers['expo-channel-name'] ?? 'production';
+  return CHANNEL.test(channel) ? channel : null;
 }
 
 async function serveAsset(res, root, name) {
@@ -126,7 +150,11 @@ async function readJsonOrNull(file) {
 }
 
 function noUpdate(res) {
-  res.writeHead(204, { 'expo-protocol-version': '1', 'expo-sfv-version': '0', 'cache-control': 'private, max-age=0' });
+  noContent(res, { 'expo-protocol-version': '1', 'expo-sfv-version': '0' });
+}
+
+function noContent(res, headers = {}) {
+  res.writeHead(204, { ...headers, 'cache-control': 'private, max-age=0' });
   res.end();
 }
 
@@ -150,9 +178,9 @@ function sendMultipart(res, parts) {
   res.end(body);
 }
 
-function sendJson(res, status, value) {
+function sendJson(res, status, value, headers = {}) {
   const body = JSON.stringify(value);
-  res.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) });
+  res.writeHead(status, { ...headers, 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) });
   res.end(body);
 }
 

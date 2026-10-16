@@ -148,7 +148,7 @@ try {
   }
   console.log(
     values.upload
-      ? '\nUploaded. Apps download it on their next launch and run it on the one after.'
+      ? '\nUploaded. Apps download it on their next launch and ask to restart into it.'
       : `\nStaged in ${stageDir}. Nothing was uploaded; rerun with --upload to publish.`,
   );
 } finally {

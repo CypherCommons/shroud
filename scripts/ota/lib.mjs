@@ -142,7 +142,51 @@ export async function stageRollback({ stageDir, channel, runtimeVersion, platfor
   await writeFile(file, `${JSON.stringify({ kind: 'rollBackToEmbedded', id, ...pointer })}\n`);
 }
 
-// ---- Command-line helpers shared by publish.mjs and rollback.mjs ----
+/**
+ * The minimum-build policy served at /policy: the oldest native build (CFBundleVersion, versionCode)
+ * allowed to run on each platform, 0 for none. Unsigned, so the app reads only these numbers from it.
+ */
+export function policyBody({ ios, android, updatedAt }) {
+  for (const [platform, build] of Object.entries({ ios, android })) {
+    if (!Number.isSafeInteger(build) || build < 0) throw new Error(`The minimum ${platform} build must be a whole number, 0 for none`);
+  }
+  return `${JSON.stringify({ minimumBuild: { ios, android }, updatedAt })}\n`;
+}
+
+/** Lays a channel's policy out the way update-server reads it, under `stageDir`. */
+export async function stagePolicy({ stageDir, channel, body }) {
+  if (!CHANNEL.test(channel)) throw new Error(`Invalid channel ${channel}`);
+  const dir = path.join(stageDir, 'policies');
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, `${channel}.json`), body);
+}
+
+/**
+ * The minimums to publish: the ones given, and the live policy's for any platform left out, so that
+ * changing one platform never resets the other. `live` is what fetchLivePolicy returned.
+ */
+export function nextMinimumBuilds({ live, ios, android }) {
+  const next = {};
+  for (const [platform, given] of Object.entries({ ios, android })) {
+    const current = given ?? live?.minimumBuild?.[platform] ?? 0;
+    if (!Number.isSafeInteger(current) || current < 0) {
+      throw new Error(`The live ${platform} minimum is ${JSON.stringify(current)}; pass --${platform} to replace it`);
+    }
+    next[platform] = current;
+  }
+  return next;
+}
+
+/** The policy the server hands builds on `channel` right now, or null when none is set. */
+export async function fetchLivePolicy({ baseUrl, channel }) {
+  const response = await fetch(`${baseUrl}/policy`, { headers: { 'expo-channel-name': channel } });
+  if (response.status === 204) return null;
+  if (response.status === 404) throw new Error(`${baseUrl} doesn't serve /policy yet; deploy the current update-server first`);
+  if (response.status !== 200) throw new Error(`${baseUrl}/policy answered ${response.status} on ${channel}`);
+  return response.json();
+}
+
+// ---- Command-line helpers shared by publish.mjs, rollback.mjs and minimum-build.mjs ----
 
 export function run(command, args, { env, capture = true } = {}) {
   const result = spawnSync(command, args, {
@@ -200,8 +244,9 @@ async function makeReadable(dir) {
 
 /**
  * Copies the staged tree to the server with rsync over SSH: files first, the channel pointers
- * last, so a client never sees a pointer to an update that isn't fully there yet. `target` is
- * `user@host:/path`, or `user@host:` when the key is restricted to the directory with rrsync.
+ * last, so a client never sees a pointer to an update that isn't fully there yet. Pointers and
+ * policies replace what's there; everything else is named by content and never changes. `target`
+ * is `user@host:/path`, or `user@host:` when the key is restricted to the directory with rrsync.
  */
 export async function upload(stageDir, target) {
   // -p keeps the modes set here. Without it the server's umask decides, and may leave the files
@@ -209,10 +254,14 @@ export async function upload(stageDir, target) {
   await makeReadable(stageDir);
   const base = ['-rtp'];
   const destination = /[:/]$/.test(target) ? target : `${target}/`;
-  const content = ['assets', 'updates', 'directives'].filter(dir => existsSync(path.join(stageDir, dir)));
-  if (content.length)
-    run('rsync', [...base, '--ignore-existing', ...content.map(dir => path.join(stageDir, dir)), destination], { capture: false });
-  run('rsync', [...base, path.join(stageDir, 'channels'), destination], { capture: false });
+  const staged = dirs => dirs.filter(dir => existsSync(path.join(stageDir, dir))).map(dir => path.join(stageDir, dir));
+  const content = staged(['assets', 'updates', 'directives']);
+  const pointers = staged(['channels', 'policies']);
+  if (!pointers.length) throw new Error(`Nothing to upload in ${stageDir}`);
+  if (content.length) run('rsync', [...base, '--ignore-existing', ...content, destination], { capture: false });
+  // --checksum: a pointer or policy rewritten within the same second at the same size would pass
+  // rsync's size-and-time check and be skipped. They're tiny, so comparing contents costs nothing.
+  run('rsync', [...base, '--checksum', ...pointers, destination], { capture: false });
 }
 
 /** Splits a multipart/mixed response from the update server into its named parts. */
