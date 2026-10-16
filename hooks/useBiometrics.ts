@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import ReactNativeBiometrics, { BiometryTypes as RNBiometryTypes } from 'react-native-biometrics';
 import RNSecureKeyStore, { ACCESSIBLE } from 'react-native-secure-key-store';
 import loc from '../loc';
@@ -78,10 +78,10 @@ const getBiometricUnlockTitle = (type: string | undefined): string => {
 
 const showKeychainWipeAlert = () => {
   if (Platform.OS === 'ios') {
-    Alert.alert(
-      loc.settings.encrypt_tstorage,
-      loc.settings.biom_10times,
-      [
+    presentAlert({
+      title: loc.settings.encrypt_tstorage,
+      message: loc.settings.biom_10times,
+      buttons: [
         {
           text: loc._.cancel,
           onPress: () => {
@@ -99,10 +99,10 @@ const showKeychainWipeAlert = () => {
             }
             const isAuthenticated = await unlockWithBiometrics();
             if (isAuthenticated) {
-              Alert.alert(
-                loc.settings.encrypt_tstorage,
-                loc.settings.biom_remove_decrypt,
-                [
+              presentAlert({
+                title: loc.settings.encrypt_tstorage,
+                message: loc.settings.biom_remove_decrypt,
+                buttons: [
                   { text: loc._.cancel, style: 'cancel' },
                   {
                     text: loc._.ok,
@@ -110,15 +110,15 @@ const showKeychainWipeAlert = () => {
                     onPress: async () => await clearKeychain(),
                   },
                 ],
-                { cancelable: false },
-              );
+                options: { cancelable: false },
+              });
             }
           },
           style: 'default',
         },
       ],
-      { cancelable: false },
-    );
+      options: { cancelable: false },
+    });
   }
 };
 

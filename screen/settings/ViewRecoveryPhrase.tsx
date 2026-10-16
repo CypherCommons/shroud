@@ -32,7 +32,7 @@ const ViewRecoveryPhrase: React.FC = () => {
   const { isScreenCaptureAllowed } = useSettings();
   const { enableScreenProtect, disableScreenProtect } = useScreenProtect();
   const [isRevealed, setIsRevealed] = useState(false);
-  const { runProtected, isAuthenticating, isPinPromptVisible, cancelPinPrompt, pinAttempt } = useProtectedAction();
+  const { runProtected, isAuthenticating, isPinPromptVisible, cancelPinPrompt, onPinCorrect } = useProtectedAction();
   const { currentAppState } = useAppState();
 
   // BlurView's Android capture root is the whole Activity content view, not its own bounds
@@ -134,7 +134,7 @@ const ViewRecoveryPhrase: React.FC = () => {
         <View style={styles.headerRow}>
           <HeaderBackButton onPress={cancelPinPrompt} color={colors.textPrimary} testID="RecoveryPhrasePinBackButton" />
         </View>
-        <PinPrompt subtitle={loc.settings.security_recovery_phrase_pin_subtitle} pinAttempt={pinAttempt} />
+        <PinPrompt subtitle={loc.settings.security_recovery_phrase_pin_subtitle} onSuccess={onPinCorrect} />
       </SafeAreaView>
     );
   }

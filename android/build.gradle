@@ -21,8 +21,8 @@ buildscript {
     }
 }
 
-// Gradle 9 removed jcenter(), but react-native-secure-key-store and react-native-prompt-android
-// still call it from their build.gradle. Point those calls at mavenCentral() instead.
+// Gradle 9 removed jcenter(), but react-native-secure-key-store still calls it from its
+// build.gradle. Point that call at mavenCentral() instead.
 def redirectJcenter = { RepositoryHandler repositories ->
     repositories.metaClass.jcenter = { -> delegate.mavenCentral() }
 }

@@ -1,33 +1,16 @@
-import { Alert } from 'react-native';
+import presentAlert from '../components/Alert';
 import loc from '../loc';
 
-/**
- * Helper function that throws un-cancellable dialog to confirm user's action.
- * Promise resolves to TRUE if user confirms, FALSE otherwise
- *
- * @param title {string}
- * @param text {string}
- *
- * @return {Promise<boolean>}
- */
-export default function (title = 'Are you sure?', text = ''): Promise<boolean> {
-  return new Promise(resolve => {
-    Alert.alert(
+/** Asks Yes/Cancel in a dialog that can't be dismissed. Resolves true on Yes. */
+export default (title: string, text: string): Promise<boolean> =>
+  new Promise(resolve => {
+    presentAlert({
       title,
-      text,
-      [
-        {
-          text: loc._.yes,
-          onPress: () => resolve(true),
-          style: 'default',
-        },
-        {
-          text: loc._.cancel,
-          onPress: () => resolve(false),
-          style: 'cancel',
-        },
+      message: text,
+      buttons: [
+        { text: loc._.yes, onPress: () => resolve(true), style: 'default' },
+        { text: loc._.cancel, onPress: () => resolve(false), style: 'cancel' },
       ],
-      { cancelable: false },
-    );
+      options: { cancelable: false },
+    });
   });
-}

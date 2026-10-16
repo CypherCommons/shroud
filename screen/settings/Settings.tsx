@@ -1,7 +1,9 @@
 import React from 'react';
+import { usePreventRemove } from '@react-navigation/native';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import SafeAreaScrollView from '../../components/SafeAreaScrollView';
 import SettingsRow from '../../components/SettingsRow';
+import PinPrompt from '../../components/PinPrompt';
 import GeneralIcon from '../../components/icons/GeneralIcon';
 import CurrencyIcon from '../../components/icons/CurrencyIcon';
 import ContactIcon from '../../components/icons/ContactIcon';
@@ -86,9 +88,13 @@ const Settings: React.FC = () => {
   const { colors } = useTheme();
   const navigation = useExtendedNavigation();
   const { wallets } = useStorage();
-  const handleDeleteWallet = useDeleteWallet();
+  const { deleteWallet, isPinPromptVisible, cancelPinPrompt, onPinCorrect } = useDeleteWallet();
+  // Back while the PIN is asked for drops the delete and stays on Settings, like the recovery phrase screen.
+  usePreventRemove(isPinPromptVisible, cancelPinPrompt);
 
   const cardStyle = [styles.card, { borderColor: colors.borderDefault, backgroundColor: colors.fieldBackground }];
+
+  if (isPinPromptVisible) return <PinPrompt subtitle={loc.wallets.details_delete_pin_subtitle} onSuccess={onPinCorrect} />;
 
   return (
     <SafeAreaScrollView
@@ -130,7 +136,7 @@ const Settings: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel={loc.settings.delete_wallet}
           style={[styles.deleteWalletButton, styles.cardGap, { borderColor: colors.statusError, backgroundColor: colors.surfaceCaution }]}
-          onPress={handleDeleteWallet}
+          onPress={deleteWallet}
           testID="DeleteWalletButton"
           activeOpacity={0.7}
         >
