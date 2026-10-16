@@ -53,7 +53,7 @@ const Success = () => {
 
         <Text style={[styles.sentText, stylesHook.sentText]}>{loc.send.sent_successfully}</Text>
 
-        <AmountHero amount={amountStr} fiat={fiat} />
+        <AmountHero amount={amountStr} estimate={fiat} />
 
         {contact && (
           <ContactChip name={contact.name} colorIndex={contact.colorIndex} style={styles.contactChip} testID="SuccessContactChip" />

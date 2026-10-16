@@ -42,13 +42,13 @@ export const useRemeasureOnProgrammaticChange = (value: string | undefined, enab
 };
 
 interface AmountHeroProps {
-  /** BTC amount as a string ('' when empty), or a display string in read-only mode. */
+  /** The amount in the unit shown ('' when empty), or a display string in read-only mode. */
   amount?: string;
-  /** Preformatted fiat estimate, e.g. "≈ ₹0". */
-  fiat: string;
+  /** Preformatted estimate in the other denomination, e.g. "≈ ₹0", or "≈ 1,234 sats" when the amount is in fiat. */
+  estimate: string;
   editable?: boolean;
   onChangeAmount?: (text: string) => void;
-  /** Shown beneath the fiat line in editable mode (e.g. "Tap amount to edit"). */
+  /** Shown beneath the estimate in editable mode (e.g. "Tap amount to edit"). */
   showHint?: boolean;
   /** When provided (editable mode), renders the "Max" pill. */
   onUseMax?: () => void;
@@ -56,24 +56,24 @@ interface AmountHeroProps {
   /** When true, the Max pill shows a tick and the "Sending Max" hint replaces the edit hint. */
   isMax?: boolean;
   /** Unit shown next to the amount. Defaults to BTC. */
-  unit?: BitcoinUnit;
-  /** When provided, the unit label becomes a button that toggles BTC <-> sats. */
-  onToggleUnit?: () => void;
+  unitLabel?: string;
+  /** Picks the unit the amount is entered in. Sits under the estimate, where the amount's width can't move it. */
+  unitPicker?: React.ReactNode;
   /** Extra space below the unit label, pulling it up off the amount's baseline. Defaults to 0 (flush baseline, matches Confirm). Send's editable layout wants 8. */
   unitMarginBottom?: number;
 }
 
 const AmountHero: React.FC<AmountHeroProps> = ({
   amount,
-  fiat,
+  estimate,
   editable = false,
   onChangeAmount,
   showHint = false,
   onUseMax,
   useMaxDisabled = false,
   isMax = false,
-  unit = BitcoinUnit.BTC,
-  onToggleUnit,
+  unitLabel = loc.units[BitcoinUnit.BTC],
+  unitPicker,
   unitMarginBottom = 0,
 }) => {
   const { colors } = useTheme();
@@ -100,7 +100,6 @@ const AmountHero: React.FC<AmountHeroProps> = ({
   });
 
   const amountColor = empty ? stylesHook.amountEmpty : stylesHook.amountFilled;
-  const unitLabel = unit === BitcoinUnit.SATS ? loc.units[BitcoinUnit.SATS] : loc.units[BitcoinUnit.BTC];
 
   return (
     <Pressable
@@ -129,16 +128,20 @@ const AmountHero: React.FC<AmountHeroProps> = ({
             {empty ? '0' : amount}
           </ShroudText>
         )}
-        {onToggleUnit ? (
-          <Pressable accessibilityRole="button" onPress={onToggleUnit} hitSlop={8} testID="AmountUnitToggle">
-            <ShroudText style={[styles.unit, stylesHook.meta, stylesHook.unit]}>{unitLabel}</ShroudText>
-          </Pressable>
-        ) : (
-          <ShroudText style={[styles.unit, stylesHook.meta, stylesHook.unit]}>{unitLabel}</ShroudText>
-        )}
+        <ShroudText style={[styles.unit, stylesHook.meta, stylesHook.unit]} testID="AmountHeroUnit">
+          {unitLabel}
+        </ShroudText>
       </View>
 
-      <ShroudText style={[styles.fiat, stylesHook.meta]}>{fiat}</ShroudText>
+      <ShroudText style={[styles.estimate, stylesHook.meta]}>{estimate}</ShroudText>
+
+      {/* Above the hint, which comes and goes, so the picker never shifts under a finger. It takes the touches
+          that miss its segments, which would otherwise reach this press target and open the keyboard. */}
+      {unitPicker && (
+        <View style={styles.unitPicker} onStartShouldSetResponder={() => true}>
+          {unitPicker}
+        </View>
+      )}
 
       {isMax ? (
         <ShroudText style={[styles.hint, stylesHook.sendingMax]}>{loc.send.sending_max}</ShroudText>
@@ -162,11 +165,14 @@ const AmountHero: React.FC<AmountHeroProps> = ({
   );
 };
 
+const ROW_GAP = 3;
+const PICKER_SPACING = 12;
+
 const styles = StyleSheet.create({
   container: {
     width: '100%',
     alignItems: 'center',
-    gap: 3,
+    gap: ROW_GAP,
   },
   amountRow: {
     flexDirection: 'row',
@@ -195,7 +201,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 30,
   },
-  fiat: {
+  // PICKER_SPACING from the lines above and below, on top of the container's ROW_GAP.
+  unitPicker: {
+    marginVertical: PICKER_SPACING - ROW_GAP,
+  },
+  estimate: {
     fontFamily: ClashFont.regular,
     fontSize: 15,
     lineHeight: 22,

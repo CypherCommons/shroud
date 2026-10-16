@@ -1,4 +1,7 @@
+import BigNumber from 'bignumber.js';
+
 import { BitcoinUnit } from '../../models/bitcoinUnits';
+import { satoshiToBTC } from '../../modules/currency';
 
 /** Pure formatting/derivation helpers for the send flow. No React, no I/O. */
 
@@ -37,15 +40,60 @@ export const isAmountEmpty = (amount?: string | number): boolean => {
 
 /**
  * Strips a raw amount input to the valid character set for the given unit.
- * BTC: digits plus at most one decimal point. SATS: digits only.
+ * BTC: digits plus at most one decimal point, up to 8 decimals (whole sats).
+ * LOCAL_CURRENCY: the same, up to the currency's own decimals (2 for most, 0 for e.g. JPY). SATS: digits only.
  */
-export const sanitizeAmountInput = (text: string, unit: BitcoinUnit): string => {
-  if (unit === BitcoinUnit.SATS) {
+export const sanitizeAmountInput = (text: string, unit: BitcoinUnit, fiatFractionDigits = 2): string => {
+  let maxDecimals = 8;
+  if (unit === BitcoinUnit.SATS) maxDecimals = 0;
+  else if (unit === BitcoinUnit.LOCAL_CURRENCY) maxDecimals = fiatFractionDigits;
+  if (maxDecimals === 0) {
     return text.replace(/[^0-9]/g, '');
   }
   const cleaned = text.replace(/,/g, '.').replace(/[^0-9.]/g, '');
   const [intPart, ...rest] = cleaned.split('.');
-  return rest.length ? `${intPart}.${rest.join('')}` : intPart;
+  return rest.length ? `${intPart}.${rest.join('').slice(0, maxDecimals)}` : intPart;
+};
+
+/**
+ * A fiat amount the way the amount field shows it: rounded to the currency's decimals, dropping a
+ * fraction that is all zeros. '' without an amount, e.g. before a rate has loaded.
+ */
+export const formatFiatInput = (fiat: BigNumber | undefined, fractionDigits = 2): string => {
+  if (!fiat?.isFinite()) return '';
+  return fiat.toFixed(fractionDigits).replace(/\.0+$/, '');
+};
+
+/** Fiat text exactly as typed, and the amount (in BTC) that typing stored for the recipient. */
+export interface FiatDraft {
+  text: string;
+  amount: string;
+}
+
+interface AmountFieldTextInput {
+  unit: BitcoinUnit;
+  /** What the recipient holds: a BTC amount (a number when it came from a scanned URI), '' or undefined when empty, or 'MAX'. */
+  stored: string | number | undefined;
+  /** The amount in sats, the full balance when sending max. NaN while the BTC text isn't a number yet. */
+  sats: number;
+  fiatDraft: FiatDraft | null;
+  /** `sats` in fiat at the current rate; undefined until a rate has loaded. */
+  fiat: BigNumber | undefined;
+  fiatFractionDigits: number;
+}
+
+/**
+ * The amount field's text in `unit`. A fiat amount shows exactly as typed ("0.", "95.9") while the recipient
+ * still holds what that typing stored. Whatever else sets the amount (Max, a scanned or pasted amount, typing in
+ * another unit) stores something different, so the fiat text is then restated from sats.
+ */
+export const amountFieldText = ({ unit, stored, sats, fiatDraft, fiat, fiatFractionDigits }: AmountFieldTextInput): string => {
+  if (unit === BitcoinUnit.LOCAL_CURRENCY) {
+    if (fiatDraft && stored === fiatDraft.amount) return fiatDraft.text;
+    return sats > 0 ? formatFiatInput(fiat, fiatFractionDigits) : '';
+  }
+  if (stored === BitcoinUnit.MAX) return displayAmountForUnit(satoshiToBTC(sats), sats, unit);
+  return displayAmountForUnit(stored ? String(stored) : '', sats, unit);
 };
 
 /**
