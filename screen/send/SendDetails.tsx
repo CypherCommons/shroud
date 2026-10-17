@@ -529,7 +529,7 @@ const SendDetails = () => {
       }
 
       console.log('options', options);
-      if (wallet.isAddressValid(address)) {
+      if (wallet.isAddressValid(address) || isSilentPaymentAddress(address, getActiveNetwork().bitcoinjs)) {
         setAddresses(addrs => {
           addrs[0].address = address;
           addrs[0].amount = options?.amount ?? 0;
@@ -541,6 +541,9 @@ const SendDetails = () => {
           return [...addrs];
         });
         setParams({ transactionMemo: options.label || '', amountUnit: BitcoinUnit.BTC }); // there used to be `options.message` here as well. bug?
+      } else {
+        triggerHapticFeedback(HapticFeedbackTypes.NotificationError);
+        presentAlert({ title: loc.errors.error, message: loc.send.details_address_field_is_not_valid });
       }
 
       setIsLoading(false);
