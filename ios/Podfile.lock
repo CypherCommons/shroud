@@ -2879,7 +2879,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
-  - RustJsiBridge (0.0.1):
+  - RustJsiBridge (1.0.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -3445,7 +3445,7 @@ SPEC CHECKSUMS:
   RNTrueSheet: 6e7b63f5a858726c97b816d9785e98477b77be02
   RNVectorIcons: 351f60261960151629d161f4e789e7b4183234c2
   RNWorklets: ca7e0a49681a74e09f09e389aefd9e453fa0079b
-  RustJsiBridge: d54b13b242955facb755bbc1f0abc6aa6139eddb
+  RustJsiBridge: 014f567cf21440e85d1583158caf6d8ccc0aa5fc
   Yoga: 18b74b3ade30bebc1904004dfaceae1dd02a330a
 
 PODFILE CHECKSUM: cabe082838ddc028354c4f7584e95961127f0fb1
