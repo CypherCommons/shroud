@@ -13,6 +13,7 @@ So someone who takes over the server can't make the app run code we didn't sign.
 
 - withhold updates, or roll users back to the code built into the app;
 - serve any update or roll-back ever signed for a runtime version, on any channel. A signature isn't tied to a channel and can't be revoked, so a preview update, or one we rolled back because it was broken, can reach production users. Apps skip an update older than the one they run, which limits this but doesn't stop it.
+- set any minimum build. The policy at `/policy` is unsigned, so this can lock every install below a build number out of the app. The app reads only the numbers from it, though, and the store links it opens are built in.
 
 Treat everything you sign as if it went to production. Only a store build with a new runtime version leaves behind what was signed for the old one.
 
@@ -24,6 +25,7 @@ The server also writes no access logs, because an update check reveals the user'
 | --- | --- |
 | `GET /manifest` | The current update for the request's `expo-platform`, `expo-runtime-version` and `expo-channel-name` (default `production`), or a signed roll-back directive. Returns 204 when there is nothing new. |
 | `GET /assets/<sha256><ext>` | An update file. Files are named by their hash, so they are cached forever. |
+| `GET /policy` | The minimum native build per platform for the request's `expo-channel-name` (default `production`), as `{"minimumBuild":{"ios":…,"android":…}}`. Returns 204 when none is set. |
 | `GET /health` | `ok` |
 
 ## Data directory
@@ -35,6 +37,7 @@ assets/<sha256 hex><ext>
 updates/<id>/manifest.json + signature
 directives/<id>/directive.json + signature
 channels/<channel>/<runtime version>/<platform>.json   (the current pointer)
+policies/<channel>.json                                 (the minimum-build policy)
 ```
 
 ## Deploy
@@ -85,7 +88,14 @@ npm run ota:rollback -- --channel production \
   --private-key <key> --upload deploy@updates.shroudwallet.com:/srv/shroud-updates
 ```
 
-Before uploading, both ask the server what is live. A publish stops if its update would be older than the live one (a clock behind), and a rollback stops if nothing is live for its runtime version (the wrong checkout). Leave out `--upload` to stage the files under `build/ota/stage` and look at them first. `RELEASE.md` covers when an update can go out over the air and when it needs a store build.
+To stop builds below a build number from running (see `RELEASE.md`, "Minimum supported build"):
+
+```sh
+node scripts/ota/minimum-build.mjs --channel production --ios 14 --android 12 \
+  --upload deploy@updates.shroudwallet.com:/srv/shroud-updates
+```
+
+Before uploading, all three ask the server what is live. A publish stops if its update would be older than the live one (a clock behind), and a rollback stops if nothing is live for its runtime version (the wrong checkout). Leave out `--upload` to stage the files under `build/ota/stage` (`build/ota/policy-stage` for the minimum build) and look at them first. `RELEASE.md` covers when an update can go out over the air and when it needs a store build.
 
 ## Test
 

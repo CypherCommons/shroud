@@ -231,6 +231,7 @@ describe('manifest endpoint', () => {
     assert.equal((await fetch(`${baseUrl}/assets/..%2Fchannels%2Fproduction%2Frt1%2Fandroid.json`)).status, 404);
     assert.equal((await fetch(`${baseUrl}/assets/not-a-hash.png`)).status, 404);
     assert.equal((await fetch(`${baseUrl}/updates/${ID}/manifest.json`)).status, 404);
+    assert.equal((await fetch(`${baseUrl}/policies/production.json`)).status, 404);
   });
 
   test('reports what is live, for the publish and rollback checks', async () => {

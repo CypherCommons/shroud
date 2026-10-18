@@ -625,5 +625,20 @@
         "banner_error": "Can't reach scan server",
         "banner_resume": "Resume",
         "eta_about": "about {time} left"
+    },
+    "updates": {
+        "required_title": "Update required",
+        "required_subtitle": "This version of Shroud is no longer supported. Install the latest version to keep using your wallet. Your wallet stays on this device.",
+        "required_open_app_store": "Open the App Store",
+        "required_open_play_store": "Open Google Play",
+        "downloading_title": "Updating Shroud",
+        "downloading_subtitle": "Downloading the latest version. Your wallet will be ready in a moment.",
+        "ready_title": "Update ready",
+        "ready_subtitle": "Restart Shroud to finish updating.",
+        "restart": "Restart",
+        "error_title": "Update failed",
+        "error_subtitle": "Shroud couldn't download the update. Check your connection and try again, or keep using this version for now.",
+        "try_again": "Try again",
+        "continue_current": "Continue on current version"
     }
 }

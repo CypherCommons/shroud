@@ -93,6 +93,42 @@ eas env:exec production 'npm run ota:publish -- --channel production --message "
   `--runtime-version-android`. It stops if the server has nothing live for those runtime versions,
   which usually means the wrong checkout.
 - To go back to an earlier update, check out its commit and publish it again.
-- The app checks for updates on every launch, downloads them in the background and applies them on
-  the next launch. The check goes to `updates.shroudwallet.com` over the regular internet, including
-  for users in Tor-only mode. The server keeps no access logs.
+- The app checks for updates on every launch. When it finds one, it holds the user on an "Updating"
+  screen until the download is done, then asks them to restart into it. If the download fails, or
+  is still going after a minute, they can carry on with the version they have, and the next launch
+  tries again. A roll-back asks for the restart straight away. Every update interrupts people this
+  way, so don't publish one that changes nothing.
+- The screen takes the app's place whenever an update turns up, not only before the app shows. The
+  launch doesn't wait for the check, so on a slow connection someone may already be at the unlock
+  prompt, or halfway through a send, when the download starts. That screen and anything typed into it
+  are lost; the wallet isn't. The same goes for a first minimum-build answer (below).
+- That check, and the minimum-build check below, go to `updates.shroudwallet.com` over the regular
+  internet, including for users in Tor-only mode. The server keeps no access logs.
+
+## Minimum supported build
+
+To stop old builds from running, set the oldest build number each platform may run. A build below
+it shows "Update required" with a button to its store, and nothing else, until it's updated:
+
+```sh
+node scripts/ota/minimum-build.mjs --channel production --ios 14 --android 12 \
+  --upload deploy@updates.shroudwallet.com:/srv/shroud-updates
+```
+
+- A platform you leave out keeps its live minimum. Before uploading, the script shows the live and
+  new numbers and asks you to type `yes`; `--yes` skips the question.
+- These are EAS build numbers (iOS `CFBundleVersion`, Android `versionCode`), not the version people
+  see. Find them in App Store Connect, Play Console or `eas build:list`. 0 means no minimum.
+- Raise a minimum only once a build that meets it is live in its store, at 100% of a staged rollout
+  on Google Play. Anyone the store can't update yet is locked out.
+- Never raise it past the OS versions the blocked builds support. A device that can't install the
+  new build loses the wallet's screens for good, including the recovery phrase.
+- Try it on `preview` first. To undo, set the earlier numbers again, or 0.
+- Only builds that already have the check can be blocked, whether it came in the store build or
+  over the air. Builds launch blocked offline too: the last answer is kept on the device.
+- The policy is unsigned. Whoever takes over the server can block builds below a number, but can't
+  send anyone elsewhere: the store links are built into the app (`constants/links.ts`).
+- Development builds and Detox runs skip the check. Release builds made outside EAS report build 1,
+  so any production minimum blocks them.
+- It runs with `node` rather than as an npm script on purpose: `package.json` scripts are part of the
+  runtime version, so adding one would cut installed builds off from new updates.

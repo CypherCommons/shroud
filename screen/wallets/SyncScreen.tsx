@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Icon } from '@rneui/themed';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
+import ProgressBar from '../../components/ProgressBar';
 import SafeArea from '../../components/SafeArea';
 import SyncStatusIcon, { PauseIcon, PlayIcon } from '../../components/SyncStatusIcon';
 import { useStorage } from '../../hooks/context/useStorage';
@@ -41,8 +42,6 @@ const SyncScreen: React.FC<SyncScreenProps> = () => {
   const lastProgressRef = useRef<ScanProgress | null>(scanState.progress);
   const prevStatusRef = useRef<ScanStatus>(scanState.status);
 
-  const progressAnim = useRef(new Animated.Value(0)).current;
-
   useEffect(() => {
     if (scanState.progress) {
       lastProgressRef.current = scanState.progress;
@@ -57,15 +56,6 @@ const SyncScreen: React.FC<SyncScreenProps> = () => {
       setShowDone(false);
     }
   }, [scanState.status, scanState.progress]);
-
-  useEffect(() => {
-    const pct = showDone || scanState.status === 'idle' ? 100 : (scanState.progress?.percentComplete ?? 0);
-    Animated.timing(progressAnim, {
-      toValue: pct,
-      duration: 400,
-      useNativeDriver: false,
-    }).start();
-  }, [scanState.progress?.percentComplete, showDone, scanState.status, progressAnim]);
 
   // Sync liveEta whenever a new ETA arrives from the wallet
   useEffect(() => {
@@ -85,11 +75,6 @@ const SyncScreen: React.FC<SyncScreenProps> = () => {
   const effectiveStatus: EffectiveStatus = showDone ? 'done' : scanState.status === 'idle' ? 'done' : scanState.status;
   const effectiveProgress = showDone ? (lastProgressRef.current ?? scanState.progress) : scanState.progress;
   const effectivePct = effectiveStatus === 'done' ? 100 : (effectiveProgress?.percentComplete ?? 0);
-
-  const barWidth = progressAnim.interpolate({
-    inputRange: [0, 100],
-    outputRange: ['0%', '100%'],
-  });
 
   const { pause: handlePause, resume: handleResume, retry: handleRetry } = useScanActions(scanWallet);
   const handleCheckAgain = useCallback(async () => {
@@ -194,11 +179,7 @@ const SyncScreen: React.FC<SyncScreenProps> = () => {
           </View>
         )}
 
-        {effectiveStatus !== 'error' && (
-          <View style={[styles.barTrack, { backgroundColor: colors.borderDefault }]}>
-            <Animated.View style={[styles.barFill, { width: barWidth, backgroundColor: barColor }]} />
-          </View>
-        )}
+        {effectiveStatus !== 'error' && <ProgressBar progress={effectivePct / 100} color={barColor} style={styles.bar} />}
 
         <Text style={[styles.subtitle, { color: colors.textMuted }]}>
           {effectiveStatus === 'scanning' || effectiveStatus === 'paused'
@@ -290,16 +271,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: ClashFont.regular,
   },
-  barTrack: {
-    width: '100%',
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
+  bar: {
     marginBottom: 6,
-  },
-  barFill: {
-    height: 8,
-    borderRadius: 4,
   },
   subtitle: {
     fontSize: 14,

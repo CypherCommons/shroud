@@ -8,6 +8,7 @@ import { getEffectiveTheme } from './components/themes';
 import { ContactsProvider } from './components/Context/ContactsProvider';
 import MasterView from './navigation/MasterView';
 import AppLock from './components/AppLock';
+import UpdateGate from './components/UpdateGate';
 import DialogHost from './components/Dialog/DialogHost';
 import { markNavigationReady, navigationRef } from './NavigationService';
 import { useLogger } from '@react-navigation/devtools';
@@ -40,7 +41,10 @@ const ThemedNavigationContainer = () => {
 
   return (
     <NavigationContainer ref={navigationRef} onReady={markNavigationReady} theme={getEffectiveTheme(themePreference, colorScheme)}>
-      <MasterView />
+      <UpdateGate>
+        <MasterView />
+      </UpdateGate>
+      {/* Outside the gate on purpose: a locked AppLock swapped out with the app would come back unlocked. */}
       <AppLock />
       <DialogHost />
     </NavigationContainer>
