@@ -11,6 +11,15 @@ import { spScanTransactions, RustMatchedUTXO, RustBatchScanResult } from '../../
 import { hexToUint8Array } from '../../modules/uint8array-extras';
 import type { NetworkConfig } from '../../modules/network';
 
+// Transactions per JSI call. The call is synchronous and holds the JS thread for its whole run, so taps,
+// timers and JS-driven animation wait on it: a window of tens of thousands of transactions froze the
+// app for seconds. At the ~30k tx/s in RUST_INTEGRATION.md, 1000 is ~35ms, short enough to go unnoticed.
+export const SCAN_SLICE_SIZE = 1000;
+
+// A macrotask: microtasks (and the setImmediate shim, built on them in bridgeless RN) all run before the
+// runtime gets back to touches, timers and rendering.
+const yieldToEventLoop = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
 export class RustTransactionProcessor {
   private scanPrivkeyHex: string;
   /** Main spend pubkey plus the label-0 (change) spend pubkey — the scanner tries both. */
@@ -62,16 +71,39 @@ export class RustTransactionProcessor {
     }
 
     try {
-      const result: RustBatchScanResult = spScanTransactions(this.scanPrivkeyHex, this.spendPubkeysHex, transactions);
+      const matched: RustMatchedUTXO[] = [];
+      let transactionsScanned = 0;
+      let outputsScanned = 0;
+
+      for (let start = 0; start < transactions.length; start += SCAN_SLICE_SIZE) {
+        if (start > 0) {
+          await yieldToEventLoop();
+          // Thrown rather than returning what's found so far: once this resolves the caller marks the
+          // whole window scanned, so the slices not yet scanned would be skipped for good.
+          if (cancelScanCallback?.()) {
+            throw new Error('SCAN_CANCELLED');
+          }
+        }
+
+        const result: RustBatchScanResult = spScanTransactions(
+          this.scanPrivkeyHex,
+          this.spendPubkeysHex,
+          transactions.slice(start, start + SCAN_SLICE_SIZE),
+        );
+        transactionsScanned += result.transactionsScanned;
+        outputsScanned += result.outputsScanned;
+        matched.push(...result.matchedUtxos);
+      }
 
       console.log(
-        `[RustTransactionProcessor] Scanned ${result.transactionsScanned} txs, ` +
-          `${result.outputsScanned} outputs, found ${result.matchedUtxos.length} matches`,
+        `[RustTransactionProcessor] Scanned ${transactionsScanned} txs, ${outputsScanned} outputs, found ${matched.length} matches`,
       );
 
-      return result.matchedUtxos.map(utxo => this.convertToSilentPaymentUTXO(utxo));
-    } catch (error) {
-      console.error('[RustTransactionProcessor] Batch processing error:', error);
+      return matched.map(utxo => this.convertToSilentPaymentUTXO(utxo));
+    } catch (error: any) {
+      if (error?.message !== 'SCAN_CANCELLED') {
+        console.error('[RustTransactionProcessor] Batch processing error:', error);
+      }
       throw error;
     }
   }
