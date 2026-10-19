@@ -1,22 +1,24 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Icon } from '@rneui/themed';
+import React, { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
+import ActionButton from '../../components/ActionButton';
 import ProgressBar from '../../components/ProgressBar';
 import SafeArea from '../../components/SafeArea';
 import SyncStatusIcon, { PauseIcon, PlayIcon } from '../../components/SyncStatusIcon';
+import ClockIcon from '../../components/icons/ClockIcon';
+import InfoIcon from '../../components/icons/InfoIcon';
+import RefreshIcon from '../../components/icons/RefreshIcon';
 import { useStorage } from '../../hooks/context/useStorage';
+import { useCheckFeedback, useCheckForPayments } from '../../hooks/useCheckForPayments';
 import { useScanActions, useScannableWallet } from '../../hooks/useScannableWallet';
+import { useSyncDisplayStatus } from '../../hooks/useSyncDisplayStatus';
 import { DetailViewStackParamList } from '../../navigation/DetailViewStackParamList';
-import { type ScanProgress, type ScanStatus } from '../../helpers/silent-payments';
 import loc from '../../loc';
 import { ClashFont } from '../../constants/fonts';
 import { useTheme } from '../../components/themes';
 
 type SyncScreenProps = NativeStackScreenProps<DetailViewStackParamList, 'SyncScreen'>;
-
-type EffectiveStatus = Exclude<ScanStatus, 'idle'> | 'done';
 
 function formatEtaAbout(ms: number | null): string | null {
   if (ms === null || ms <= 0) return null;
@@ -32,191 +34,249 @@ function formatEtaAbout(ms: number | null): string | null {
   return loc.formatString(loc.sync.eta_about, { time: `${minutes}m` });
 }
 
+/**
+ * "about 2m left", counting down each second between the wallet's estimates (a batch apart, ~7s). Its
+ * own component, so the countdown re-renders only itself.
+ */
+const EtaCountdown: React.FC<{ eta: number | null; etaComputedAt: number | null; running: boolean }> = ({
+  eta,
+  etaComputedAt,
+  running,
+}) => {
+  const { colors } = useTheme();
+  const [estimate, setEstimate] = useState({ eta, etaComputedAt });
+  const [left, setLeft] = useState(eta);
+
+  if (estimate.eta !== eta || estimate.etaComputedAt !== etaComputedAt) {
+    setEstimate({ eta, etaComputedAt });
+    setLeft(eta);
+  }
+
+  useEffect(() => {
+    if (!running || eta === null || etaComputedAt === null) return;
+    const id = setInterval(() => setLeft(Math.max(0, eta - (Date.now() - etaComputedAt))), 1000);
+    return () => clearInterval(id);
+  }, [running, eta, etaComputedAt]);
+
+  return (
+    <View style={styles.etaRow}>
+      <ClockIcon size={18} color={colors.textMuted} />
+      <Text style={[styles.etaText, { color: colors.textMuted }]}>{formatEtaAbout(left) ?? '--'}</Text>
+    </View>
+  );
+};
+
+/**
+ * Fades a layout in as the screen moves to it, so a change of state reads as one rather than a jump.
+ * Opacity, on the native driver: LayoutAnimation can't be relied on here, being off on Android by
+ * default and dropped on iOS whenever something else commits first.
+ */
+const FadeIn: React.FC<{ animate: boolean; children: React.ReactNode }> = ({ animate, children }) => {
+  const [opacity] = useState(() => new Animated.Value(animate ? 0 : 1));
+
+  useEffect(() => {
+    if (!animate) return;
+    const animation = Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true });
+    animation.start();
+    return () => animation.stop();
+  }, [animate, opacity]);
+
+  return (
+    <Animated.View style={[styles.layout, { opacity }]} testID="SyncLayout">
+      {children}
+    </Animated.View>
+  );
+};
+
 const SyncScreen: React.FC<SyncScreenProps> = () => {
   const { colors } = useTheme();
   const { scanState } = useStorage();
-  const scanWallet = useScannableWallet();
+  const wallet = useScannableWallet();
+  const { pause, resume } = useScanActions(wallet);
+  const { check, checking, outcome } = useCheckForPayments(wallet);
+  const { status, settled } = useSyncDisplayStatus(scanState.status, checking);
+  const landedOn = settled && !checking && (status === 'done' || status === 'error') ? status : null;
+  const { feedback, pending } = useCheckFeedback(outcome, landedOn);
+  // until the outcome is on screen too, so the button doesn't flash its idle title in between
+  const busy = checking || pending;
 
-  const [showDone, setShowDone] = useState(false);
-  const [liveEta, setLiveEta] = useState<number | null>(scanState.eta);
-  const lastProgressRef = useRef<ScanProgress | null>(scanState.progress);
-  const prevStatusRef = useRef<ScanStatus>(scanState.status);
+  // The wallet goes idle, dropping its numbers, while the screen still holds a finished scan's layout
+  // for its minimum time: keep showing that scan's last numbers.
+  const live = scanState.status === 'scanning' || scanState.status === 'paused';
+  const [lastLive, setLastLive] = useState(scanState);
+  if (live && lastLive !== scanState) {
+    setLastLive(scanState);
+  }
+  const scan = live ? scanState : lastLive;
 
+  const inProgress = status === 'scanning' || status === 'paused';
+  // Scanning and paused are one layout with different words, so only a move between layouts fades;
+  // and not the one the screen opens on, which arrives with the screen.
+  const layout = inProgress ? 'progress' : status;
+  const [openedOn, setOpenedOn] = useState<string | null>(layout);
+  if (openedOn !== null && layout !== openedOn) {
+    setOpenedOn(null);
+  }
+
+  const percent = status === 'done' ? 100 : (scan.progress?.percentComplete ?? null);
+  // A scan's first numbers come after its first window, so the bar sweeps until then rather than
+  // reading 0%. A paused scan's bar stays still.
+  const barProgress = percent !== null ? percent / 100 : status === 'paused' ? 0 : null;
+
+  const title = { done: loc.sync.done, scanning: loc.sync.updating, paused: loc.sync.paused, error: loc.sync.error_title }[status];
+  const feedbackText = feedback === 'checked' ? loc.sync.checked_just_now : feedback === 'failed' ? loc.sync.check_failed : null;
+  const subtitle = inProgress
+    ? loc.sync.subtitle_recent
+    : busy
+      ? loc.sync.subtitle_checking
+      : (feedbackText ?? (status === 'done' ? loc.sync.subtitle_watching : loc.sync.error_description));
+
+  // Android reads out the live regions' changes by itself; iOS has to be told.
+  const announcedTitle = useRef(title);
   useEffect(() => {
-    if (scanState.progress) {
-      lastProgressRef.current = scanState.progress;
-    }
-
-    const prevStatus = prevStatusRef.current;
-    prevStatusRef.current = scanState.status;
-
-    if (scanState.status === 'idle' && (prevStatus === 'scanning' || prevStatus === 'paused')) {
-      setShowDone(true);
-    } else if (scanState.status !== 'idle') {
-      setShowDone(false);
-    }
-  }, [scanState.status, scanState.progress]);
-
-  // Sync liveEta whenever a new ETA arrives from the wallet
+    if (Platform.OS !== 'ios' || announcedTitle.current === title) return;
+    announcedTitle.current = title;
+    AccessibilityInfo.announceForAccessibilityWithOptions(title, { queue: true });
+  }, [title]);
   useEffect(() => {
-    setLiveEta(scanState.eta);
-  }, [scanState.eta, scanState.etaComputedAt]);
-
-  // Tick the ETA down every second so it counts live between batch updates (~7s each)
-  useEffect(() => {
-    if (scanState.status !== 'scanning' || scanState.eta === null || scanState.etaComputedAt === null) return;
-    const id = setInterval(() => {
-      const elapsed = Date.now() - scanState.etaComputedAt!;
-      setLiveEta(Math.max(0, scanState.eta! - elapsed));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [scanState.status, scanState.eta, scanState.etaComputedAt]);
-
-  const effectiveStatus: EffectiveStatus = showDone ? 'done' : scanState.status === 'idle' ? 'done' : scanState.status;
-  const effectiveProgress = showDone ? (lastProgressRef.current ?? scanState.progress) : scanState.progress;
-  const effectivePct = effectiveStatus === 'done' ? 100 : (effectiveProgress?.percentComplete ?? 0);
-
-  const { pause: handlePause, resume: handleResume, retry: handleRetry } = useScanActions(scanWallet);
-  const handleCheckAgain = useCallback(async () => {
-    if (scanWallet) {
-      setShowDone(false);
-      await scanWallet.checkForPayments().catch((e: any) => console.warn('[SyncScreen] check again scan error:', e));
-    }
-  }, [scanWallet]);
-
-  const renderIcon = () => (
-    <View style={styles.iconBadge}>
-      <SyncStatusIcon status={effectiveStatus} size={66} />
-    </View>
-  );
-
-  const renderTitle = () => {
-    switch (effectiveStatus) {
-      case 'scanning':
-        return <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.sync.updating}</Text>;
-      case 'paused':
-        return <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.sync.paused}</Text>;
-      case 'done':
-        return <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.sync.done}</Text>;
-      case 'error':
-        return <Text style={[styles.title, { color: colors.statusError }]}>{loc.sync.error_title}</Text>;
-    }
-  };
+    if (Platform.OS === 'ios' && feedbackText !== null)
+      AccessibilityInfo.announceForAccessibilityWithOptions(feedbackText, { queue: true });
+  }, [feedbackText]);
 
   const renderActionButton = () => {
-    switch (effectiveStatus) {
+    switch (status) {
       case 'scanning':
         return (
-          <Pressable
-            onPress={handlePause}
-            style={[
-              styles.actionButton,
-              styles.actionButtonPauseGap,
-              { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
-            ]}
-          >
-            <PauseIcon color={colors.white} size={13} />
-            <Text style={[styles.actionButtonText, { color: colors.white }]}>{loc.sync.btn_pause}</Text>
-          </Pressable>
+          <ActionButton
+            title={loc.sync.btn_pause}
+            onPress={pause}
+            Icon={PauseIcon}
+            iconSize={13}
+            backgroundColor={colors.brandPrimary}
+            color={colors.white}
+            style={styles.button}
+            testID="SyncPauseButton"
+          />
         );
       case 'paused':
         return (
-          <Pressable
-            onPress={handleResume}
-            style={[styles.actionButton, { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary }]}
-          >
-            <PlayIcon color={colors.white} size={32} />
-            <Text style={[styles.actionButtonText, { color: colors.white }]}>{loc.sync.btn_continue}</Text>
-          </Pressable>
+          <ActionButton
+            title={loc.sync.btn_continue}
+            onPress={resume}
+            Icon={PlayIcon}
+            iconSize={17}
+            backgroundColor={colors.brandPrimary}
+            color={colors.white}
+            style={styles.button}
+            testID="SyncContinueButton"
+          />
         );
       case 'done':
         return (
-          <Pressable
-            onPress={handleCheckAgain}
-            style={[
-              styles.actionButton,
-              styles.actionButtonOutlined,
-              { backgroundColor: colors.accentSubtle, borderColor: colors.brandPrimary },
-            ]}
-          >
-            <Icon name="refresh" type="material" size={20} color={colors.brandPrimary} />
-            <Text style={[styles.actionButtonText, { color: colors.textBrand }]}>{loc.sync.btn_check_again}</Text>
-          </Pressable>
+          <ActionButton
+            title={busy ? loc.sync.btn_checking : loc.sync.btn_check_again}
+            onPress={check}
+            loading={busy}
+            Icon={RefreshIcon}
+            iconSize={20}
+            backgroundColor={colors.accentSubtle}
+            borderColor={colors.brandPrimary}
+            color={colors.textBrand}
+            iconColor={colors.brandPrimary}
+            style={styles.button}
+            testID="SyncCheckAgainButton"
+          />
         );
       case 'error':
         return (
-          <Pressable
-            onPress={handleRetry}
-            style={[styles.actionButton, { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary }]}
-          >
-            <Icon name="refresh" type="material" size={20} color={colors.white} />
-            <Text style={[styles.actionButtonText, { color: colors.white }]}>{loc.sync.btn_retry}</Text>
-          </Pressable>
+          <ActionButton
+            title={busy ? loc.sync.btn_checking : loc.sync.btn_retry}
+            onPress={check}
+            loading={busy}
+            Icon={RefreshIcon}
+            iconSize={20}
+            backgroundColor={colors.brandPrimary}
+            color={colors.white}
+            style={styles.button}
+            testID="SyncRetryButton"
+          />
         );
     }
   };
-
-  const barColor = effectiveStatus === 'done' ? colors.statusSuccess : colors.brandPrimary;
 
   return (
     <SafeArea>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} alwaysBounceVertical={false}>
-        {renderIcon()}
-
-        {renderTitle()}
-
-        {effectiveStatus !== 'error' && (
-          <View style={styles.percentRow}>
-            <Text style={[styles.percentNum, { color: colors.textPrimary }]}>{Math.round(effectivePct)}</Text>
-            <Text style={[styles.percentSign, { color: colors.textMuted }]}>%</Text>
+        <FadeIn key={layout} animate={openedOn === null}>
+          <View style={styles.iconBadge} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <SyncStatusIcon status={status} size={66} />
           </View>
-        )}
 
-        {(effectiveStatus === 'scanning' || effectiveStatus === 'paused') && (
-          <View style={styles.etaRow}>
-            <Icon name="schedule" type="material" size={18} color={colors.textMuted} />
-            <Text style={[styles.etaText, { color: colors.textMuted }]}>{formatEtaAbout(liveEta) ?? '--'}</Text>
-          </View>
-        )}
+          <Text
+            accessibilityRole="header"
+            accessibilityLiveRegion="polite"
+            style={[styles.title, { color: status === 'error' ? colors.statusError : colors.textPrimary }]}
+          >
+            {title}
+          </Text>
 
-        {effectiveStatus !== 'error' && <ProgressBar progress={effectivePct / 100} color={barColor} style={styles.bar} />}
-
-        <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-          {effectiveStatus === 'scanning' || effectiveStatus === 'paused'
-            ? loc.sync.subtitle_recent
-            : effectiveStatus === 'done'
-              ? loc.sync.subtitle_watching
-              : loc.sync.error_description}
-        </Text>
-
-        {(effectiveStatus === 'scanning' || effectiveStatus === 'paused') && (
-          <View style={[styles.progressCard, { backgroundColor: colors.surfaceSubtle, borderColor: colors.accentSubtle }]}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{loc.sync.update_progress}</Text>
-            <View style={styles.cardRow}>
-              <Text style={[styles.cardLabel, { color: colors.textMuted }]}>{loc.sync.block_label}</Text>
-              {effectiveProgress ? (
-                <View style={styles.blockHeightRow}>
-                  <Text style={[styles.cardValue, styles.cardValueSemibold, { color: colors.textPrimary }]} numberOfLines={1}>
-                    {effectiveProgress.currentBlock.toLocaleString()}
-                  </Text>
-                  <Text style={[styles.cardValue, { color: colors.textMuted }]}>{' / '}</Text>
-                  <Text style={[styles.cardValue, { color: colors.textPrimary }]} numberOfLines={1}>
-                    {effectiveProgress.tipHeight.toLocaleString()}
-                  </Text>
-                </View>
-              ) : (
-                <Text style={[styles.cardValue, { color: colors.textPrimary }]} numberOfLines={1}>
-                  --
-                </Text>
-              )}
+          {status !== 'error' && (
+            // Kept at its height while there's no number yet, so the rows below don't move when one arrives.
+            <View
+              style={[styles.percentRow, percent === null && styles.hidden]}
+              accessibilityElementsHidden={percent === null}
+              importantForAccessibility={percent === null ? 'no-hide-descendants' : 'auto'}
+              testID="SyncPercent"
+            >
+              <Text style={[styles.percentNum, { color: colors.textPrimary }]}>{Math.floor(percent ?? 0)}</Text>
+              <Text style={[styles.percentSign, { color: colors.textMuted }]}>%</Text>
             </View>
-          </View>
-        )}
+          )}
 
-        {renderActionButton()}
+          {inProgress && <EtaCountdown eta={scan.eta} etaComputedAt={scan.etaComputedAt} running={scanState.status === 'scanning'} />}
+
+          {status !== 'error' && (
+            <ProgressBar
+              progress={barProgress}
+              color={status === 'done' ? colors.statusSuccess : colors.brandPrimary}
+              style={styles.bar}
+              testID="SyncProgressBar"
+            />
+          )}
+
+          <Text accessibilityLiveRegion="polite" style={[styles.subtitle, { color: colors.textMuted }]}>
+            {subtitle}
+          </Text>
+
+          {inProgress && (
+            <View style={[styles.progressCard, { backgroundColor: colors.surfaceSubtle, borderColor: colors.accentSubtle }]}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{loc.sync.update_progress}</Text>
+              <View style={styles.cardRow}>
+                <Text style={[styles.cardLabel, { color: colors.textMuted }]}>{loc.sync.block_label}</Text>
+                {scan.progress ? (
+                  <View style={styles.blockHeightRow}>
+                    <Text style={[styles.cardValue, styles.cardValueSemibold, { color: colors.textPrimary }]} numberOfLines={1}>
+                      {scan.progress.currentBlock.toLocaleString()}
+                    </Text>
+                    <Text style={[styles.cardValue, { color: colors.textMuted }]}>{' / '}</Text>
+                    <Text style={[styles.cardValue, { color: colors.textPrimary }]} numberOfLines={1}>
+                      {scan.progress.tipHeight.toLocaleString()}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={[styles.cardValue, { color: colors.textPrimary }]} numberOfLines={1}>
+                    --
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+
+          {renderActionButton()}
+        </FadeIn>
 
         <View style={[styles.privacyCard, { backgroundColor: colors.surfaceSubtle }]}>
-          <Icon name="info-outline" type="material" size={20} color={colors.brandPrimary} />
+          <InfoIcon size={20} color={colors.brandPrimary} />
           <Text style={[styles.privacyText, { color: colors.textMuted }]}>{loc.sync.privacy_info}</Text>
         </View>
       </ScrollView>
@@ -234,6 +294,10 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     alignItems: 'center',
   },
+  layout: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
   iconBadge: {
     marginBottom: 16,
   },
@@ -248,6 +312,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: 8,
+  },
+  hidden: {
+    opacity: 0,
   },
   percentNum: {
     fontSize: 44,
@@ -317,25 +384,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexShrink: 1,
   },
-  actionButton: {
-    width: '100%',
-    height: 56,
-    borderRadius: 16,
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  button: {
+    alignSelf: 'stretch',
     marginBottom: 16,
-  },
-  actionButtonOutlined: {
-    borderWidth: 1,
-  },
-  actionButtonPauseGap: {
-    gap: 10,
-  },
-  actionButtonText: {
-    fontSize: 16,
-    fontFamily: ClashFont.medium,
   },
   privacyCard: {
     width: '100%',
