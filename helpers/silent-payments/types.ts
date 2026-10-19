@@ -106,7 +106,14 @@ export interface IScannableWallet {
    */
   cancelScanAndWait(): Promise<void>;
   isScanActive(): boolean;
+  /** Starts a scan without waiting for it. */
   fetchTransactions(): Promise<void>;
+  /**
+   * Checks for payments now and settles once the check is over, for a screen that shows it running
+   * and then its outcome. Resolves with the new silent payment outputs; rejects when the scan failed
+   * or the wallet's scanning was cancelled.
+   */
+  checkForPayments(): Promise<number>;
 }
 
 export function isScannable(wallet: unknown): wallet is IScannableWallet {
@@ -120,7 +127,8 @@ export function isScannable(wallet: unknown): wallet is IScannableWallet {
     typeof w.cancelScan === 'function' &&
     typeof w.cancelScanAndWait === 'function' &&
     typeof w.isScanActive === 'function' &&
-    typeof w.fetchTransactions === 'function'
+    typeof w.fetchTransactions === 'function' &&
+    typeof w.checkForPayments === 'function'
   );
 }
 

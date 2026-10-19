@@ -80,7 +80,7 @@ const SyncScreen: React.FC<SyncScreenProps> = () => {
   const handleCheckAgain = useCallback(async () => {
     if (scanWallet) {
       setShowDone(false);
-      await scanWallet.fetchTransactions().catch((e: any) => console.warn('[SyncScreen] check again scan error:', e));
+      await scanWallet.checkForPayments().catch((e: any) => console.warn('[SyncScreen] check again scan error:', e));
     }
   }, [scanWallet]);
 
