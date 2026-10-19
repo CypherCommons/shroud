@@ -4,6 +4,7 @@ import presentAlert from '../components/Alert';
 import confirm from '../helpers/confirm';
 import loc from '../loc';
 import type { NetworkId } from '../modules/network';
+import { useScanStatus } from './context/useScanState';
 import { useStorage } from './context/useStorage';
 
 /**
@@ -11,14 +12,15 @@ import { useStorage } from './context/useStorage';
  * switch instead of throwing.
  */
 export const useSelectNetwork = (): ((next: NetworkId) => Promise<void>) => {
-  const { activeNetworkId, switchNetwork, isSwitchingNetwork, scanState } = useStorage();
+  const { activeNetworkId, switchNetwork, isSwitchingNetwork } = useStorage();
+  const scanStatus = useScanStatus();
 
   return useCallback(
     async (next: NetworkId) => {
       if (next === activeNetworkId || isSwitchingNetwork) return;
 
       // A scan can take a long time; abandoning one silently would look like the app lost data.
-      if (scanState.status === 'scanning') {
+      if (scanStatus === 'scanning') {
         const proceed = await confirm(loc.settings.network_switch_scan_title, loc.settings.network_switch_scan_message);
         if (!proceed) return;
       }
@@ -29,6 +31,6 @@ export const useSelectNetwork = (): ((next: NetworkId) => Promise<void>) => {
         presentAlert({ title: loc.errors.error, message: error?.message ?? String(error) });
       }
     },
-    [activeNetworkId, isSwitchingNetwork, switchNetwork, scanState.status],
+    [activeNetworkId, isSwitchingNetwork, switchNetwork, scanStatus],
   );
 };

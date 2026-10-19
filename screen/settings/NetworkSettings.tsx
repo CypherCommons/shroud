@@ -9,6 +9,7 @@ import SettingsSectionHeader from '../../components/SettingsSectionHeader';
 import StatusDotIcon from '../../components/icons/StatusDotIcon';
 import { useTheme } from '../../components/themes';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
+import { useScanState } from '../../hooks/context/useScanState';
 import { useStorage } from '../../hooks/context/useStorage';
 import { useSettings } from '../../hooks/context/useSettings';
 import * as Electrum from '../../modules/Electrum';
@@ -21,7 +22,8 @@ type ElectrumConfig = Partial<Awaited<ReturnType<typeof Electrum.getConfig>>>;
 const NetworkSettings: React.FC = () => {
   const { colors } = useTheme();
   const navigation = useExtendedNavigation();
-  const { scanState, activeNetworkId } = useStorage();
+  const { activeNetworkId } = useStorage();
+  const scanState = useScanState();
   const { selectedBlockExplorer } = useSettings();
   const [config, setConfig] = useState<ElectrumConfig>({});
   const [preferredServer, setPreferredServer] = useState<Electrum.ElectrumServerItem>();

@@ -6,21 +6,22 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import loc from '../loc';
-import type { ScanStateInfo } from '../helpers/silent-payments';
 import { DetailViewStackParamList } from '../navigation/DetailViewStackParamList';
 import { useTheme } from './themes';
+import { useScanState } from '../hooks/context/useScanState';
 import { ClashFont } from '../constants/fonts';
 
 interface Props {
-  scanState: ScanStateInfo;
   onResume: () => void;
   onRetry: () => void;
 }
 
 type NavigationProps = NativeStackNavigationProp<DetailViewStackParamList>;
 
-const ScanProgressBar: React.FC<Props> = ({ scanState, onResume, onRetry }) => {
+// Reads the scan's state itself, so a progress report re-renders this banner rather than the home screen.
+const ScanProgressBar: React.FC<Props> = ({ onResume, onRetry }) => {
   const { colors } = useTheme();
+  const scanState = useScanState();
   const navigation = useNavigation<NavigationProps>();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseAnimRef = useRef<Animated.CompositeAnimation | null>(null);
