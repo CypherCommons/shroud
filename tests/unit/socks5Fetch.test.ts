@@ -1,4 +1,5 @@
 import assert from 'assert';
+import { Buffer as ModuleBuffer } from 'buffer';
 import { EventEmitter } from 'events';
 import TcpSocket from 'react-native-tcp-socket';
 import { socks5Fetch } from '../../modules/socks5Fetch';
@@ -194,5 +195,104 @@ describe('unit - socks5Fetch', () => {
     socket.emit('data', Buffer.from([0x05, 0x04, 0x00, 0x01, 0, 0, 0, 0, 0, 0]));
 
     await assert.rejects(promise, /CONNECT failed \(code: 4\)/);
+  });
+  describe('reading the response', () => {
+    const CHUNKED_HEADER = Buffer.from('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n');
+
+    const chunked = (payload: Buffer, chunkSize: number): Buffer => {
+      const parts: Buffer[] = [];
+      for (let i = 0; i < payload.length; i += chunkSize) {
+        const chunk = payload.subarray(i, i + chunkSize);
+        parts.push(Buffer.from(`${chunk.length.toString(16)}\r\n`), chunk, Buffer.from('\r\n'));
+      }
+      parts.push(Buffer.from('0\r\n\r\n'));
+      return Buffer.concat(parts);
+    };
+
+    const emitInPackets = (socket: EventEmitter, bytes: Buffer, packetSize: number) => {
+      for (let i = 0; i < bytes.length; i += packetSize) socket.emit('data', bytes.subarray(i, i + packetSize));
+    };
+
+    const fetchWith = async (send: (socket: EventEmitter & { destroy: jest.Mock }) => void) => {
+      const promise = socks5Fetch('http://abc123.onion/status');
+      const socket = latestSocket();
+      await completeHandshake(socket);
+      send(socket);
+      return promise;
+    };
+
+    it('resolves a Content-Length body that arrives a byte at a time', async () => {
+      const response = await fetchWith(socket => emitInPackets(socket, httpResponse(200, { 'Content-Length': '11' }, '{"ok":true}'), 1));
+
+      assert.deepStrictEqual(await response.json(), { ok: true });
+    });
+
+    it('decodes a chunked body however the packets split it, multi-byte characters included', async () => {
+      // 5-byte chunks, so é, ☕ and the rest straddle chunk boundaries as well as packet ones
+      const payload = Buffer.from('{"msg":"café ☕ ünïcödé"}', 'utf-8');
+      const whole = Buffer.concat([CHUNKED_HEADER, chunked(payload, 5)]);
+
+      for (let split = 1; split < whole.length; split++) {
+        const response = await fetchWith(socket => {
+          socket.emit('data', whole.subarray(0, split));
+          socket.emit('data', whole.subarray(split));
+        });
+        assert.deepStrictEqual(await response.json(), { msg: 'café ☕ ünïcödé' }, `split at byte ${split}`);
+      }
+
+      const response = await fetchWith(socket => emitInPackets(socket, whole, 1));
+      assert.deepStrictEqual(await response.json(), { msg: 'café ☕ ünïcödé' });
+    });
+
+    it('resolves as soon as the terminal chunk is in, without waiting for trailers or the socket to close', async () => {
+      const response = await fetchWith(socket => socket.emit('data', Buffer.concat([CHUNKED_HEADER, Buffer.from('2\r\n{}\r\n0\r\n')])));
+
+      assert.deepStrictEqual(await response.json(), {});
+    });
+
+    it('never completes a chunked body with a malformed size line, rejecting once the socket closes', async () => {
+      const promise = fetchWith(socket => {
+        socket.emit('data', Buffer.concat([CHUNKED_HEADER, Buffer.from('zz\r\n{}\r\n0\r\n\r\n')]));
+        socket.emit('close');
+      });
+
+      await assert.rejects(promise, /body length/);
+    });
+
+    it('resolves an empty body declared with Content-Length: 0', async () => {
+      const response = await fetchWith(socket => socket.emit('data', httpResponse(200, { 'Content-Length': '0' }, '')));
+
+      assert.strictEqual(await response.text(), '');
+    });
+
+    it('enforces the size cap across many packets, as for one', async () => {
+      let socketUsed!: { destroy: jest.Mock };
+      const promise = fetchWith(socket => {
+        socketUsed = socket;
+        socket.emit('data', Buffer.from(`HTTP/1.1 200 OK\r\nContent-Length: ${21 * 1024 * 1024}\r\n\r\n`));
+        for (let i = 0; i < 21; i++) socket.emit('data', Buffer.alloc(1024 * 1024));
+      });
+
+      await assert.rejects(promise, /byte limit/);
+      assert.strictEqual(socketUsed.destroy.mock.calls.length, 1);
+    });
+
+    it('copies a large response a bounded number of times, not once per packet', async () => {
+      const payload = Buffer.from(JSON.stringify({ data: 'x'.repeat(2 * 1024 * 1024) }));
+      const whole = Buffer.concat([CHUNKED_HEADER, chunked(payload, 4096)]);
+      const concat = jest.spyOn(ModuleBuffer, 'concat');
+
+      try {
+        const response = await fetchWith(socket => emitInPackets(socket, whole, 2048));
+        assert.strictEqual((await response.text()).length, payload.length);
+
+        // The whole body once at the end, plus the odd split size line. Joining every packet onto
+        // what came before copied over a gigabyte for this one.
+        const copied = concat.mock.results.reduce((total, result) => total + (result.value as Buffer).length, 0);
+        assert.ok(copied < 3 * payload.length, `copied ${copied} bytes for a ${payload.length}-byte body`);
+      } finally {
+        concat.mockRestore();
+      }
+    });
   });
 });

@@ -47,32 +47,66 @@ function parseUrl(url: string): { host: string; port: number; path: string } {
   return { host, port, path };
 }
 
-// Returns complete: false whenever more bytes are needed - on a short/malformed chunk this must
-// signal "not done yet" rather than returning the partial body, or a truncated read looks like success.
-// Operates on the raw Buffer throughout - chunk sizes are byte counts, and indexing a UTF-8
-// string instead would misalign on any multi-byte character in the body.
-function decodeChunked(data: Buffer): { body: Buffer; complete: boolean } {
-  const chunks: Buffer[] = [];
-  let remaining = data;
+interface ChunkedDecoder {
+  /** Takes the body's next bytes; true once the terminal zero-size chunk is in. */
+  push: (bytes: Buffer) => boolean;
+  body: () => Buffer;
+}
 
-  while (remaining.length > 0) {
-    const lineEnd = remaining.indexOf('\r\n');
-    if (lineEnd === -1) return { body: Buffer.concat(chunks), complete: false };
+// Decodes a chunked body as it arrives, looking at each byte once however the packets split it:
+// re-decoding the whole body on every packet was quadratic in its size, on the JS thread. A
+// short or malformed chunk never completes (a truncated read must not look like success), so the
+// socket closing rejects it. Works on raw bytes throughout - chunk sizes are byte counts, and
+// indexing a UTF-8 string instead would misalign on any multi-byte character in the body.
+function createChunkedDecoder(): ChunkedDecoder {
+  const parts: Buffer[] = [];
+  let length = 0;
+  let sizeLine: Buffer = Buffer.alloc(0); // a size line split across packets
+  let owed = 0; // bytes of the current chunk still to come
+  let crlfOwed = 0; // the CRLF after a chunk's data, skipped unchecked
+  let state: 'size' | 'done' | 'stuck' = 'size';
 
-    const chunkSizeStr = remaining.subarray(0, lineEnd).toString('ascii').trim();
-    if (!chunkSizeStr) return { body: Buffer.concat(chunks), complete: false };
+  return {
+    push(bytes: Buffer): boolean {
+      let rest = bytes;
+      while (rest.length > 0 && state === 'size') {
+        if (owed > 0) {
+          const taken = Math.min(owed, rest.length);
+          parts.push(rest.subarray(0, taken));
+          length += taken;
+          owed -= taken;
+          rest = rest.subarray(taken);
+          if (owed === 0) crlfOwed = 2;
+          continue;
+        }
+        if (crlfOwed > 0) {
+          const skipped = Math.min(crlfOwed, rest.length);
+          crlfOwed -= skipped;
+          rest = rest.subarray(skipped);
+          continue;
+        }
 
-    const chunkSize = parseInt(chunkSizeStr, 16);
-    if (isNaN(chunkSize)) return { body: Buffer.concat(chunks), complete: false };
-    if (chunkSize === 0) return { body: Buffer.concat(chunks), complete: true };
+        const line = sizeLine.length ? Buffer.concat([sizeLine, rest]) : rest;
+        const lineEnd = line.indexOf('\r\n');
+        if (lineEnd === -1) {
+          sizeLine = line;
+          // no real size line runs this long: don't keep buffering one
+          if (sizeLine.length > 1024) state = 'stuck';
+          break;
+        }
 
-    const chunkStart = lineEnd + 2;
-    if (remaining.length < chunkStart + chunkSize + 2) return { body: Buffer.concat(chunks), complete: false };
-    chunks.push(remaining.subarray(chunkStart, chunkStart + chunkSize));
-    remaining = remaining.subarray(chunkStart + chunkSize + 2); // +2 for trailing \r\n
-  }
-
-  return { body: Buffer.concat(chunks), complete: false };
+        const sizeText = line.subarray(0, lineEnd).toString('ascii').trim();
+        const size = parseInt(sizeText, 16);
+        sizeLine = Buffer.alloc(0);
+        rest = line.subarray(lineEnd + 2);
+        if (!sizeText || isNaN(size) || size < 0) state = 'stuck';
+        else if (size === 0) state = 'done';
+        else owed = size;
+      }
+      return state === 'done';
+    },
+    body: () => Buffer.concat(parts, length),
+  };
 }
 
 /**
@@ -120,7 +154,14 @@ export function socks5Fetch(url: string, options: Socks5FetchOptions = {}): Prom
     let phase: 'greeting' | 'connect' | 'http' = 'greeting';
     let pending: Buffer = Buffer.alloc(0);
 
-    let httpBuffer: Buffer = Buffer.alloc(0);
+    // The response so far: the header bytes until their terminator, then the body as the packets that
+    // carried it, joined once at the end. Appending every packet to one growing Buffer copied the whole
+    // response again each time, quadratic in its size, on the JS thread.
+    let headerBytes: Buffer = Buffer.alloc(0);
+    let receivedBytes = 0;
+    const bodyParts: Buffer[] = [];
+    let bodyLength = 0;
+    let chunkedBody: ChunkedDecoder | null = null;
     let headerEnd = -1;
     let status = 0;
     let statusText = '';
@@ -132,11 +173,11 @@ export function socks5Fetch(url: string, options: Socks5FetchOptions = {}): Prom
     // while more bytes are still needed.
     const parseHeadersIfNeeded = (): boolean => {
       if (headerEnd !== -1) return true;
-      const idx = httpBuffer.indexOf('\r\n\r\n');
+      const idx = headerBytes.indexOf('\r\n\r\n');
       if (idx === -1) return false;
       headerEnd = idx;
 
-      const headerPart = httpBuffer.subarray(0, headerEnd).toString('utf-8');
+      const headerPart = headerBytes.subarray(0, headerEnd).toString('utf-8');
       const statusLine = headerPart.split('\r\n')[0];
       const statusMatch = statusLine.match(/HTTP\/[\d.]+\s+(\d+)\s*(.*)/);
       status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
@@ -153,6 +194,7 @@ export function socks5Fetch(url: string, options: Socks5FetchOptions = {}): Prom
       }
 
       isChunked = responseHeaders['transfer-encoding']?.includes('chunked') ?? false;
+      if (isChunked) chunkedBody = createChunkedDecoder();
       const contentLengthHeader = responseHeaders['content-length'];
       expectedBodyLength = contentLengthHeader ? parseInt(contentLengthHeader, 10) : null;
       return true;
@@ -167,30 +209,30 @@ export function socks5Fetch(url: string, options: Socks5FetchOptions = {}): Prom
       text: async () => bodyText,
     });
 
-    // Resolves as soon as the body is verifiably complete (Content-Length reached, or the
-    // chunked terminator seen). Returns false when there's not yet enough to tell - including
-    // when there's no length info at all, in which case only the 'close' handler can finish it.
-    const tryFinalizeHttpResponse = (): boolean => {
-      if (!parseHeadersIfNeeded()) return false;
-      const bodyBuf = httpBuffer.subarray(headerEnd + 4);
-
-      if (isChunked) {
-        const decoded = decodeChunked(bodyBuf);
-        if (!decoded.complete) return false;
-        finish(() => resolve(buildResponse(decoded.body.toString('utf-8'))));
-        return true;
+    // Takes the body's next bytes, and resolves as soon as the body is verifiably complete
+    // (Content-Length reached, or the chunked terminator seen). With no length info at all, only the
+    // 'close' handler can finish it.
+    const receiveBody = (bytes: Buffer) => {
+      if (chunkedBody) {
+        if (chunkedBody.push(bytes)) {
+          const decoded = chunkedBody.body();
+          finish(() => resolve(buildResponse(decoded.toString('utf-8'))));
+        }
+        return;
       }
 
-      if (expectedBodyLength !== null) {
-        if (bodyBuf.length < expectedBodyLength) return false;
-        finish(() => resolve(buildResponse(bodyBuf.subarray(0, expectedBodyLength as number).toString('utf-8'))));
-        return true;
+      if (bytes.length > 0) {
+        bodyParts.push(bytes);
+        bodyLength += bytes.length;
       }
-
-      return false;
+      if (expectedBodyLength !== null && !(bodyLength < expectedBodyLength)) {
+        const declared = expectedBodyLength;
+        finish(() => resolve(buildResponse(Buffer.concat(bodyParts, bodyLength).subarray(0, declared).toString('utf-8'))));
+      }
     };
 
     client.on('data', (data: string | Buffer) => {
+      if (resolved) return;
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
       pending = pending.length ? Buffer.from(Buffer.concat([pending, buf])) : buf;
 
@@ -266,10 +308,11 @@ export function socks5Fetch(url: string, options: Socks5FetchOptions = {}): Prom
 
           client.write(Buffer.from(httpRequest));
         } else if (phase === 'http') {
-          httpBuffer = httpBuffer.length ? Buffer.concat([httpBuffer, pending]) : pending;
+          const segment = pending;
           pending = Buffer.alloc(0);
 
-          if (httpBuffer.length > MAX_RESPONSE_BYTES) {
+          receivedBytes += segment.length;
+          if (receivedBytes > MAX_RESPONSE_BYTES) {
             finish(() => {
               client.destroy();
               reject(new Error(`SOCKS5 response exceeded ${MAX_RESPONSE_BYTES} byte limit`));
@@ -277,7 +320,13 @@ export function socks5Fetch(url: string, options: Socks5FetchOptions = {}): Prom
             return;
           }
 
-          tryFinalizeHttpResponse();
+          if (headerEnd !== -1) {
+            receiveBody(segment);
+          } else {
+            headerBytes = headerBytes.length ? Buffer.concat([headerBytes, segment]) : segment;
+            // the body's first bytes can arrive in the same packet as the end of the headers
+            if (parseHeadersIfNeeded()) receiveBody(headerBytes.subarray(headerEnd + 4));
+          }
         }
       }
     });
@@ -298,8 +347,7 @@ export function socks5Fetch(url: string, options: Socks5FetchOptions = {}): Prom
             reject(new Error('SOCKS5 response ended before the declared body length was received'));
             return;
           }
-          const bodyBuf = httpBuffer.subarray(headerEnd + 4);
-          resolve(buildResponse(bodyBuf.toString('utf-8')));
+          resolve(buildResponse(Buffer.concat(bodyParts, bodyLength).toString('utf-8')));
         } catch (error) {
           reject(new Error(`Failed to parse response: ${error instanceof Error ? error.message : String(error)}`));
         }
