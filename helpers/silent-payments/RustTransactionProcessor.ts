@@ -16,6 +16,11 @@ import type { NetworkConfig } from '../../modules/network';
 // app for seconds. At the ~30k tx/s in RUST_INTEGRATION.md, 1000 is ~35ms, short enough to go unnoticed.
 export const SCAN_SLICE_SIZE = 1000;
 
+// How long slices may run back to back before the scan yields. A yield costs up to a frame on iOS, where
+// timers under 18ms wait for the next display frame (RCTTiming), so yielding after every slice left a
+// fast device idle about as long as it scanned; a slow device's slice takes this long anyway.
+export const SCAN_YIELD_AFTER_MS = 30;
+
 // A macrotask: microtasks (and the setImmediate shim, built on them in bridgeless RN) all run before the
 // runtime gets back to touches, timers and rendering.
 const yieldToEventLoop = () => new Promise<void>(resolve => setTimeout(resolve, 0));
@@ -75,9 +80,13 @@ export class RustTransactionProcessor {
       let transactionsScanned = 0;
       let outputsScanned = 0;
 
+      let holdingSince = Date.now();
       for (let start = 0; start < transactions.length; start += SCAN_SLICE_SIZE) {
         if (start > 0) {
-          await yieldToEventLoop();
+          if (Date.now() - holdingSince >= SCAN_YIELD_AFTER_MS) {
+            await yieldToEventLoop();
+            holdingSince = Date.now();
+          }
           // Thrown rather than returning what's found so far: once this resolves the caller marks the
           // whole window scanned, so the slices not yet scanned would be skipped for good.
           if (cancelScanCallback?.()) {
