@@ -21,7 +21,10 @@ const TEST_SEED = 'abandon abandon abandon abandon abandon abandon abandon aband
 const X_ONLY_KEY = '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798';
 
 const transactions = (count: number): IndexerTransaction[] =>
-  Array.from({ length: count }, (_, i) => ({ id: `tx${i}`, blockHeight: 900_000, blockHash: 'h', blockTime: 0, scanTweak: 'aa', outputs: [] }) as any);
+  Array.from(
+    { length: count },
+    (_, i) => ({ id: `tx${i}`, blockHeight: 900_000, blockHash: 'h', blockTime: 0, scanTweak: 'aa', outputs: [] }) as any,
+  );
 
 // The scanner's answer for a slice: one match per slice, named after the slice's first transaction.
 const answerPerSlice = (onCall: () => void = () => {}) =>
@@ -31,7 +34,17 @@ const answerPerSlice = (onCall: () => void = () => {}) =>
       transactionsScanned: slice.length,
       outputsScanned: 0,
       matchedUtxos: [
-        { txid: slice[0].id, vout: 0, value: 1000, height: 900_000, pubKey: X_ONLY_KEY, tweakHex: '00'.repeat(32), blockHash: 'h', isSpent: false, blockTime: 0 },
+        {
+          txid: slice[0].id,
+          vout: 0,
+          value: 1000,
+          height: 900_000,
+          pubKey: X_ONLY_KEY,
+          tweakHex: '00'.repeat(32),
+          blockHash: 'h',
+          isSpent: false,
+          blockTime: 0,
+        },
       ],
     };
   });
