@@ -222,6 +222,53 @@ describe('scan lifecycle', () => {
     expect((wallet as any).isPollingActive).toBe(false);
   });
 
+  describe('saving a scan’s progress', () => {
+    const START = 1_000_000_000;
+
+    // A scan through one window per entry, each reached `atMs` into the scan, finding a coin in `foundIn`.
+    const scanWindows = (wallet: HDSilentPaymentsWallet, atMs: number[], foundIn: number[] = []) => {
+      stubIndexer({
+        getLatestBlockHeight: jest.fn().mockResolvedValue({ height: TIP + 50 * atMs.length }),
+        scanForwardWithCallback: jest.fn(async (from: number, _to: number, onRange: (txs: unknown[], end: number) => Promise<number>) => {
+          for (let i = 0; i < atMs.length; i++) {
+            jest.setSystemTime(START + atMs[i]);
+            await onRange([], from + 50 * (i + 1) - 1);
+          }
+        }),
+      });
+      let window = 0;
+      jest.spyOn(wallet as any, 'processTransactions').mockImplementation(async () => {
+        const i = window++;
+        return { utxos: foundIn.includes(i) ? [coin(`found${i}`, `addr-${i}`)] : [], lastScannedBlock: 0 };
+      });
+      const onPersist = jest.fn();
+      wallet.setOnPersistCallback(onPersist);
+      return onPersist;
+    };
+
+    beforeEach(() => jest.useFakeTimers({ now: START }));
+
+    it('saves progress at most every 15s while a scan runs, and once more where it ends', async () => {
+      const wallet = track(syncedWallet());
+      const onPersist = scanWindows(wallet, [0, 5_000, 16_000]);
+
+      await wallet.scanForPayments();
+
+      // the first window, the one 16s in, and the end: not the one 5s in
+      expect(onPersist).toHaveBeenCalledTimes(3);
+    });
+
+    it('saves at once when a window finds coins', async () => {
+      const wallet = track(syncedWallet());
+      const onPersist = scanWindows(wallet, [0, 1_000, 2_000], [1]);
+
+      await wallet.scanForPayments();
+
+      // the first window, the one with the coin, and the end
+      expect(onPersist).toHaveBeenCalledTimes(3);
+    });
+  });
+
   describe('checkForPayments', () => {
     it('resolves with the payments the scan found, once the scan has finished', async () => {
       const windowFetched = defer<void>();
