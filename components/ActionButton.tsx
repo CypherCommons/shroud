@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleProp, StyleSheet, Text, ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import { ClashFont } from '../constants/fonts';
 import { IconProps } from './icons/types';
@@ -8,16 +8,23 @@ import { useTheme } from './themes';
 interface ActionButtonProps {
   title: string;
   onPress: () => void;
-  /** Drawn to the left of the title, in the title's colour. */
+  /** Drawn to the left of the title, in the title's colour unless `iconColor` says otherwise. */
   Icon?: React.FC<IconProps>;
   iconSize?: number;
   backgroundColor: string;
   /** Applied to both the title and the icon, so the two never drift apart. */
   color: string;
+  /** For a design that tints the icon apart from the title. The loading spinner follows it too. */
+  iconColor?: string;
   /** Outlined variant, e.g. the destructive "Remove contact" button. */
   borderColor?: string;
   /** Swaps in the shared disabled colours, so every disabled CTA looks the same. */
   disabled?: boolean;
+  /**
+   * Busy: a spinner in the icon's place, and presses ignored until it's over. The enabled colours
+   * stay, since busy isn't unavailable; pass a title that says what's under way.
+   */
+  loading?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -32,29 +39,42 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   iconSize = 24,
   backgroundColor,
   color,
+  iconColor,
   borderColor,
   disabled,
+  loading = false,
   style,
   testID,
 }) => {
   const { colors } = useTheme();
   const fill = disabled ? colors.accentSubtle : backgroundColor;
   const tint = disabled ? colors.textMuted : color;
+  const glyphTint = disabled ? colors.textMuted : (iconColor ?? color);
 
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
+      accessibilityState={loading ? { busy: true } : undefined}
+      disabled={loading || disabled}
       onPress={onPress}
       testID={testID}
-      style={[
+      style={({ pressed }) => [
         actionButtonStyles.button,
         borderColor !== undefined && actionButtonStyles.outlined,
         { backgroundColor: fill, borderColor },
         style,
+        // every tap gets an answer under the finger, even one whose result takes a moment
+        pressed && actionButtonStyles.pressed,
       ]}
     >
-      {Icon !== undefined && <Icon size={iconSize} color={tint} />}
+      {loading ? (
+        // in a box of the icon's size, so the title doesn't move when the spinner takes its place
+        <View style={[actionButtonStyles.glyphBox, { width: iconSize, height: iconSize }]}>
+          <ActivityIndicator color={glyphTint} testID={testID === undefined ? undefined : `${testID}Spinner`} />
+        </View>
+      ) : (
+        Icon !== undefined && <Icon size={iconSize} color={glyphTint} />
+      )}
       <Text style={[actionButtonStyles.title, { color: tint }]}>{title}</Text>
     </Pressable>
   );
@@ -73,5 +93,8 @@ export const actionButtonStyles = StyleSheet.create({
     gap: 9,
   },
   outlined: { borderWidth: 1 },
+  // what the app's hand-rolled 56pt buttons dim to while held
+  pressed: { opacity: 0.85 },
+  glyphBox: { alignItems: 'center', justifyContent: 'center' },
   title: { fontFamily: ClashFont.medium, fontSize: 16, lineHeight: 24, textAlign: 'center' },
 });
