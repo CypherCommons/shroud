@@ -9,7 +9,7 @@ import SyncStatusIcon, { PauseIcon, PlayIcon } from '../../components/SyncStatus
 import ClockIcon from '../../components/icons/ClockIcon';
 import InfoIcon from '../../components/icons/InfoIcon';
 import RefreshIcon from '../../components/icons/RefreshIcon';
-import { useStorage } from '../../hooks/context/useStorage';
+import { useScanState } from '../../hooks/context/useScanState';
 import { useCheckFeedback, useCheckForPayments } from '../../hooks/useCheckForPayments';
 import { useScanActions, useScannableWallet } from '../../hooks/useScannableWallet';
 import { useSyncDisplayStatus } from '../../hooks/useSyncDisplayStatus';
@@ -106,7 +106,7 @@ const FadeCover: React.FC<{ color: string }> = ({ color }) => {
 
 const SyncScreen: React.FC<SyncScreenProps> = () => {
   const { colors } = useTheme();
-  const { scanState } = useStorage();
+  const scanState = useScanState();
   const wallet = useScannableWallet();
   const { pause, resume } = useScanActions(wallet);
   const { check, checking, outcome } = useCheckForPayments(wallet);

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useReducer, useRef, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import useAppState from '../../hooks/useAppState';
+import ScanAutoPause from '../../components/ScanAutoPause';
 import ScanProgressBar from '../../components/ScanProgressBar';
 import { useScannableWallet } from '../../hooks/useScannableWallet';
 import { Animated, InteractionManager, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -15,7 +15,6 @@ import presentAlert from '../../components/Alert';
 import Toast from '../../components/Toast';
 import { useTheme } from '../../components/themes';
 import { TransactionListItem } from '../../components/TransactionListItem';
-import { splitSelfTransfer } from '../../utils/transactionHelpers';
 import { useSizeClass, SizeClass } from '../../modules/sizeClass';
 import loc, { formatBalanceWithoutSuffix, HIDDEN_AMOUNT } from '../../loc';
 import { BitcoinUnit } from '../../models/bitcoinUnits';
@@ -25,6 +24,7 @@ import { DetailViewStackParamList } from '../../navigation/DetailViewStackParamL
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
 import { useSendToAddress } from '../../hooks/useSendToAddress';
 import { useStorage } from '../../hooks/context/useStorage';
+import { useHomeTransactions } from '../../hooks/useHomeTransactions';
 import { useSettings } from '../../hooks/context/useSettings';
 import SafeAreaSectionList from '../../components/SafeAreaSectionList';
 import TestnetBadge from '../../components/TestnetBadge';
@@ -132,10 +132,8 @@ const WalletsList: React.FC = () => {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { isLoading } = state;
   const { sizeClass, isLarge } = useSizeClass();
-  const { wallets, getTransactions, getBalance, refreshAllWalletTransactions, saveToDisk, scanState } = useStorage();
+  const { wallets, getBalance, refreshAllWalletTransactions, saveToDisk } = useStorage();
   const { isBalanceHidden } = useSettings();
-  const { currentAppState } = useAppState();
-  const wasAutoPausedRef = useRef(false);
   const { colors } = useTheme();
   const navigation = useExtendedNavigation<NavigationProps>();
   const { contactList } = useContacts();
@@ -159,7 +157,7 @@ const WalletsList: React.FC = () => {
     enabled: sizeClass !== SizeClass.Large,
     onSwipingChange: holdListStill,
   });
-  const dataSource = getTransactions(undefined, Infinity).flatMap(splitSelfTransfer);
+  const dataSource = useHomeTransactions();
   const walletsCount = useRef<number>(wallets.length);
   const [showZeroBalanceToast, setShowZeroBalanceToast] = useState(false);
   const dismissToast = useCallback(() => setShowZeroBalanceToast(false), []);
@@ -284,22 +282,6 @@ const WalletsList: React.FC = () => {
   }, [isLarge, wallets]);
 
   const scanWallet = useScannableWallet();
-
-  useEffect(() => {
-    if (!scanWallet) return;
-    const isBackground = currentAppState === 'background' || currentAppState === 'inactive';
-    if (isBackground && scanState.status === 'scanning') {
-      wasAutoPausedRef.current = true;
-      scanWallet.pauseScan();
-    } else if (!isBackground && wasAutoPausedRef.current && scanState.status === 'paused') {
-      wasAutoPausedRef.current = false;
-      scanWallet.resumeScan();
-    } else if (scanState.status !== 'paused' && scanState.status !== 'scanning') {
-      // scan ended via another path (cancel/error/completion) — drop the stale flag so a
-      // later manual pause isn't auto-resumed
-      wasAutoPausedRef.current = false;
-    }
-  }, [currentAppState, scanState.status, scanWallet]);
 
   const onBarScanned = useCallback(
     (value?: string) => {
@@ -519,7 +501,7 @@ const WalletsList: React.FC = () => {
           <Text style={[styles.balanceFiat, stylesHook.alternativeText]}>{fiatLine}</Text>
         </TouchableOpacity>
 
-        {scanWallet && <ScanProgressBar scanState={scanState} wallet={scanWallet} />}
+        {scanWallet && <ScanProgressBar wallet={scanWallet} />}
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.actionBtnWide, stylesHook.receiveBtnStyle]}
@@ -562,7 +544,6 @@ const WalletsList: React.FC = () => {
     colors,
     changeWalletBalanceUnit,
     scanWallet,
-    scanState,
     triggerZeroBalanceToast,
     onReceiveButtonPressed,
     onScanButtonPressed,
@@ -690,6 +671,7 @@ const WalletsList: React.FC = () => {
         ignoreTopInset={true} // Ignore top inset as the screen header already handles it
         {...refreshProps}
       />
+      <ScanAutoPause wallet={scanWallet} />
       <Toast
         visible={showZeroBalanceToast}
         title={loc.wallets.zero_balance_toast_title}

@@ -10,7 +10,7 @@ import * as Electrum from '../../modules/Electrum';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
 import { startAndDecrypt } from '../../modules/start-and-decrypt';
 import { navigationRef } from '../../NavigationService';
-import { type ScanStateInfo, IDLE_SCAN_STATE, isScannable } from '../../helpers/silent-payments';
+import { type ScanStateInfo, type ScanStatus, IDLE_SCAN_STATE, isScannable } from '../../helpers/silent-payments';
 import { getActiveNetworkId, type NetworkId } from '../../modules/network';
 import { assertNetworkSwitchable, rollbackNetworkSwitch, switchNetworkBackends } from '../../modules/networkPreference';
 import { clearPin } from '../../helpers/pinLock';
@@ -53,7 +53,6 @@ interface StorageContextType {
   getItem: typeof shroudApp.getItem;
   setItem: typeof shroudApp.setItem;
   handleWalletDeletion: (walletID: string) => Promise<boolean>;
-  scanState: ScanStateInfo;
   activeNetworkId: NetworkId;
   switchNetwork: (next: NetworkId) => Promise<void>;
   isSwitchingNetwork: boolean;
@@ -68,6 +67,12 @@ export enum WalletTransactionsStatus {
 
 // @ts-ignore default value does not match the type
 export const StorageContext = createContext<StorageContextType>(undefined);
+
+// The scan's state lives apart from StorageContext, which nearly every screen reads: a running scan
+// reports progress every few hundred milliseconds, and each report would re-render all of them.
+export const ScanStateContext = createContext<ScanStateInfo>(IDLE_SCAN_STATE);
+// Only the status, for readers that don't care how far a scan has got.
+export const ScanStatusContext = createContext<ScanStatus>('idle');
 
 export const StorageProvider = ({ children }: { children: React.ReactNode }) => {
   const txMetadata = useRef<TTXMetadata>(shroudApp.tx_metadata);
@@ -471,13 +476,15 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
         console.debug('[refreshAllWalletTransactions] Refresh completed successfully');
       } catch (error) {
         console.error('[refreshAllWalletTransactions] Error:', error);
+        // what it did fetch shows anyway: the home list is rebuilt only when `wallets` changes
+        forceWalletsUpdate();
       } finally {
         console.debug('[refreshAllWalletTransactions] Resetting wallet transaction status and refresh lock');
         setWalletTransactionUpdateStatus(WalletTransactionsStatus.NONE);
         refreshingRef.current = false;
       }
     },
-    [saveToDisk],
+    [saveToDisk, forceWalletsUpdate],
   );
 
   const fetchAndSaveWalletTransactions = useCallback(
@@ -511,9 +518,10 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
           setWalletTransactionUpdateStatus(WalletTransactionsStatus.NONE);
         }
         if (noErr) await saveToDisk();
+        else forceWalletsUpdate();
       });
     },
-    [saveToDisk, wallets],
+    [saveToDisk, forceWalletsUpdate, wallets],
   );
 
   // Every change to the stored wallets is followed by a new `wallets`, and another chain's wallets
@@ -537,9 +545,11 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       (async () => {
         await w.fetchBalance();
         if (isScannable(w) && !w.isScanActive()) await w.fetchTransactions();
+        // show what that fetched: nothing else re-renders the home list for it
+        forceWalletsUpdate();
       })().catch((e: any) => console.warn('[addAndSaveWallet] sync error:', e));
     },
-    [wallets, addWallet, saveToDisk],
+    [wallets, addWallet, saveToDisk, forceWalletsUpdate],
   );
 
   const value: StorageContextType = useMemo(
@@ -575,7 +585,6 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       walletTransactionUpdateStatus,
       setWalletTransactionUpdateStatus,
       handleWalletDeletion,
-      scanState,
       activeNetworkId,
       switchNetwork,
       isSwitchingNetwork,
@@ -596,7 +605,6 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       wipeDevice,
       walletTransactionUpdateStatus,
       handleWalletDeletion,
-      scanState,
       activeNetworkId,
       switchNetwork,
       isSwitchingNetwork,
@@ -604,5 +612,11 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     ],
   );
 
-  return <StorageContext.Provider value={value}>{children}</StorageContext.Provider>;
+  return (
+    <StorageContext.Provider value={value}>
+      <ScanStatusContext.Provider value={scanState.status}>
+        <ScanStateContext.Provider value={scanState}>{children}</ScanStateContext.Provider>
+      </ScanStatusContext.Provider>
+    </StorageContext.Provider>
+  );
 };

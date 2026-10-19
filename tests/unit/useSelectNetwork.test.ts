@@ -1,16 +1,19 @@
 import { act, renderHook } from '@testing-library/react-native';
 
 import { useSelectNetwork } from '../../hooks/useSelectNetwork';
+import { useScanStatus } from '../../hooks/context/useScanState';
 import { useStorage } from '../../hooks/context/useStorage';
 import confirm from '../../helpers/confirm';
 import presentAlert from '../../components/Alert';
 import loc from '../../loc';
 
 jest.mock('../../hooks/context/useStorage');
+jest.mock('../../hooks/context/useScanState');
 jest.mock('../../helpers/confirm');
 jest.mock('../../components/Alert');
 
 const mockUseStorage = useStorage as jest.Mock;
+const mockUseScanStatus = useScanStatus as jest.Mock;
 const mockConfirm = confirm as jest.Mock;
 const mockPresentAlert = presentAlert as jest.Mock;
 
@@ -21,7 +24,6 @@ describe('unit - useSelectNetwork', () => {
     mockUseStorage.mockReturnValue({
       activeNetworkId: 'bitcoin',
       isSwitchingNetwork: false,
-      scanState: { status: 'idle' },
       switchNetwork,
       ...storage,
     });
@@ -31,6 +33,7 @@ describe('unit - useSelectNetwork', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseScanStatus.mockReturnValue('idle');
     switchNetwork = jest.fn().mockResolvedValue(undefined);
   });
 
@@ -48,14 +51,16 @@ describe('unit - useSelectNetwork', () => {
 
   it('asks before abandoning a running scan, and stays put if told no', async () => {
     mockConfirm.mockResolvedValue(false);
-    await select('signet', { scanState: { status: 'scanning' } });
+    mockUseScanStatus.mockReturnValue('scanning');
+    await select('signet');
     expect(mockConfirm).toHaveBeenCalledWith(loc.settings.network_switch_scan_title, loc.settings.network_switch_scan_message);
     expect(switchNetwork).not.toHaveBeenCalled();
   });
 
   it('switches once the user agrees to abandon the scan', async () => {
     mockConfirm.mockResolvedValue(true);
-    await select('signet', { scanState: { status: 'scanning' } });
+    mockUseScanStatus.mockReturnValue('scanning');
+    await select('signet');
     expect(switchNetwork).toHaveBeenCalledWith('signet');
   });
 

@@ -6,21 +6,23 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import loc from '../loc';
-import type { IScannableWallet, ScanStateInfo } from '../helpers/silent-payments';
+import type { IScannableWallet } from '../helpers/silent-payments';
 import { useCheckForPayments } from '../hooks/useCheckForPayments';
 import { DetailViewStackParamList } from '../navigation/DetailViewStackParamList';
 import { useTheme } from './themes';
+import { useScanState } from '../hooks/context/useScanState';
 import { ClashFont } from '../constants/fonts';
 
 interface Props {
-  scanState: ScanStateInfo;
   wallet: IScannableWallet;
 }
 
 type NavigationProps = NativeStackNavigationProp<DetailViewStackParamList>;
 
-const ScanProgressBar: React.FC<Props> = ({ scanState, wallet }) => {
+// Reads the scan's state itself, so a progress report re-renders this banner rather than the home screen.
+const ScanProgressBar: React.FC<Props> = ({ wallet }) => {
   const { colors } = useTheme();
+  const scanState = useScanState();
   // the same check the Sync screen runs, so a retry from here answers the tap and shows as running there too
   const { check, checking } = useCheckForPayments(wallet);
   const navigation = useNavigation<NavigationProps>();

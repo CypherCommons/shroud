@@ -10,11 +10,15 @@ import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/haptic
 import SyncScreen from '../../screen/wallets/SyncScreen';
 import { defer } from '../helpers/defer';
 
-// What useStorage hands the screen, kept in a test's state so the wallet can change it under the screen.
+// What useStorage and useScanState hand the screen, kept in a test's state so the wallet can change it under the screen.
 const mockStorage = React.createContext<{ scanState: ScanStateInfo; wallets: unknown[] } | null>(null);
 
 jest.mock('../../hooks/context/useStorage', () => ({
   useStorage: () => require('react').useContext(mockStorage),
+}));
+jest.mock('../../hooks/context/useScanState', () => ({
+  useScanState: () => require('react').useContext(mockStorage).scanState,
+  useScanStatus: () => require('react').useContext(mockStorage).scanState.status,
 }));
 jest.mock('../../modules/hapticFeedback');
 jest.mock('react-native-safe-area-context', () => require('react-native-safe-area-context/jest/mock').default);

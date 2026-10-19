@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
+import { ScanStateContext } from '../../components/Context/StorageProvider';
 import ScanProgressBar from '../../components/ScanProgressBar';
 import { IDLE_SCAN_STATE, type IScannableWallet, type ScanStateInfo } from '../../helpers/silent-payments';
 import { CHECK_MIN_BUSY_MS } from '../../hooks/useCheckForPayments';
@@ -29,7 +30,9 @@ describe('unit - ScanProgressBar', () => {
     const wallet = { checkForPayments: jest.fn(() => answer.promise), resumeScan: jest.fn() } as unknown as IScannableWallet;
     render(
       <NavigationContainer>
-        <ScanProgressBar scanState={failed} wallet={wallet} />
+        <ScanStateContext.Provider value={failed}>
+          <ScanProgressBar wallet={wallet} />
+        </ScanStateContext.Provider>
       </NavigationContainer>,
     );
 
