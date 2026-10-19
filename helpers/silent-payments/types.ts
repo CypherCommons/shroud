@@ -105,7 +105,10 @@ export interface IScannableWallet {
    * still land and commit the previous chain's UTXOs into this wallet.
    */
   cancelScanAndWait(): Promise<void>;
+  /** Undo `cancelScan`, for a wallet that becomes active again. */
+  allowScanning(): void;
   isScanActive(): boolean;
+  scanForPayments(): Promise<number>;
   fetchTransactions(): Promise<void>;
 }
 
@@ -119,7 +122,9 @@ export function isScannable(wallet: unknown): wallet is IScannableWallet {
     typeof w.resumeScan === 'function' &&
     typeof w.cancelScan === 'function' &&
     typeof w.cancelScanAndWait === 'function' &&
+    typeof w.allowScanning === 'function' &&
     typeof w.isScanActive === 'function' &&
+    typeof w.scanForPayments === 'function' &&
     typeof w.fetchTransactions === 'function'
   );
 }
