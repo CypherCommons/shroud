@@ -184,12 +184,22 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     setWallets([...shroudApp.getWallets()]);
   }, []);
 
+  // saveToDisk without its re-render, for the wallets' own saves: a scan saves its progress as it goes,
+  // and a wallet change anything shows is announced through the balance callback instead.
+  const persistToDisk = useCallback(async () => {
+    if (shroudApp.getWallets().length === 0) return;
+    await InteractionManager.runAfterInteractions(async () => {
+      shroudApp.tx_metadata = txMetadata.current;
+      await shroudApp.saveToDisk();
+    });
+  }, []);
+
   // Debounced persist to avoid excessive saves during rapid scans
   const persistTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const debouncedPersist = useCallback(() => {
     if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
-    persistTimeoutRef.current = setTimeout(() => saveToDisk(), 2000);
-  }, [saveToDisk]);
+    persistTimeoutRef.current = setTimeout(() => persistToDisk(), 2000);
+  }, [persistToDisk]);
 
   useEffect(() => {
     return () => {

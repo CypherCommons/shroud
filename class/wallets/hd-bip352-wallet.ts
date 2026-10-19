@@ -80,6 +80,9 @@ const POLLING_MAX_BACKOFF_MS = 5 * 60 * 1000;
 const ELECTRUM_WAIT_MS = 20000;
 // The scan couldn't start: the wallet's birth height is still being looked up (see _resolvePendingBirthHeight).
 const BIRTH_HEIGHT_PENDING = 'BIRTH_HEIGHT_PENDING';
+// How often a scan saves its progress alone. Each save writes every wallet on the JS thread, and an
+// app killed mid-scan only rescans what it hadn't saved: coins found are saved at once regardless.
+const PROGRESS_PERSIST_INTERVAL_MS = 15000;
 
 /** Waits for `promise` to settle, but no longer than `ms`. Never rejects. */
 const settleWithin = async (promise: Promise<unknown>, ms: number): Promise<void> => {
@@ -160,6 +163,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   private _activeCheck: Promise<number> | null = null;
   private _activeRegularSync: Promise<void> | null = null;
   private _activeSpentCheck: Promise<void> | null = null;
+  private _lastProgressPersistAt: number = 0;
   private onBalanceChangeCallback: (() => void) | null = null;
   private onPersistCallback: (() => void) | null = null;
   private _sp_spending_txs: Transaction[] = [];
@@ -190,6 +194,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     '_activeCheck',
     '_activeRegularSync',
     '_activeSpentCheck',
+    '_lastProgressPersistAt',
     'onBalanceChangeCallback',
     'onPersistCallback',
     '_scanState',
@@ -681,9 +686,12 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       this.onBalanceChangeCallback?.();
     }
 
-    // Always persist when lastScannedBlock updates to track scan progress
-    if (newLastScannedBlock > 0 && this.onPersistCallback) {
-      this.onPersistCallback();
+    // Coins found are saved at once; progress alone now and then (see PROGRESS_PERSIST_INTERVAL_MS),
+    // and once more where the scan ends (scanForPayments).
+    const now = Date.now();
+    if (newLastScannedBlock > 0 && (addedCount > 0 || now - this._lastProgressPersistAt >= PROGRESS_PERSIST_INTERVAL_MS)) {
+      this._lastProgressPersistAt = now;
+      this.onPersistCallback?.();
     }
 
     return addedCount;
@@ -769,12 +777,15 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     }
 
     this.cancelScanCallbackScan = false;
+    const scannedFrom = this.lastScannedBlock;
     this.activeScanPromise = this.performScan(onProgress, forceFullScan);
 
     let result: number;
     try {
       result = await this.activeScanPromise;
     } finally {
+      // progress is saved only now and then while a scan runs (see commitUTXOs): save where it ended
+      if (this.lastScannedBlock !== scannedFrom) this.onPersistCallback?.();
       // Cleared once the scan itself settles, before the spent check below. The state reads idle (or
       // error) by then, so a check started now must run rather than join this one.
       this.activeScanPromise = null;
