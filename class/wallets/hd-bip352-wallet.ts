@@ -227,6 +227,9 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         this._scanResumeResolver = resolve;
       });
       this._emitScanState('paused');
+      // Progress is saved only now and then while a scan runs (see commitUTXOs), and a paused scan may never
+      // resume: a scan is paused on the app's way into the background, where the system can end it.
+      this.onPersistCallback?.();
     }
   }
 

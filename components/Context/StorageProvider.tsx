@@ -163,21 +163,35 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     return undefined;
   };
 
+  // Writes the wallets and their metadata to disk, then runs `afterWrite` whether the write worked or not.
+  // Callers can't wait for the write itself: runAfterInteractions calls an async task without awaiting it,
+  // which is also why a failure is reported here, where it would otherwise go unhandled.
+  const writeToDisk = useCallback(
+    (afterWrite?: () => void) =>
+      InteractionManager.runAfterInteractions(async () => {
+        try {
+          shroudApp.tx_metadata = txMetadata.current;
+          await shroudApp.saveToDisk();
+        } catch (error) {
+          console.error('[StorageProvider] Saving to disk failed:', error);
+        } finally {
+          afterWrite?.();
+        }
+      }),
+    [],
+  );
+
   const saveToDisk = useCallback(
     async (force: boolean = false) => {
       if (!force && shroudApp.getWallets().length === 0) {
         console.debug('Not saving empty wallets array');
         return;
       }
-      await InteractionManager.runAfterInteractions(async () => {
-        shroudApp.tx_metadata = txMetadata.current;
-        await shroudApp.saveToDisk();
-        const w: TWallet[] = [...shroudApp.getWallets()];
-        setWallets(w);
-      });
+      // A new `wallets` is what re-renders the screens showing them. After a failed write too: what a
+      // fetch put into the wallets should show either way.
+      await writeToDisk(() => setWallets([...shroudApp.getWallets()]));
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [txMetadata.current],
+    [writeToDisk],
   );
 
   const forceWalletsUpdate = useCallback(() => {
@@ -188,11 +202,8 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
   // and a wallet change anything shows is announced through the balance callback instead.
   const persistToDisk = useCallback(async () => {
     if (shroudApp.getWallets().length === 0) return;
-    await InteractionManager.runAfterInteractions(async () => {
-      shroudApp.tx_metadata = txMetadata.current;
-      await shroudApp.saveToDisk();
-    });
-  }, []);
+    await writeToDisk();
+  }, [writeToDisk]);
 
   // Debounced persist to avoid excessive saves during rapid scans
   const persistTimeoutRef = useRef<NodeJS.Timeout | null>(null);

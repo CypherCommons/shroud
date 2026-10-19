@@ -258,6 +258,35 @@ describe('scan lifecycle', () => {
       expect(onPersist).toHaveBeenCalledTimes(3);
     });
 
+    it('saves where a scan stopped when it is paused, since a paused app may not come back', async () => {
+      const wallet = track(syncedWallet());
+      const goOn = defer<void>();
+      stubIndexer({
+        getLatestBlockHeight: jest.fn().mockResolvedValue({ height: TIP + 100 }),
+        scanForwardWithCallback: jest.fn(async (from: number, _to: number, onRange: (txs: unknown[], end: number) => Promise<number>) => {
+          await onRange([], from + 49);
+          jest.setSystemTime(START + 5_000);
+          await onRange([], from + 99);
+          await goOn.promise;
+        }),
+      });
+      jest.spyOn(wallet as any, 'processTransactions').mockResolvedValue({ utxos: [], lastScannedBlock: 0 });
+      const onPersist = jest.fn();
+      wallet.setOnPersistCallback(onPersist);
+
+      const scan = wallet.scanForPayments();
+      await jest.advanceTimersByTimeAsync(0);
+      // the first window was saved; the second, 5s later, waits for the next 15s mark
+      expect(onPersist).toHaveBeenCalledTimes(1);
+
+      wallet.pauseScan();
+      expect(onPersist).toHaveBeenCalledTimes(2);
+
+      wallet.resumeScan();
+      goOn.resolve();
+      await scan;
+    });
+
     it('saves at once when a window finds coins', async () => {
       const wallet = track(syncedWallet());
       const onPersist = scanWindows(wallet, [0, 1_000, 2_000], [1]);
