@@ -11,7 +11,8 @@ const inContainer = (progress: number | null) => (
   </NavigationContainer>
 );
 
-const layOut = (width: number) => fireEvent(screen.getByTestId('Bar'), 'layout', { nativeEvent: { layout: { x: 0, y: 0, width, height: 8 } } });
+const layOut = (width: number) =>
+  fireEvent(screen.getByTestId('Bar'), 'layout', { nativeEvent: { layout: { x: 0, y: 0, width, height: 8 } } });
 const fillStyle = () => StyleSheet.flatten(screen.getByTestId('BarFill').props.style);
 
 describe('unit - ProgressBar', () => {

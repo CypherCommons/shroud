@@ -5,25 +5,27 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import ActionButton from '../../components/ActionButton';
 import { IconProps } from '../../components/icons/types';
-import { useTheme } from '../../components/themes';
+import { ShroudDefaultTheme } from '../../components/themes';
 
 // Reports the tint it was drawn in.
 const Glyph: React.FC<IconProps> = ({ color }) => <View testID="Glyph" accessibilityLabel={color} />;
 
 const renderButton = (props: Partial<React.ComponentProps<typeof ActionButton>> = {}) => {
   const onPress = jest.fn();
-  let colors!: ReturnType<typeof useTheme>['colors'];
-  const ReadTheme = () => {
-    colors = useTheme().colors;
-    return null;
-  };
   render(
-    <NavigationContainer>
-      <ReadTheme />
-      <ActionButton title="Check again" onPress={onPress} Icon={Glyph} backgroundColor="#111111" color="#222222" testID="Button" {...props} />
+    <NavigationContainer theme={ShroudDefaultTheme}>
+      <ActionButton
+        title="Check again"
+        onPress={onPress}
+        Icon={Glyph}
+        backgroundColor="#111111"
+        color="#222222"
+        testID="Button"
+        {...props}
+      />
     </NavigationContainer>,
   );
-  return { onPress, colors };
+  return { onPress, colors: ShroudDefaultTheme.colors };
 };
 
 describe('unit - ActionButton', () => {
