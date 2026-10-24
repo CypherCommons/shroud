@@ -6,15 +6,15 @@ import SettingsSectionHeader from '../../components/SettingsSectionHeader';
 import SettingsNavRow from '../../components/SettingsNavRow';
 import SettingsRow from '../../components/SettingsRow';
 import SettingsStatRow from '../../components/SettingsStatRow';
-import InfoBanner from '../../components/InfoBanner';
-import DiscordIcon from '../../components/icons/DiscordIcon';
 import GithubIcon from '../../components/icons/GithubIcon';
+import MailIcon from '../../components/icons/MailIcon';
 import { Theme, useTheme } from '../../components/themes';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
 import loc from '../../loc';
 import { ClashFont } from '../../constants/fonts';
-import { LINKS, WEBSITE_DOMAIN } from '../../constants/links';
+import { CONTACT_EMAIL, LINKS, WEBSITE_DOMAIN } from '../../constants/links';
 import { getAppVersionLabel } from '../../helpers/appVersion';
+import { splitForEmphasis } from '../../helpers/emphasis';
 import { openLink } from '../../helpers/openLink';
 
 const shroudLogo = require('../../img/icon.png');
@@ -29,11 +29,11 @@ interface LinkRowConfig {
 
 const LINK_ROWS: LinkRowConfig[] = [
   {
-    renderIcon: colors => <DiscordIcon size={20} />,
-    title: loc.settings.about_sm_discord,
-    subtitle: loc.settings.about_sm_discord_subtitle,
-    url: LINKS.discord,
-    testID: 'DiscordRow',
+    renderIcon: colors => <MailIcon size={20} color={colors.bgInverse} />,
+    title: loc.settings.about_sm_email,
+    subtitle: CONTACT_EMAIL,
+    url: LINKS.email,
+    testID: 'EmailRow',
   },
   {
     renderIcon: colors => <GithubIcon size={20} color={colors.bgInverse} />,
@@ -54,6 +54,11 @@ const LINK_ROWS: LinkRowConfig[] = [
 const About: React.FC = () => {
   const { colors } = useTheme();
   const navigation = useExtendedNavigation();
+  // The address in the letter is a link too, opening the same mail draft as the Email row.
+  const [askBeforeEmail, askEmail, askAfterEmail] = splitForEmphasis(
+    loc.formatString(loc.settings.about_letter_ask, { email: CONTACT_EMAIL }),
+    CONTACT_EMAIL,
+  );
 
   return (
     <SafeAreaScrollView contentContainerStyle={styles.content} testID="AboutScrollView">
@@ -63,12 +68,29 @@ const About: React.FC = () => {
         <Text style={[styles.description, { color: colors.textMuted }]}>{loc.settings.about_description}</Text>
       </View>
 
-      <InfoBanner
-        variant="caution"
-        title={loc.settings.about_warning_title}
-        text={loc.settings.about_warning}
-        containerStyle={styles.warningBanner}
-      />
+      <SettingsCard style={styles.letter}>
+        <Text style={[styles.letterOpening, { color: colors.textPrimary }]}>{loc.settings.about_letter_opening}</Text>
+        <Text style={[styles.letterBody, { color: colors.textSecondary }]}>{loc.settings.about_letter_why}</Text>
+        <Text style={[styles.letterBody, { color: colors.textSecondary }]}>
+          {askBeforeEmail}
+          {askEmail ? (
+            <Text
+              accessibilityRole="link"
+              style={[styles.letterLink, { color: colors.textBrand }]}
+              onPress={() => openLink(LINKS.email)}
+              testID="LetterEmailLink"
+            >
+              {askEmail}
+            </Text>
+          ) : null}
+          {askAfterEmail}
+        </Text>
+        <Text style={[styles.letterBody, { color: colors.textSecondary }]}>{loc.settings.about_letter_thanks}</Text>
+        <View style={styles.signature}>
+          <Text style={[styles.signatureName, { color: colors.textPrimary }]}>{loc.settings.about_letter_signature}</Text>
+          <Text style={[styles.signatureRole, { color: colors.textMuted }]}>{loc.settings.about_letter_signature_role}</Text>
+        </View>
+      </SettingsCard>
 
       <SettingsSectionHeader style={styles.sectionHeaderGap}>{loc.settings.about_community_header}</SettingsSectionHeader>
       <SettingsCard>
@@ -132,8 +154,36 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
   },
-  warningBanner: {
+  letter: {
     marginTop: 20,
+    padding: 20,
+    gap: 12,
+  },
+  letterOpening: {
+    fontSize: 17,
+    fontFamily: ClashFont.medium,
+    lineHeight: 24,
+  },
+  letterBody: {
+    fontSize: 15,
+    fontFamily: ClashFont.regular,
+    lineHeight: 23,
+  },
+  letterLink: {
+    fontFamily: ClashFont.medium,
+    textDecorationLine: 'underline',
+  },
+  signature: {
+    marginTop: 8,
+  },
+  signatureName: {
+    fontSize: 15,
+    fontFamily: ClashFont.medium,
+  },
+  signatureRole: {
+    fontSize: 13,
+    fontFamily: ClashFont.regular,
+    marginTop: 4,
   },
   sectionHeaderGap: {
     marginTop: 24,
