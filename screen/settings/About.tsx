@@ -7,13 +7,13 @@ import SettingsNavRow from '../../components/SettingsNavRow';
 import SettingsRow from '../../components/SettingsRow';
 import SettingsStatRow from '../../components/SettingsStatRow';
 import InfoBanner from '../../components/InfoBanner';
-import DiscordIcon from '../../components/icons/DiscordIcon';
 import GithubIcon from '../../components/icons/GithubIcon';
+import MailIcon from '../../components/icons/MailIcon';
 import { Theme, useTheme } from '../../components/themes';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
 import loc from '../../loc';
 import { ClashFont } from '../../constants/fonts';
-import { LINKS, WEBSITE_DOMAIN } from '../../constants/links';
+import { CONTACT_EMAIL, LINKS, WEBSITE_DOMAIN } from '../../constants/links';
 import { getAppVersionLabel } from '../../helpers/appVersion';
 import { openLink } from '../../helpers/openLink';
 
@@ -29,11 +29,11 @@ interface LinkRowConfig {
 
 const LINK_ROWS: LinkRowConfig[] = [
   {
-    renderIcon: colors => <DiscordIcon size={20} />,
-    title: loc.settings.about_sm_discord,
-    subtitle: loc.settings.about_sm_discord_subtitle,
-    url: LINKS.discord,
-    testID: 'DiscordRow',
+    renderIcon: colors => <MailIcon size={20} color={colors.bgInverse} />,
+    title: loc.settings.about_sm_email,
+    subtitle: CONTACT_EMAIL,
+    url: LINKS.email,
+    testID: 'EmailRow',
   },
   {
     renderIcon: colors => <GithubIcon size={20} color={colors.bgInverse} />,
