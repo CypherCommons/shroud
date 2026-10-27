@@ -16,16 +16,16 @@ Each release's notes repeat them. They should match everywhere you find them.
 
 | | Fingerprint |
 | --- | --- |
-| Release key (OpenPGP, signs `SHA256SUMS`) | `TODO: release key fingerprint` |
+| Release key (OpenPGP, signs `SHA256SUMS`) | `6460 9910 C0EA 35EC 650D ED3C 107A 8319 1C6D 828D` |
 | APK signing certificate, GitHub releases (SHA-256) | `75:E0:5E:0E:8E:39:9D:C8:55:93:B1:E1:52:D6:47:FE:73:93:AD:26:A2:2C:8D:7D:0A:CD:79:C5:E4:A0:AF:87` |
-| APK signing certificate, Google Play installs (SHA-256) | `TODO: Play app signing certificate` |
+| APK signing certificate, Google Play installs (SHA-256) | `3F:C8:0C:57:41:E1:67:17:DB:64:48:CC:71:43:EA:B9:6A:5A:C2:79:7B:A5:98:42:C3:7E:4A:EB:4C:EA:39:7E` |
 
 The package name is `com.shroudwallet.app`.
 
 ## 1. Get the release key
 
 ```sh
-gpg --keyserver hkps://keys.openpgp.org --recv-keys <release key fingerprint>
+gpg --keyserver hkps://keys.openpgp.org --recv-keys 64609910C0EA35EC650DED3C107A83191C6D828D
 ```
 
 Or import [`contrib/release-keys/shroud-release.asc`](contrib/release-keys/shroud-release.asc) from this repository. Either way, check that the fingerprint `gpg` shows is the one above.

@@ -81,7 +81,7 @@ and a GitHub install can't update each other.
 
    The upload prints a link: open it and confirm the email address. Until you do, keys.openpgp.org hands
    out the key without its name, and `gpg --recv-keys` won't import it. Then put the fingerprint in
-   `VERIFY.md` and commit the exported key.
+   `VERIFY.md` and in `RELEASE_KEY` in `scripts/release/github.mjs`, and commit the exported key.
 3. Keep the secret key (`gpg --armor --export-secret-keys <fingerprint>`) and its revocation
    certificate (`~/.gnupg/openpgp-revocs.d/<fingerprint>.rev`) in the vault. The key expires after two
    years. Before then, extend it with `gpg --quick-set-expire <fingerprint> 2y`, then export and upload
@@ -112,7 +112,7 @@ the commit it was built from, then run the script:
 git tag -s v1.0.0 <commit> -m "Shroud 1.0.0" && git push origin v1.0.0
 read -s SHROUD_KS_PASS && read -s SHROUD_KEY_PASS && export SHROUD_KS_PASS SHROUD_KEY_PASS
 node scripts/release/github.mjs --aab build/shroud-1.0.0.aab --keystore <path>.jks \
-  --key-alias <alias> --gpg-key <release key fingerprint> --upload
+  --key-alias <alias> --upload
 unset SHROUD_KS_PASS SHROUD_KEY_PASS
 ```
 

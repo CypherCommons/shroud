@@ -11,7 +11,7 @@
 //
 //   read -s SHROUD_KS_PASS && read -s SHROUD_KEY_PASS && export SHROUD_KS_PASS SHROUD_KEY_PASS
 //   node scripts/release/github.mjs --aab build/shroud-1.0.0.aab --keystore <upload keystore.jks> \
-//     --key-alias <alias> --gpg-key <release key fingerprint> [--upload]
+//     --key-alias <alias> [--upload]
 //
 // The keystore passwords come from the environment, so they never appear in the process list.
 // This is not an npm script on purpose: package.json scripts are part of the runtime version
@@ -32,13 +32,15 @@ const PACKAGE = 'com.shroudwallet.app';
 // SHA-256 of the upload key's certificate (the EAS-managed keystore). Google re-signs Play installs
 // with its own app signing key; APKs on GitHub keep this one.
 const UPLOAD_CERT_SHA256 = '75E05E0E8E399DC85593B1E152D647FE7393AD26A22C8D7D0ACD79C5E4A0AF87';
+// The release OpenPGP key, which signs SHA256SUMS (contrib/release-keys/shroud-release.asc).
+const RELEASE_KEY = '64609910C0EA35EC650DED3C107A83191C6D828D';
 
 const { values } = parseArgs({
   options: {
     aab: { type: 'string' },
     keystore: { type: 'string' },
     'key-alias': { type: 'string' },
-    'gpg-key': { type: 'string' },
+    'gpg-key': { type: 'string', default: RELEASE_KEY },
     tag: { type: 'string' },
     'expect-cert': { type: 'string', default: UPLOAD_CERT_SHA256 },
     out: { type: 'string' },
@@ -79,7 +81,7 @@ function findApksigner() {
 
 // ---- Inputs ----
 
-for (const flag of ['aab', 'keystore', 'key-alias', 'gpg-key']) if (!values[flag]) fail(`--${flag} is required`);
+for (const flag of ['aab', 'keystore', 'key-alias']) if (!values[flag]) fail(`--${flag} is required`);
 const aab = path.resolve(values.aab);
 const keystore = path.resolve(values.keystore);
 if (!existsSync(aab)) fail(`no such file: ${aab}`);
