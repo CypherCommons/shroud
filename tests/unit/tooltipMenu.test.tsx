@@ -39,11 +39,12 @@ describe('unit - ToolTipMenu', () => {
     expect(sheet.queryByText('Gone')).toBeNull();
   });
 
-  it('shows a checkbox on items that are on or off, and none on plain actions', async () => {
+  it('shows a radio button on items of a pick-one list, and none on plain actions', async () => {
     const screen = renderMenu({ isButton: true, isMenuPrimaryAction: true });
     await act(async () => fireEvent.press(screen.getByTestId('Touchable')));
 
     expect(screen.getByTestId('ToolTipMenuItem-copy').props.accessibilityRole).toBe('button');
+    expect(screen.getByTestId('ToolTipMenuItem-on').props.accessibilityRole).toBe('radio');
     expect(screen.getByTestId('ToolTipMenuItem-on').props.accessibilityState).toMatchObject({ checked: true });
     expect(screen.getByTestId('ToolTipMenuItem-off').props.accessibilityState).toMatchObject({ checked: false });
   });

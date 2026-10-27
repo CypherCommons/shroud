@@ -6,7 +6,7 @@ export interface Action {
   text: string;
   icon?: React.ComponentType<IconProps>;
   subtitle?: string;
-  // Set, true or false, on an item that is on or off: its row shows a checkbox.
+  // Set, true or false, on each item of a pick-one list: its row shows a radio button.
   menuState?: boolean;
   destructive?: boolean;
   hidden?: boolean;

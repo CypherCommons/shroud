@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityActionEvent, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import BottomModal, { BottomModalHandle } from './BottomModal';
-import { CheckboxBox } from './Checkbox';
 import SettingsCard from './SettingsCard';
 import SettingsRowWrapper from './SettingsRowWrapper';
 import { useTheme } from './themes';
@@ -81,7 +80,7 @@ const ToolTipMenu = (props: ToolTipMenuProps) => {
     const color = action.destructive ? colors.statusError : colors.textPrimary;
     return (
       <Pressable
-        accessibilityRole={menuState === undefined ? 'button' : 'checkbox'}
+        accessibilityRole={menuState === undefined ? 'button' : 'radio'}
         accessibilityState={{ checked: menuState, disabled: action.disabled }}
         accessibilityLabel={action.subtitle ? `${action.text}, ${action.subtitle}` : action.text}
         disabled={action.disabled}
@@ -99,7 +98,11 @@ const ToolTipMenu = (props: ToolTipMenuProps) => {
           <Text style={[styles.rowTitle, { color }]}>{action.text}</Text>
           {action.subtitle ? <Text style={[styles.rowSubtitle, { color: colors.textMuted }]}>{action.subtitle}</Text> : null}
         </View>
-        {menuState !== undefined && <CheckboxBox value={menuState} />}
+        {menuState !== undefined && (
+          <View style={[styles.radio, { borderColor: menuState ? colors.brandPrimary : colors.checkboxUncheckedColor }]}>
+            {menuState && <View style={[styles.radioDot, { backgroundColor: colors.brandPrimary }]} />}
+          </View>
+        )}
       </Pressable>
     );
   };
@@ -163,4 +166,6 @@ const styles = StyleSheet.create({
   rowText: { flex: 1 },
   rowTitle: { fontFamily: ClashFont.medium, fontSize: 16 },
   rowSubtitle: { fontFamily: ClashFont.regular, fontSize: 13, marginTop: 2 },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  radioDot: { width: 10, height: 10, borderRadius: 5 },
 });
