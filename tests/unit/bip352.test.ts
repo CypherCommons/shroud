@@ -1035,9 +1035,14 @@ describe('BIP-352 Silent Payments', () => {
         expect(rowFor(wallet, tx!).selfTransfer).toBeUndefined();
       });
     });
+  });
 
-    it("shows a payment from someone else by the receive address it paid, not the sender's change", () => {
-      const wallet = newWallet();
+  describe('a payment from someone else', () => {
+    const SENDER = 'bc1p4mc3hspc535vj2d9qcjmtynllv38u0lvfp8gs8npt64ejgtxszuq6t4ckj'; // not TEST_SEED's
+
+    it("shows by the receive address it paid, not the sender's change", () => {
+      const wallet = new HDSilentPaymentsWallet();
+      wallet.setSecret(TEST_SEED);
       const receiveAddress = wallet._getExternalAddressByIndex(0);
       const output = (n: number, address: string, btc: number) => ({
         n,
@@ -1065,11 +1070,11 @@ describe('BIP-352 Silent Payments', () => {
             scriptSig: { asm: '', hex: '' },
             txinwitness: [],
             sequence: 0xfffffffd,
-            addresses: [RECIPIENT],
+            addresses: [SENDER],
             value: 0.001,
           },
         ],
-        outputs: [output(0, RECIPIENT, 0.0007), output(1, receiveAddress, 0.0002)],
+        outputs: [output(0, SENDER, 0.0007), output(1, receiveAddress, 0.0002)],
       };
       (wallet as any)._txs_by_external_index = { 0: [payment] };
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { render } from '@testing-library/react-native';
 
+import { type Transaction } from '../../class/wallets/types';
 import { TransactionListItem } from '../../components/TransactionListItem';
 import { useSettings } from '../../hooks/context/useSettings';
 import { useStorage } from '../../hooks/context/useStorage';
@@ -23,7 +24,7 @@ jest.mock('@react-native-menu/menu', () => {
 const tx = { hash: 'a'.repeat(64), value: 5234, confirmations: 10, timestamp: 1_700_000_000, inputs: [], outputs: [] };
 const wallet = { getID: () => 'wallet', weOwnAddress: (address: string) => address === 'tb1pourmine' };
 
-const renderRow = (isBalanceHidden: boolean, item: object = tx) => {
+const renderRow = (isBalanceHidden: boolean, item: Partial<Transaction> = tx) => {
   (useSettings as jest.Mock).mockReturnValue({ isBalanceHidden });
   return render(
     <NavigationContainer>
@@ -56,7 +57,11 @@ describe('unit - TransactionListItem', () => {
   });
 
   it("shows a receive by the address of ours it paid, not the sender's change", () => {
-    const output = (n: number, address: string) => ({ n, value: 0.0001, scriptPubKey: { addresses: [address] } });
+    const output = (n: number, address: string) => ({
+      n,
+      value: 0.0001,
+      scriptPubKey: { asm: '', hex: '', reqSigs: 1, type: 'witness_v1_taproot', addresses: [address] },
+    });
     const screen = renderRow(false, { ...tx, outputs: [output(0, 'tb1psenderchng'), output(1, 'tb1pourmine')] });
 
     expect(screen.getByText('tb1p...mine')).toBeTruthy();

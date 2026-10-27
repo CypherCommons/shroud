@@ -46,6 +46,6 @@ export const getRelevantAddress = (item: Transaction, wallet?: { weOwnAddress: (
   if (addresses.length === 0) return null;
   if (!wallet) return addresses[0];
 
-  const incoming = isIncomingTransaction(item.value);
-  return addresses.find(address => wallet.weOwnAddress(address) === incoming) ?? addresses[0];
+  const wantOurs = isIncomingTransaction(item.value); // a receive shows ours, a send the first that isn't
+  return addresses.find(address => wallet.weOwnAddress(address) === wantOurs) ?? addresses[0];
 };
