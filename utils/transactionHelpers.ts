@@ -26,42 +26,26 @@ export const splitSelfTransfer = <T extends Transaction>(tx: T): T[] => {
  * Returns the most relevant address for display.
  *
  * - **Self-transfer** (either of its rows): the address of ours it paid.
- * - **Outgoing**: the first non-change output address (i.e. not owned by our
- *   wallet).  Falls back to the first output address when every output is ours
+ * - **Outgoing**: the first output address that isn't ours, so not our change.
+ *   Falls back to the first output address when every output is ours
  *   (e.g. self-send / consolidation).
- * - **Incoming**: the first output address (typically our receiving address).
+ * - **Incoming**: the first output address that is ours, so not the sender's
+ *   change. Falls back to the first output address when none is recognisably
+ *   ours (e.g. a silent payment row, whose outputs carry our sp1 address).
  *
- * Pass a `wallet` with `weOwnAddress` to enable change-address filtering.
+ * Without a `wallet` to tell our outputs apart, the first output address.
  */
 export const getRelevantAddress = (item: Transaction, wallet?: { weOwnAddress: (address: string) => boolean }): string | null => {
   if (item.selfTransfer?.address) {
     return item.selfTransfer.address;
   }
 
-  if (!item.outputs || item.outputs.length === 0) {
-    return null;
-  }
+  const addresses = (item.outputs ?? [])
+    .map(output => output.scriptPubKey?.addresses?.[0])
+    .filter((address): address is string => !!address);
+  if (addresses.length === 0) return null;
+  if (!wallet) return addresses[0];
 
-  // outgoing transactions — show the recipient, skip change
-  if (!isIncomingTransaction(item.value) && wallet) {
-    let fallback: string | null = null;
-    for (const output of item.outputs) {
-      const addr = output.scriptPubKey?.addresses?.[0];
-      if (!addr) continue;
-      if (fallback === null) fallback = addr; // keep first as fallback
-      if (!wallet.weOwnAddress(addr)) {
-        return addr; // first non-change address
-      }
-    }
-    // all outputs are ours (self-send) — return first address
-    return fallback;
-  }
-
-  // incoming transactions, or outgoing without wallet — return first output address
-  for (const output of item.outputs) {
-    const addr = output.scriptPubKey?.addresses?.[0];
-    if (addr) return addr;
-  }
-
-  return null;
+  const incoming = isIncomingTransaction(item.value);
+  return addresses.find(address => wallet.weOwnAddress(address) === incoming) ?? addresses[0];
 };
