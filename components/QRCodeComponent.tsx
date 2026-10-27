@@ -5,8 +5,9 @@ import QRCode from 'react-native-qrcode-svg';
 import Share from 'react-native-share';
 
 import loc from '../loc';
-import { ActionIcons } from '../typings/ActionIcons';
 import ToolTipMenu from './TooltipMenu';
+import CopyIcon from './icons/CopyIcon';
+import ShareIcon from './icons/ShareIcon';
 import { Action } from './types';
 
 interface QRCodeComponentProps {
@@ -21,15 +22,6 @@ interface QRCodeComponentProps {
   logoBorderRadius?: number;
 }
 
-const actionIcons: { [key: string]: ActionIcons } = {
-  Share: {
-    iconValue: 'square.and.arrow.up',
-  },
-  Copy: {
-    iconValue: 'doc.on.doc',
-  },
-};
-
 const actionKeys = {
   Share: 'share',
   Copy: 'copy',
@@ -41,15 +33,15 @@ const menuActions: Action[] =
         {
           id: actionKeys.Copy,
           text: loc.transactions.details_copy,
-          icon: actionIcons.Copy,
+          icon: CopyIcon,
         },
-        { id: actionKeys.Share, text: loc.receive.details_share, icon: actionIcons.Share },
+        { id: actionKeys.Share, text: loc.receive.details_share, icon: ShareIcon },
       ]
     : [
         {
           id: actionKeys.Copy,
           text: loc.transactions.details_copy,
-          icon: actionIcons.Copy,
+          icon: CopyIcon,
         },
       ];
 

@@ -10,9 +10,23 @@ interface CheckboxProps {
   testID?: string;
 }
 
-const Checkbox: React.FC<CheckboxProps> = ({ value, onValueChange, accessibilityLabel, testID }) => {
+/** The box alone, for a row that is itself the pressable control. */
+export const CheckboxBox: React.FC<{ value: boolean }> = ({ value }) => {
   const { colors } = useTheme();
 
+  return (
+    <View
+      style={[
+        styles.box,
+        value ? { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary } : { borderColor: colors.checkboxUncheckedColor },
+      ]}
+    >
+      {value && <CheckmarkIcon variant="filled" size={12} color={colors.white} />}
+    </View>
+  );
+};
+
+const Checkbox: React.FC<CheckboxProps> = ({ value, onValueChange, accessibilityLabel, testID }) => {
   return (
     <Pressable
       accessibilityRole="checkbox"
@@ -22,14 +36,7 @@ const Checkbox: React.FC<CheckboxProps> = ({ value, onValueChange, accessibility
       hitSlop={8}
       testID={testID}
     >
-      <View
-        style={[
-          styles.box,
-          value ? { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary } : { borderColor: colors.borderStrong },
-        ]}
-      >
-        {value && <CheckmarkIcon variant="filled" size={12} color={colors.white} />}
-      </View>
+      <CheckboxBox value={value} />
     </Pressable>
   );
 };
