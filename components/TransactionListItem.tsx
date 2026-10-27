@@ -86,7 +86,7 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
     });
     const { navigate } = useExtendedNavigation<NavigationProps>();
     const menuRef = useRef<ToolTipMenuProps | null>(null);
-    const { txMetadata } = useStorage();
+    const { txMetadata, wallets } = useStorage();
     const { isBalanceHidden } = useSettings();
     const insets = useSafeAreaInsets();
     const containerStyle = useMemo(
@@ -106,7 +106,9 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
 
     const combinedStyle = useMemo(() => [containerStyle, style], [containerStyle, style]);
 
-    const relevantAddress = getRelevantAddress(item);
+    // the wallet tells our outputs from the other side's: the sender's change on a receive, ours on a send
+    const wallet = useMemo(() => wallets.find(w => w.getID() === walletID), [wallets, walletID]);
+    const relevantAddress = useMemo(() => getRelevantAddress(item, wallet), [item, wallet]);
 
     const isIncoming = isIncomingTransaction(item.value);
 

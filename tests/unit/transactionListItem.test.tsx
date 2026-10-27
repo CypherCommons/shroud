@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { render } from '@testing-library/react-native';
 
+import { type Transaction } from '../../class/wallets/types';
 import { TransactionListItem } from '../../components/TransactionListItem';
 import { useSettings } from '../../hooks/context/useSettings';
 import { useStorage } from '../../hooks/context/useStorage';
@@ -21,12 +22,13 @@ jest.mock('@react-native-menu/menu', () => {
 });
 
 const tx = { hash: 'a'.repeat(64), value: 5234, confirmations: 10, timestamp: 1_700_000_000, inputs: [], outputs: [] };
+const wallet = { getID: () => 'wallet', weOwnAddress: (address: string) => address === 'tb1pourmine' };
 
-const renderRow = (isBalanceHidden: boolean) => {
+const renderRow = (isBalanceHidden: boolean, item: Partial<Transaction> = tx) => {
   (useSettings as jest.Mock).mockReturnValue({ isBalanceHidden });
   return render(
     <NavigationContainer>
-      <TransactionListItem item={tx as never} itemPriceUnit={BitcoinUnit.BTC} walletID="wallet" />
+      <TransactionListItem item={item as never} itemPriceUnit={BitcoinUnit.BTC} walletID="wallet" />
     </NavigationContainer>,
   );
 };
@@ -36,7 +38,7 @@ const copyAmountAction = (screen: ReturnType<typeof render>) =>
 
 describe('unit - TransactionListItem', () => {
   beforeEach(() => {
-    (useStorage as jest.Mock).mockReturnValue({ txMetadata: {} });
+    (useStorage as jest.Mock).mockReturnValue({ txMetadata: {}, wallets: [wallet] });
   });
 
   it('shows the amount, with copying it on offer', () => {
@@ -52,5 +54,17 @@ describe('unit - TransactionListItem', () => {
     expect(screen.queryByText('+0.00005234')).toBeNull();
     expect(screen.getByText('••••')).toBeTruthy();
     expect(copyAmountAction(screen).attributes.hidden).toBe(true);
+  });
+
+  it("shows a receive by the address of ours it paid, not the sender's change", () => {
+    const output = (n: number, address: string) => ({
+      n,
+      value: 0.0001,
+      scriptPubKey: { asm: '', hex: '', reqSigs: 1, type: 'witness_v1_taproot', addresses: [address] },
+    });
+    const screen = renderRow(false, { ...tx, outputs: [output(0, 'tb1psenderchng'), output(1, 'tb1pourmine')] });
+
+    expect(screen.getByText('tb1p...mine')).toBeTruthy();
+    expect(screen.queryByText('tb1p...chng')).toBeNull();
   });
 });

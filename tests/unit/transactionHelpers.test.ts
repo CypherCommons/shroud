@@ -61,4 +61,17 @@ describe('getRelevantAddress', () => {
 
     expect(getRelevantAddress(send, { weOwnAddress: address => address === 'tb1pmine' })).toBe('tb1ptheirs');
   });
+
+  it("shows a receive by the output of ours it paid, not the sender's change", () => {
+    const receive = tx({ value: 10_000, outputs: [output(0, 'tb1psenderchange'), output(1, 'tb1pmine')] });
+
+    expect(getRelevantAddress(receive, { weOwnAddress: address => address === 'tb1pmine' })).toBe('tb1pmine');
+  });
+
+  it('shows a receive with no output it can tell is ours by its first output', () => {
+    // a silent payment receive lists only our outputs, under our sp1 address, which isn't one of our BIP-86 addresses
+    const receive = tx({ value: 10_000, outputs: [output(0, 'tsp1qmine')] });
+
+    expect(getRelevantAddress(receive, { weOwnAddress: () => false })).toBe('tsp1qmine');
+  });
 });

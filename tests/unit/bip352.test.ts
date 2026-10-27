@@ -16,6 +16,7 @@ import {
 import { type SilentPaymentUTXO } from '../../helpers/silent-payments/types.ts';
 import { getNetwork, setActiveNetwork, type NetworkId } from '../../modules/network';
 import { type CreateTransactionUtxo, type Transaction, type Utxo } from '../../class/wallets/types.ts';
+import { getRelevantAddress } from '../../utils/transactionHelpers.ts';
 
 const TEST_SEED = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
@@ -1033,6 +1034,53 @@ describe('BIP-352 Silent Payments', () => {
 
         expect(rowFor(wallet, tx!).selfTransfer).toBeUndefined();
       });
+    });
+  });
+
+  describe('a payment from someone else', () => {
+    const SENDER = 'bc1p4mc3hspc535vj2d9qcjmtynllv38u0lvfp8gs8npt64ejgtxszuq6t4ckj'; // not TEST_SEED's
+
+    it("shows by the receive address it paid, not the sender's change", () => {
+      const wallet = new HDSilentPaymentsWallet();
+      wallet.setSecret(TEST_SEED);
+      const receiveAddress = wallet._getExternalAddressByIndex(0);
+      const output = (n: number, address: string, btc: number) => ({
+        n,
+        value: btc,
+        scriptPubKey: { asm: '', hex: '', reqSigs: 1, type: 'witness_v1_taproot', addresses: [address] },
+      });
+      // as Electrum reports it, with every output of the transaction: the sender's wallet put its change first
+      const payment: Transaction = {
+        txid: '33'.repeat(32),
+        hash: '33'.repeat(32),
+        version: 2,
+        size: 0,
+        vsize: 0,
+        weight: 0,
+        locktime: 0,
+        blockhash: 'ab'.repeat(32),
+        confirmations: 1,
+        time: 1_700_000_000,
+        blocktime: 1_700_000_000,
+        timestamp: 1_700_000_000,
+        inputs: [
+          {
+            txid: '44'.repeat(32),
+            vout: 0,
+            scriptSig: { asm: '', hex: '' },
+            txinwitness: [],
+            sequence: 0xfffffffd,
+            addresses: [SENDER],
+            value: 0.001,
+          },
+        ],
+        outputs: [output(0, SENDER, 0.0007), output(1, receiveAddress, 0.0002)],
+      };
+      (wallet as any)._txs_by_external_index = { 0: [payment] };
+
+      const row = wallet.getTransactions().find(t => t.txid === payment.txid)!;
+      expect(row.value).toBe(20_000);
+      expect(getRelevantAddress(row, wallet)).toBe(receiveAddress);
     });
   });
 
