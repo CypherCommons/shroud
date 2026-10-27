@@ -9,6 +9,7 @@ import Success from '../screen/send/success';
 import TransactionDetails from '../screen/transactions/TransactionDetails';
 import WalletsList from '../screen/wallets/WalletsList';
 import { DetailViewStack } from './index';
+import { PortraitOnlyOptions } from './orientation';
 import SettingsButton from '../components/icons/SettingsButton';
 import BalanceVisibilityButton from '../components/BalanceVisibilityButton';
 import { ShroudApp } from '../class';
@@ -89,7 +90,7 @@ const DetailViewStackScreensStack = () => {
   return (
     <DetailViewStack.Navigator
       initialRouteName={initialRoute}
-      screenOptions={{ headerShadowVisible: false, animationTypeForReplace: 'push' }}
+      screenOptions={{ ...PortraitOnlyOptions, headerShadowVisible: false, animationTypeForReplace: 'push' }}
     >
       <DetailViewStack.Screen
         name="Onboarding"

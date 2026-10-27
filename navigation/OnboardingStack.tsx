@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import OnboardingScreen from '../screen/wallets/OnboardingScreen';
 import PleaseBackup from '../screen/wallets/PleaseBackup';
 import { RouteProp } from '@react-navigation/native';
+import { PortraitOnlyOptions } from './orientation';
 
 type OnboardingStackParamList = {
   OnboardingMain: undefined;
@@ -16,7 +17,7 @@ const OnboardingStack = ({ route }: { route?: RouteProp<any, any> }) => {
   const initialParams = route?.params?.params || undefined;
   return (
     <Stack.Navigator
-      screenOptions={{ headerShown: false, gestureEnabled: false, headerBackVisible: false }}
+      screenOptions={{ ...PortraitOnlyOptions, headerShown: false, gestureEnabled: false, headerBackVisible: false }}
       initialRouteName={initialRouteName}
     >
       <Stack.Screen name="OnboardingMain" component={OnboardingScreen} />

@@ -15,6 +15,7 @@ import { SendDetailsStackParamList } from './SendDetailsStackParamList';
 import { BitcoinUnit } from '../models/bitcoinUnits';
 import { ScanQRCodeComponent } from './LazyLoadScanQRCodeStack';
 import SelectFeeScreen from '../screen/SelectFeeScreen';
+import { PortraitOnlyOptions } from './orientation';
 
 const Stack = createNativeStackNavigator<SendDetailsStackParamList>();
 
@@ -22,7 +23,10 @@ const SendDetailsStack = () => {
   const theme = useTheme();
 
   return (
-    <Stack.Navigator initialRouteName="SendDetails" screenOptions={{ headerShadowVisible: false, fullScreenGestureEnabled: false }}>
+    <Stack.Navigator
+      initialRouteName="SendDetails"
+      screenOptions={{ ...PortraitOnlyOptions, headerShadowVisible: false, fullScreenGestureEnabled: false }}
+    >
       <Stack.Screen
         name="SendDetails"
         component={SendDetailsComponent}
