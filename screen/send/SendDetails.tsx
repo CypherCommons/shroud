@@ -8,7 +8,6 @@ import { Keyboard, LayoutAnimation, StyleSheet, Text, Pressable, View } from 're
 import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isSilentPaymentAddress } from '../../helpers/silent-payments';
-import { getActiveNetwork } from '../../modules/network';
 import {
   btcToSatoshi,
   fiatToSatoshi,
@@ -393,7 +392,7 @@ const SendDetails = () => {
 
     // replace wrong addresses with dump
     targets = targets.map(t => {
-      if (!wallet.isAddressValid(t.address)) {
+      if (!wallet.isPayableAddress(t.address)) {
         return { ...t, address: '36JxaUrpDzkEerkTf1FzwHNE1Hb7cCjgJV' };
       } else {
         return t;
@@ -492,16 +491,13 @@ const SendDetails = () => {
         // first sanity check is that sending amount is not bigger than available balance
         error = frozenBalance > 0 ? loc.send.details_total_exceeds_balance_frozen : loc.send.details_total_exceeds_balance;
         console.log('validation error');
-      } else if (transaction.address) {
-        // address validation handled below
       }
 
       if (!error) {
-        const isSilentPayment = isSilentPaymentAddress(transaction.address, getActiveNetwork().bitcoinjs);
-        if (!wallet.isAddressValid(transaction.address) && !isSilentPayment) {
+        if (!wallet.isPayableAddress(transaction.address)) {
           console.log('validation error');
           error = loc.send.details_address_field_is_not_valid;
-        } else if (isSilentPayment && !wallet.allowSilentPaymentSend()) {
+        } else if (!wallet.allowSilentPaymentSend() && isSilentPaymentAddress(transaction.address, wallet.getNetworkConfig().bitcoinjs)) {
           console.log('validation error');
           error = loc.send.cant_send_to_silentpayment_adress;
         }

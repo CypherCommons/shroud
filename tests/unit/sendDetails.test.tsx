@@ -64,9 +64,11 @@ const makeWallet = (preferredBalanceUnit: BitcoinUnit) => ({
   getID: () => 'wallet-1',
   getBalance: () => BALANCE,
   isAddressValid: (address: string) => address === ADDRESS,
+  // the on-chain check above, plus the silent payment addresses the tests send to
+  isPayableAddress: (address: string) => address === ADDRESS || [SP_MAINNET, SP_MAINNET_2].includes(address),
   getUtxo: () => [],
   fetchUtxo: () => Promise.resolve(),
-  coinselect: () => ({ fee: 810 }),
+  coinselect: jest.fn((_utxos: unknown, _targets: { address: string; value?: number }[]) => ({ fee: 810 })),
 });
 
 let wallet: ReturnType<typeof makeWallet>;
@@ -297,5 +299,14 @@ describe('unit - SendDetails payment requests', () => {
       hapticFeedback: HapticFeedbackTypes.NotificationError,
     });
     expect(address()).toBe('');
+  });
+
+  it('estimates the fee for a silent payment recipient rather than a placeholder', async () => {
+    await renderScreen();
+    fireEvent.changeText(screen.getByTestId('AddressInput'), SP_MAINNET);
+    typeAmount('1234');
+
+    const [, targets] = wallet.coinselect.mock.lastCall!;
+    expect(targets).toEqual([{ address: SP_MAINNET, value: 1234 }]);
   });
 });
