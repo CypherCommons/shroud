@@ -58,6 +58,72 @@ eas submit --platform android --profile production
 - Google Play does not accept an app's first upload through the API: upload the first AAB by hand in
   Play Console, then use `eas submit`.
 
+## GitHub releases (Android APK)
+
+Each Android version also goes to GitHub Releases, for people who don't use Google Play (Obtainium,
+GrapheneOS). Anyone can check the download the way they would check Bitcoin Core's (see
+[VERIFY.md](VERIFY.md)). `scripts/release/github.mjs` makes a universal APK from the AAB that went to
+Play, so the APK has the Play build's version code and runtime version and gets the same OTA updates.
+Google re-signs Play installs with its app signing key. The APK keeps our upload key, so a Play install
+and a GitHub install can't update each other.
+
+### One-time setup
+
+1. Install the tools: `brew install bundletool gh`, then `gh auth login`. `apksigner` comes with the
+   Android SDK build-tools.
+2. Create the release key. It's an OpenPGP key that does nothing but sign `SHA256SUMS`:
+
+   ```sh
+   gpg --quick-generate-key "Shroud Release Signing <dev@shroudwallet.com>" ed25519 sign 2y
+   gpg --armor --export <fingerprint> > contrib/release-keys/shroud-release.asc
+   gpg --export <fingerprint> | curl -T - https://keys.openpgp.org
+   ```
+
+   The upload prints a link: open it and confirm the email address. Until you do, keys.openpgp.org hands
+   out the key without its name, and `gpg --recv-keys` won't import it. Then put the fingerprint in
+   `VERIFY.md` and in `RELEASE_KEY` in `scripts/release/github.mjs`, and commit the exported key.
+3. Keep the secret key (`gpg --armor --export-secret-keys <fingerprint>`) and its revocation
+   certificate (`~/.gnupg/openpgp-revocs.d/<fingerprint>.rev`) in the vault. The key expires after two
+   years. Before then, extend it with `gpg --quick-set-expire <fingerprint> 2y`, then export and upload
+   it again.
+4. Copy the SHA-256 of the app signing key certificate (Play Console → App integrity → App signing)
+   into `VERIFY.md`. People use it to check a Play install with AppVerifier.
+5. Download the upload keystore: `npx eas-cli credentials --platform android`, pick the `production`
+   profile, then **Keystore: Manage everything needed to build your project** → **Download existing
+   keystore**, and say yes to showing the sensitive information. It saves `<owner>__shroud.jks` in the
+   current directory (`*.jks` is gitignored) and prints the key alias and both passwords. Move the
+   keystore into the vault, not the checkout. Anyone with it and the passwords can sign an APK that
+   GitHub installs accept as an update.
+6. Google's developer verification: certified Android devices will only install apps that a verified
+   developer has registered with their signing certificates. This starts everywhere in 2027 and
+   already applies in Brazil, Indonesia, Singapore and Thailand. Register the upload key's certificate
+   (in `VERIFY.md`) for `com.shroudwallet.app` in Play Console too, or the APK won't install on those
+   devices.
+
+Never reset the upload key in Play Console unless it's lost: GitHub installs are tied to it, and a new
+key means everyone reinstalls from their recovery phrase.
+
+### Each release
+
+Keep the AAB you submit to Play (`eas build ... --local --output build/shroud-<version>.aab`). Tag
+the commit it was built from, then run the script:
+
+```sh
+git tag -s v1.0.0 <commit> -m "Shroud 1.0.0" && git push origin v1.0.0
+read -s SHROUD_KS_PASS && read -s SHROUD_KEY_PASS && export SHROUD_KS_PASS SHROUD_KEY_PASS
+node scripts/release/github.mjs --aab build/shroud-1.0.0.aab --keystore <path>.jks \
+  --key-alias <alias> --upload
+unset SHROUD_KS_PASS SHROUD_KEY_PASS
+```
+
+- The script reads the version from the AAB and uses the tag `v<version>` unless you pass `--tag`. It
+  stops if the AAB isn't `com.shroudwallet.app`, if the tag doesn't exist, or if the APK isn't signed
+  with the upload key. It also stops if `SHA256SUMS.asc` doesn't verify against the release key. An
+  unsigned tag gets a warning.
+- Without `--upload` it only stages the APK, `SHA256SUMS`, `SHA256SUMS.asc` and the release notes in
+  `build/release/<tag>/`. With it, it also creates a draft release, which needs the tag on GitHub.
+- Look the draft over on GitHub, then publish it. Obtainium only sees published releases.
+
 ## OTA updates
 
 An update can only change JavaScript and assets, and only reaches builds with the same runtime
@@ -121,6 +187,9 @@ node scripts/ota/minimum-build.mjs --channel production --ios 14 --android 12 \
   see. Find them in App Store Connect, Play Console or `eas build:list`. 0 means no minimum.
 - Raise a minimum only once a build that meets it is live in its store, at 100% of a staged rollout
   on Google Play. Anyone the store can't update yet is locked out.
+- GitHub installs get the same screen, but its button opens Google Play, which can't update them.
+  They update through Obtainium or the release page, so on Android also wait until the GitHub release
+  of that build is published.
 - Never raise it past the OS versions the blocked builds support. A device that can't install the
   new build loses the wallet's screens for good, including the recovery phrase.
 - Try it on `preview` first. To undo, set the earlier numbers again, or 0.
