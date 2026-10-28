@@ -11,8 +11,9 @@ export const PauseIcon = ({ color = 'white', size = 32 }: { color?: string; size
   </Svg>
 );
 
-export const PlayIcon = ({ color = 'white', size = 32 }: { color?: string; size?: number }) => (
-  <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+// The viewBox hugs the glyph, so `size` is the glyph's own size, as a button's icon slot expects.
+export const PlayIcon = ({ color = 'white', size = 17 }: { color?: string; size?: number }) => (
+  <Svg width={size} height={size} viewBox="8.9333 8 17.3333 17.3333" fill="none">
     <Path
       d="M24.5334 16.6667L12.0001 24.5067L10.6667 25.3333V8L24.5334 16.6667ZM22.0001 16.6667L12.0001 10.4V22.9333L22.0001 16.6667Z"
       fill={color}
