@@ -2,11 +2,17 @@ import * as Electrum from '../../modules/Electrum';
 import { AbstractHDElectrumWallet } from '../../class/wallets/abstract-hd-electrum-wallet';
 import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
 import { type ScanStateInfo, type SilentPaymentUTXO } from '../../helpers/silent-payments/types';
+import { SCAN_SLICE_SIZE } from '../../helpers/silent-payments/RustTransactionProcessor';
+import { spScanTransactions } from '../../modules/RustJsiBridge';
 import * as indexerModule from '../../modules/SilentPaymentIndexer';
 
 jest.mock('../../modules/Electrum', () => ({
   multiGetUtxoByAddress: jest.fn(),
   multiGetHistoryByAddress: jest.fn(),
+}));
+jest.mock('../../modules/RustJsiBridge', () => ({
+  ...jest.requireActual('../../modules/RustJsiBridge'),
+  spScanTransactions: jest.fn(),
 }));
 
 const TEST_SEED = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -176,6 +182,33 @@ describe('scan lifecycle', () => {
     wallet.scanForPayments();
     await flush();
     expect(indexer.getLatestBlockHeight).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves a window unscanned when the scan is cancelled between its slices', async () => {
+    const window = Array.from({ length: SCAN_SLICE_SIZE + 1 }, (_, i) => ({
+      id: `tx${i}`,
+      blockHeight: TIP,
+      blockHash: 'h',
+      blockTime: 0,
+      scanTweak: 'aa',
+      outputs: [{ transactionId: `tx${i}`, vout: 0, pubKey: 'bb', value: 1000, isSpent: false }],
+    }));
+    stubIndexer({
+      scanForwardWithCallback: jest.fn(async (_from: number, to: number, onRange: (txs: unknown[], end: number) => Promise<number>) => {
+        await onRange(window, to);
+      }),
+    });
+    const wallet = track(syncedWallet(TIP - 10));
+    // the user leaves the chain while the first slice is being scanned
+    (spScanTransactions as jest.Mock).mockImplementation(() => {
+      wallet.cancelScan();
+      return { transactionsScanned: SCAN_SLICE_SIZE, outputsScanned: 0, matchedUtxos: [] };
+    });
+
+    await expect(wallet.scanForPayments()).resolves.toBe(0);
+
+    expect(spScanTransactions).toHaveBeenCalledTimes(1);
+    expect(wallet.getScanState()).toMatchObject({ status: 'idle', lastScannedBlock: TIP - 10 });
   });
 
   it('stops polling while the birth height is still unknown, leaving its retries to refreshes', async () => {
