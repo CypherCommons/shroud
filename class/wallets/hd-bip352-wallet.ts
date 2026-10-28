@@ -77,6 +77,9 @@ const POLLING_INTERVAL_MS = 30000;
 const POLLING_MAX_BACKOFF_TICKS = 10;
 // Electrum requests have no timeout, so a dead socket must not hold a payment check open.
 const REGULAR_SYNC_WAIT_MS = 20000;
+// How often a scan saves its progress alone. Each save writes every wallet on the JS thread, and an
+// app killed mid-scan only rescans what it hadn't saved: coins found are saved at once regardless.
+const PROGRESS_PERSIST_INTERVAL_MS = 15000;
 
 /** Waits for `promise` to settle, but no longer than `ms`. Never rejects. */
 const settleWithin = async (promise: Promise<unknown>, ms: number): Promise<void> => {
@@ -156,6 +159,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   private _consecutiveScanFailures: number = 0;
   private _pollTicksToSkip: number = 0;
   private _activeCheck: Promise<number> | null = null;
+  private _lastProgressPersistAt: number = 0;
   private onBalanceChangeCallback: (() => void) | null = null;
   private onPersistCallback: (() => void) | null = null;
   private _sp_spending_txs: Transaction[] = [];
@@ -186,6 +190,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     '_consecutiveScanFailures',
     '_pollTicksToSkip',
     '_activeCheck',
+    '_lastProgressPersistAt',
     'onBalanceChangeCallback',
     'onPersistCallback',
     '_scanState',
@@ -222,6 +227,9 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         this._scanResumeResolver = resolve;
       });
       this._emitScanState('paused');
+      // Progress is saved only now and then while a scan runs (see commitUTXOs), and a paused scan may never
+      // resume: a scan is paused on the app's way into the background, where the system can end it.
+      this.onPersistCallback?.();
     }
   }
 
@@ -668,9 +676,12 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       this.onBalanceChangeCallback?.();
     }
 
-    // Always persist when lastScannedBlock updates to track scan progress
-    if (newLastScannedBlock > 0 && this.onPersistCallback) {
-      this.onPersistCallback();
+    // Coins found are saved at once; progress alone now and then (see PROGRESS_PERSIST_INTERVAL_MS),
+    // and once more where the scan ends (scanForPayments).
+    const now = Date.now();
+    if (newLastScannedBlock > 0 && (addedCount > 0 || now - this._lastProgressPersistAt >= PROGRESS_PERSIST_INTERVAL_MS)) {
+      this._lastProgressPersistAt = now;
+      this.onPersistCallback?.();
     }
 
     return addedCount;
@@ -766,12 +777,15 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     }
 
     this.cancelScanCallbackScan = false;
+    const scannedFrom = this.lastScannedBlock;
     this.activeScanPromise = this.performScan(onProgress, forceFullScan);
 
     let result: number;
     try {
       result = await this.activeScanPromise;
     } finally {
+      // progress is saved only now and then while a scan runs (see commitUTXOs): save where it ended
+      if (this.lastScannedBlock !== scannedFrom) this.onPersistCallback?.();
       // Cleared once the scan itself settles, before the spent check below. The state reads idle (or
       // error) by then, so a check started now must run rather than join this one. And Electrum calls
       // have no timeout: one that never settles must not leave every later scan joining a finished one.

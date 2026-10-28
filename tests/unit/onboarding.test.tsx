@@ -68,7 +68,6 @@ describe('unit - Onboarding', () => {
       activeNetworkId: 'bitcoin',
       isSwitchingNetwork: false,
       switchNetwork,
-      scanState: { status: 'idle' },
       walletToReuse,
     });
 
