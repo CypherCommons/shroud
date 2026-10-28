@@ -5,6 +5,7 @@ import navigationStyle from '../components/navigationStyle';
 import { useTheme } from '../components/themes';
 import loc from '../loc';
 import { WalletExportComponent } from './LazyLoadWalletExportStack';
+import { PortraitOnlyOptions } from './orientation';
 
 export type WalletExportStackParamList = {
   WalletExport: undefined;
@@ -16,7 +17,7 @@ const WalletExportStack = () => {
   const theme = useTheme();
 
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={PortraitOnlyOptions}>
       <Stack.Screen
         name="WalletExport"
         component={WalletExportComponent}

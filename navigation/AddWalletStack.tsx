@@ -7,6 +7,7 @@ import loc from '../loc';
 import { ImportSpeedComponent, ImportWalletComponent, PleaseBackupComponent } from './LazyLoadAddWalletStack';
 import { ScanQRCodeComponent } from './LazyLoadScanQRCodeStack';
 import { ScanQRCodeParamList } from './DetailViewStackParamList';
+import { PortraitOnlyOptions } from './orientation';
 
 export type AddWalletStackParamList = {
   ImportWallet?: {
@@ -24,7 +25,7 @@ const Stack = createNativeStackNavigator<AddWalletStackParamList>();
 const AddWalletStack = () => {
   const theme = useTheme();
   return (
-    <Stack.Navigator initialRouteName="ImportWallet">
+    <Stack.Navigator initialRouteName="ImportWallet" screenOptions={PortraitOnlyOptions}>
       <Stack.Screen name="ImportWallet" component={ImportWalletComponent} options={navigationStyle({ title: '' })(theme)} />
       <Stack.Screen
         name="ImportSpeed"

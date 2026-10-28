@@ -6,6 +6,7 @@ import { LazyLoadingIndicator } from './LazyLoadingIndicator';
 import { DetailViewStackParamList } from './DetailViewStackParamList';
 import { useStorage } from '../hooks/context/useStorage';
 import { useSettings } from '../hooks/context/useSettings';
+import { PortraitOnlyOptions } from './orientation';
 
 // Lazy load all components except UnlockWith
 const DrawerRoot = lazy(() => import('./DrawerRoot'));
@@ -67,7 +68,9 @@ const MainRoot = () => {
   const effectiveScheme = themePreference === 'system' ? colorScheme : themePreference;
 
   return (
-    <DetailViewStack.Navigator screenOptions={{ headerShown: false, statusBarStyle: effectiveScheme === 'dark' ? 'light' : 'dark' }}>
+    <DetailViewStack.Navigator
+      screenOptions={{ ...PortraitOnlyOptions, headerShown: false, statusBarStyle: effectiveScheme === 'dark' ? 'light' : 'dark' }}
+    >
       {!walletsInitialized ? (
         <DetailViewStack.Screen name="UnlockWithScreen" component={UnlockWith} />
       ) : (
@@ -98,7 +101,6 @@ const MainRoot = () => {
             options={{
               headerShown: false,
               statusBarHidden: true,
-              orientation: 'portrait',
               presentation: 'fullScreenModal',
             }}
           />
