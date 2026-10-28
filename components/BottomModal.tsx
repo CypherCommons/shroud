@@ -1,7 +1,6 @@
 import React, { forwardRef, useImperativeHandle, useRef, ReactElement, ComponentType } from 'react';
 import { TrueSheet, TrueSheetProps } from '@lodev09/react-native-true-sheet';
 import { Keyboard, Image, StyleSheet, View, Pressable, Platform, GestureResponderEvent, Text, StyleProp, ViewStyle } from 'react-native';
-import SaveFileButton from './SaveFileButton';
 import { useTheme } from './themes';
 import { Icon } from '@rneui/base';
 
@@ -15,7 +14,6 @@ interface BottomModalProps extends Omit<TrueSheetProps, 'header' | 'footer'> {
   footerDefaultMargins?: boolean | number;
   onPresent?: () => void;
   showCloseButton?: boolean;
-  shareContent?: BottomModalShareContent;
   shareButtonOnPress?: (event: GestureResponderEvent) => void;
   header?: ReactElement | ComponentType<any> | null;
   headerTitle?: string;
@@ -23,11 +21,6 @@ interface BottomModalProps extends Omit<TrueSheetProps, 'header' | 'footer'> {
   /** Overrides the default children padding, for sheets that draw their own header. */
   contentStyle?: StyleProp<ViewStyle>;
 }
-
-type BottomModalShareContent = {
-  fileName: string;
-  fileContent: string;
-};
 
 export interface BottomModalHandle {
   present: () => Promise<void>;
@@ -42,7 +35,6 @@ const BottomModal = forwardRef<BottomModalHandle, BottomModalProps>(
       onPresent,
       showCloseButton = true,
       isGrabberVisible = true,
-      shareContent,
       shareButtonOnPress,
       detents = ['auto'],
       footer,
@@ -97,31 +89,17 @@ const BottomModal = forwardRef<BottomModalHandle, BottomModalProps>(
 
     const renderTopRightButton = () => {
       const buttons = [];
-      if (shareContent || shareButtonOnPress) {
-        if (shareContent) {
-          buttons.push(
-            <SaveFileButton
-              style={[styles.topRightButton, stylesHook.barButton]}
-              fileContent={shareContent.fileContent}
-              fileName={shareContent.fileName}
-              testID="ModalShareButton"
-              key="ModalShareButton"
-            >
-              <Icon name={Platform.OS === 'android' ? 'share' : 'file-upload'} type="font-awesome6" size={20} color={colors.white} />
-            </SaveFileButton>,
-          );
-        } else if (shareButtonOnPress) {
-          buttons.push(
-            <Pressable
-              testID="ModalShareButton"
-              key="ModalShareButton"
-              style={({ pressed }) => [pressed && styles.pressed, styles.topRightButton, stylesHook.barButton]}
-              onPress={shareButtonOnPress}
-            >
-              <Icon name={Platform.OS === 'android' ? 'share' : 'file-upload'} type="font-awesome6" size={20} color={colors.white} />
-            </Pressable>,
-          );
-        }
+      if (shareButtonOnPress) {
+        buttons.push(
+          <Pressable
+            testID="ModalShareButton"
+            key="ModalShareButton"
+            style={({ pressed }) => [pressed && styles.pressed, styles.topRightButton, stylesHook.barButton]}
+            onPress={shareButtonOnPress}
+          >
+            <Icon name={Platform.OS === 'android' ? 'share' : 'file-upload'} type="font-awesome6" size={20} color={colors.white} />
+          </Pressable>,
+        );
       }
       if (showCloseButton) {
         buttons.push(
@@ -151,7 +129,7 @@ const BottomModal = forwardRef<BottomModalHandle, BottomModalProps>(
         );
       }
 
-      if (showCloseButton || shareContent)
+      if (showCloseButton)
         return (
           <View style={styles.headerContainer}>
             <View style={styles.headerContent}>{typeof header === 'function' ? <header /> : header}</View>

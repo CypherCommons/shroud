@@ -1,162 +1,171 @@
-import React, { useCallback, useMemo } from 'react';
-import { Platform, StyleProp, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
-import { MenuView, MenuAction, NativeActionEvent } from '@react-native-menu/menu';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityActionEvent, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import BottomModal, { BottomModalHandle } from './BottomModal';
+import SettingsCard from './SettingsCard';
+import SettingsRowWrapper from './SettingsRowWrapper';
+import { useTheme } from './themes';
+import { ClashFont } from '../constants/fonts';
 import { ToolTipMenuProps, Action } from './types';
 
-const leaveLongPressToMenu = () => {};
+const LONG_PRESS_ACTIONS = [{ name: 'longpress' }];
 
+// A run of loose actions shares a card; an array of actions gets a card of its own.
+const toGroups = (actions: Action[] | Action[][]): Action[][] => {
+  const groups: Action[][] = [];
+  let loose: Action[] | null = null;
+  for (const entry of actions) {
+    if (Array.isArray(entry)) {
+      groups.push(entry);
+      loose = null;
+    } else {
+      if (!loose) groups.push((loose = []));
+      loose.push(entry);
+    }
+  }
+  return groups.map(group => group.filter(action => !action.hidden)).filter(group => group.length > 0);
+};
+
+// Opens its actions in a bottom sheet: on tap when the menu is the primary action, otherwise on long press.
 const ToolTipMenu = (props: ToolTipMenuProps) => {
   const {
-    title = '',
+    title,
+    actions,
     isMenuPrimaryAction = false,
+    isButton = false,
     disabled = false,
     onPress,
     buttonStyle,
     onPressMenuItem,
+    onMenuWillShow,
+    onMenuWillHide,
     children,
-    isButton = false,
     ...restProps
   } = props;
+  const { colors } = useTheme();
+  const sheetRef = useRef<BottomModalHandle>(null);
+  // The sheet is mounted only while open, as a list can hold a menu on every row.
+  const [isOpen, setIsOpen] = useState(false);
+  const groups = useMemo(() => toGroups(actions), [actions]);
+  const opensOnLongPress = !isMenuPrimaryAction;
 
-  // Map Menu Items for RN Menu (supports subactions and displayInline)
-  const mapMenuItemForMenuView = useCallback((action: Action): MenuAction | null => {
-    if (!action.id) return null;
+  useEffect(() => {
+    if (isOpen) sheetRef.current?.present();
+  }, [isOpen]);
 
-    // Check for subactions
-    const subactions =
-      action.subactions?.map(subaction => {
-        const subMenuItem: MenuAction = {
-          id: subaction.id.toString(),
-          title: subaction.text,
-          subtitle: subaction.subtitle,
-          image: subaction.icon?.iconValue ? subaction.icon.iconValue : undefined,
-          attributes: { disabled: subaction.disabled, destructive: subaction.destructive, hidden: subaction.hidden },
-        };
-        if ('menuState' in subaction) {
-          subMenuItem.state = subaction.menuState ? 'on' : 'off';
-        }
-        if (subaction.subactions && subaction.subactions.length > 0) {
-          const deepSubactions = subaction.subactions.map(deepSub => {
-            const deepMenuItem: MenuAction = {
-              id: deepSub.id.toString(),
-              title: deepSub.text,
-              subtitle: deepSub.subtitle,
-              image: deepSub.icon?.iconValue ? deepSub.icon.iconValue : undefined,
-              attributes: { disabled: deepSub.disabled, destructive: deepSub.destructive, hidden: deepSub.hidden },
-            };
-            if ('menuState' in deepSub) {
-              deepMenuItem.state = deepSub.menuState ? 'on' : 'off';
-            }
-            return deepMenuItem;
-          });
-          subMenuItem.subactions = deepSubactions;
-        }
-        return subMenuItem;
-      }) || [];
+  const open = useCallback(() => {
+    onMenuWillShow?.();
+    setIsOpen(true);
+  }, [onMenuWillShow]);
 
-    const menuItem: MenuAction = {
-      id: action.id.toString(),
-      title: action.text,
-      subtitle: action.subtitle,
-      image: action.icon?.iconValue ? action.icon.iconValue : undefined,
-      attributes: { disabled: action.disabled, destructive: action.destructive, hidden: action.hidden },
-      displayInline: action.displayInline || false,
-    };
-    if ('menuState' in action) {
-      menuItem.state = action.menuState ? 'on' : 'off';
-    }
-    if (subactions.length > 0) {
-      menuItem.subactions = subactions;
-    }
-    return menuItem;
-  }, []);
+  const onClose = useCallback(() => {
+    setIsOpen(false);
+    onMenuWillHide?.();
+  }, [onMenuWillHide]);
 
-  const menuViewItemsIOS = useMemo(() => {
-    return props.actions
-      .map(actionGroup => {
-        if (Array.isArray(actionGroup) && actionGroup.length > 0) {
-          return {
-            id: actionGroup[0].id.toString(),
-            title: '',
-            subactions: actionGroup
-              .filter(action => action.id)
-              .map(mapMenuItemForMenuView)
-              .filter(item => item !== null) as MenuAction[],
-            displayInline: true,
-          };
-        } else if (!Array.isArray(actionGroup) && actionGroup.id) {
-          return mapMenuItemForMenuView(actionGroup);
-        }
-        return null;
-      })
-      .filter(item => item !== null) as MenuAction[];
-  }, [props.actions, mapMenuItemForMenuView]);
+  // The sheet goes first, so an action that presents something of its own (a picker, the share sheet) isn't blocked by it.
+  const select = async (id: Action['id']) => {
+    await sheetRef.current?.dismiss();
+    onPressMenuItem(id.toString());
+  };
 
-  const menuViewItemsAndroid = useMemo(() => {
-    const mergedActions = props.actions.flat().filter(action => action.id);
-    return mergedActions.map(mapMenuItemForMenuView).filter(item => item !== null) as MenuAction[];
-  }, [props.actions, mapMenuItemForMenuView]);
-
-  const handlePressMenuItemForMenuView = useCallback(
-    ({ nativeEvent }: NativeActionEvent) => {
-      onPressMenuItem(nativeEvent.event);
+  const onAccessibilityAction = useCallback(
+    (event: AccessibilityActionEvent) => {
+      if (event.nativeEvent.actionName === 'longpress') open();
     },
-    [onPressMenuItem],
+    [open],
   );
 
-  const renderMenuView = () => {
-    const opensOnLongPress = !isMenuPrimaryAction;
-
-    const renderMenu = (content: React.ReactNode, style?: StyleProp<ViewStyle>) => (
-      <MenuView
-        title={title}
-        isAnchoredToRight
-        onPressAction={handlePressMenuItemForMenuView}
-        actions={Platform.OS === 'ios' ? menuViewItemsIOS : menuViewItemsAndroid}
-        shouldOpenOnLongPress={opensOnLongPress}
-        style={style}
-        // @ts-ignore: Not exposed in types
-        accessibilityLabel={props.accessibilityLabel}
-        accessibilityHint={props.accessibilityHint}
-        accessibilityRole={props.accessibilityRole}
-        accessibilityLanguage="en"
+  const renderRow = (action: Action) => {
+    const { icon: Icon, menuState } = action;
+    const color = action.destructive ? colors.statusError : colors.textPrimary;
+    return (
+      <Pressable
+        accessibilityRole={menuState === undefined ? 'button' : 'radio'}
+        accessibilityState={{ checked: menuState, disabled: action.disabled }}
+        accessibilityLabel={action.subtitle ? `${action.text}, ${action.subtitle}` : action.text}
+        disabled={action.disabled}
+        onPress={() => select(action.id)}
+        style={({ pressed }) => [
+          styles.row,
+          action.disabled && styles.rowDisabled,
+          pressed && Platform.OS !== 'android' && styles.rowPressed,
+        ]}
+        android_ripple={{ color: colors.borderDefault }}
+        testID={`ToolTipMenuItem-${action.id}`}
       >
-        {content}
-      </MenuView>
+        {Icon && <Icon size={20} color={color} />}
+        <View style={styles.rowText}>
+          <Text style={[styles.rowTitle, { color }]}>{action.text}</Text>
+          {action.subtitle ? <Text style={[styles.rowSubtitle, { color: colors.textMuted }]}>{action.subtitle}</Text> : null}
+        </View>
+        {menuState !== undefined && (
+          <View style={[styles.radio, { borderColor: menuState ? colors.brandPrimary : colors.checkboxUncheckedColor }]}>
+            {menuState && <View style={[styles.radioDot, { backgroundColor: colors.brandPrimary }]} />}
+          </View>
+        )}
+      </Pressable>
     );
+  };
 
-    if (!isButton && !isMenuPrimaryAction) return renderMenu(children);
+  if (actions.length === 0) return null;
 
-    const renderTouchable = (content: React.ReactNode) => (
+  return (
+    <>
       <TouchableOpacity
         style={buttonStyle}
         disabled={disabled}
-        onPress={onPress}
-        // The long press belongs to the menu: claiming it stops the release from also firing onPress.
-        onLongPress={opensOnLongPress ? leaveLongPressToMenu : undefined}
+        // Content that isn't a button, like a QR code, stays still under the finger.
+        activeOpacity={isButton ? undefined : 1}
+        onPress={opensOnLongPress ? onPress : open}
+        onLongPress={opensOnLongPress ? open : undefined}
+        accessibilityActions={opensOnLongPress ? LONG_PRESS_ACTIONS : undefined}
+        onAccessibilityAction={opensOnLongPress ? onAccessibilityAction : undefined}
         {...restProps}
       >
-        {content}
+        {children}
       </TouchableOpacity>
-    );
-
-    // On iOS, MenuView mounts its native button above its React children, so the button takes
-    // every tap and a touchable nested inside the menu never sees one. There the menu goes inside
-    // the touchable instead, laid over its content: the touchable is then an ancestor of whatever
-    // is tapped, and the menu still gets the long press. Android keeps the menu outside, because a
-    // touchable that owns a gesture takes it from the native views inside it, cancelling the long press.
-    if (opensOnLongPress && Platform.OS === 'ios') {
-      return renderTouchable(
-        <>
-          {children}
-          {renderMenu(null, StyleSheet.absoluteFill)}
-        </>,
-      );
-    }
-    return renderMenu(renderTouchable(children));
-  };
-
-  return props.actions.length > 0 ? renderMenuView() : null;
+      {isOpen && (
+        <BottomModal
+          ref={sheetRef}
+          detents={['auto']}
+          // Rounds the top corners only; the native sheet squares off the bottom two.
+          cornerRadius={16}
+          backgroundColor={colors.background}
+          showCloseButton={false}
+          contentStyle={styles.sheet}
+          onClose={onClose}
+        >
+          <View style={styles.container} testID="ToolTipMenuSheet">
+            {title ? <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text> : null}
+            {groups.map((group, groupIndex) => (
+              <SettingsCard key={groupIndex}>
+                {group.map((action, index) => (
+                  <SettingsRowWrapper key={action.id} showSeparator={index < group.length - 1}>
+                    {renderRow(action)}
+                  </SettingsRowWrapper>
+                ))}
+              </SettingsCard>
+            ))}
+          </View>
+        </BottomModal>
+      )}
+    </>
+  );
 };
 
 export default ToolTipMenu;
+
+const styles = StyleSheet.create({
+  sheet: { paddingTop: 0, paddingHorizontal: 0 },
+  // The top padding clears the native grabber.
+  container: { paddingTop: 28, paddingHorizontal: 16, paddingBottom: 24, gap: 12 },
+  title: { fontFamily: ClashFont.medium, fontSize: 17, lineHeight: 26, textAlign: 'center', marginBottom: 4 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 16 },
+  rowPressed: { opacity: 0.7 },
+  rowDisabled: { opacity: 0.35 },
+  rowText: { flex: 1 },
+  rowTitle: { fontFamily: ClashFont.medium, fontSize: 16 },
+  rowSubtitle: { fontFamily: ClashFont.regular, fontSize: 13, marginTop: 2 },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  radioDot: { width: 10, height: 10, borderRadius: 5 },
+});

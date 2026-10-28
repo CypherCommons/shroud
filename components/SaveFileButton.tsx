@@ -4,8 +4,9 @@ import { StyleProp, TouchableOpacityProps, ViewStyle } from 'react-native';
 import * as fs from '../modules/fs';
 import presentAlert from './Alert';
 import loc from '../loc';
-import { ActionIcons } from '../typings/ActionIcons';
 import ToolTipMenu from './TooltipMenu';
+import DownloadIcon from './icons/DownloadIcon';
+import ShareIcon from './icons/ShareIcon';
 import { Action } from './types';
 
 interface SaveFileButtonProps extends TouchableOpacityProps {
@@ -67,15 +68,7 @@ const SaveFileButton: React.FC<SaveFileButtonProps> = ({
 
 export default SaveFileButton;
 
-const actionIcons: { [key: string]: ActionIcons } = {
-  Share: {
-    iconValue: 'square.and.arrow.up',
-  },
-  Save: {
-    iconValue: 'square.and.arrow.down',
-  },
-};
 const actions: Action[] = [
-  { id: 'save', text: loc._.save, icon: actionIcons.Save },
-  { id: 'share', text: loc.receive.details_share, icon: actionIcons.Share },
+  { id: 'save', text: loc._.save, icon: DownloadIcon },
+  { id: 'share', text: loc.receive.details_share, icon: ShareIcon },
 ];

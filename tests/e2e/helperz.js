@@ -78,6 +78,10 @@ export async function helperCreateWallet() {
   } finally {
     await device.enableSynchronization();
   }
+  // Re-enabling synchronization has Espresso start watching the JS thread's looper, which only
+  // happens once that thread is free. A caller that disables it again before then crashes inside
+  // Espresso on a null Looper, so wait here, synchronized, for the app to settle.
+  await expect(element(by.id('HomeScreenReceiveButton'))).toExist();
 }
 
 // waitFor().toBeVisible() with synchronization off, made to survive one trap: a wait that starts

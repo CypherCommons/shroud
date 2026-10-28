@@ -17,11 +17,6 @@ jest.mock('../../hooks/useExtendedNavigation');
 jest.mock('../../modules/SilentPaymentIndexer');
 jest.mock('../../components/Alert');
 jest.mock('../../modules/hapticFeedback');
-// A host view standing in for the native menu, so a test can pick an item by calling onPressAction.
-jest.mock('@react-native-menu/menu', () => {
-  const { View } = jest.requireActual('react-native');
-  return { MenuView: (props: object) => <View testID="MenuView" {...props} /> };
-});
 jest.mock('react-native-safe-area-context', () => {
   const { View } = jest.requireActual('react-native');
   return { SafeAreaView: View };
@@ -99,19 +94,26 @@ describe('unit - Onboarding', () => {
   afterEach(() => setActiveNetwork('bitcoin'));
 
   describe('network picker', () => {
-    it('lists the selectable chains with the active one checked', () => {
-      mockStorage();
+    const openPicker = async () => {
       const screen = renderScreen();
-      const actions = screen.getByTestId('MenuView').props.actions;
-      expect(actions.map((a: { title: string }) => a.title)).toEqual(['Mainnet', 'Signet']);
-      expect(actions.map((a: { state: string }) => a.state)).toEqual(['on', 'off']);
+      await act(async () => fireEvent.press(screen.getByTestId('OnboardingNetworkButton')));
+      return screen;
+    };
+
+    it('lists the selectable chains with the active one checked', async () => {
+      mockStorage();
+      const screen = await openPicker();
+      expect(screen.getByTestId('ToolTipMenuItem-bitcoin').props.accessibilityLabel).toBe('Mainnet');
+      expect(screen.getByTestId('ToolTipMenuItem-bitcoin').props.accessibilityState).toMatchObject({ checked: true });
+      expect(screen.getByTestId('ToolTipMenuItem-signet').props.accessibilityLabel).toBe('Signet');
+      expect(screen.getByTestId('ToolTipMenuItem-signet').props.accessibilityState).toMatchObject({ checked: false });
     });
 
     it('switches to the chain picked from it', async () => {
       mockStorage();
-      const screen = renderScreen();
-      await act(async () => screen.getByTestId('MenuView').props.onPressAction({ nativeEvent: { event: 'signet' } }));
-      expect(switchNetwork).toHaveBeenCalledWith('signet');
+      const screen = await openPicker();
+      fireEvent.press(screen.getByTestId('ToolTipMenuItem-signet'));
+      await waitFor(() => expect(switchNetwork).toHaveBeenCalledWith('signet'));
     });
   });
 

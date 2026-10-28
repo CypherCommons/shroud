@@ -1,21 +1,16 @@
-import { AccessibilityRole, ViewStyle, ColorValue } from 'react-native';
+import { AccessibilityRole, ViewStyle } from 'react-native';
+import { IconProps } from './icons/types';
 
 export interface Action {
   id: string | number;
   text: string;
-  icon?: {
-    iconValue: string;
-  };
-  menuTitle?: string;
+  icon?: React.ComponentType<IconProps>;
   subtitle?: string;
-  menuState?: 'mixed' | boolean | undefined;
-  displayInline?: boolean; // Indicates if subactions should be displayed inline or nested (iOS only)
-  image?: string;
-  imageColor?: ColorValue;
+  // Set, true or false, on each item of a pick-one list: its row shows a radio button.
+  menuState?: boolean;
   destructive?: boolean;
   hidden?: boolean;
   disabled?: boolean;
-  subactions?: Action[]; // Nested/Inline actions (subactions) within an action
 }
 
 export interface ToolTipMenuProps {
