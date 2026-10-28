@@ -136,6 +136,26 @@ describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
     );
   });
 
+  it('keeps the address of a request bip21 rejects over a malformed amount', () => {
+    for (const query of ['amount=abc&label=Foo', 'amount=-1', 'amount[]=x', 'am%6Funt=-1']) {
+      const uri = `bitcoin:${suffix}${SP_MAINNET}?${query}`;
+      assert.deepStrictEqual(DeeplinkSchemaMatch.decodeBitcoinUri(uri), { address: SP_MAINNET, amount: undefined, memo: '' }, uri);
+    }
+  });
+
+  it('leaves out a label that qs parsed into an array or an object', () => {
+    for (const query of ['label=a&label=b', 'label[a]=b']) {
+      const uri = `bitcoin:${suffix}${SP_MAINNET}?amount=0.001&${query}`;
+      assert.deepStrictEqual(DeeplinkSchemaMatch.decodeBitcoinUri(uri), { address: SP_MAINNET, amount: 0.001, memo: '' }, uri);
+    }
+  });
+
+  it('hands back input with no address to fall back to as it came', () => {
+    for (const input of ['not an address', `bitcoin:${suffix}?amount=abc`]) {
+      assert.deepStrictEqual(DeeplinkSchemaMatch.decodeBitcoinUri(input), { address: input, amount: undefined, memo: '' }, input);
+    }
+  });
+
   it('can work with some deeplink actions', () => {
     assert.strictEqual(DeeplinkSchemaMatch.getServerFromSetElectrumServerAction('sgasdgasdgasd'), false);
     assert.deepStrictEqual(

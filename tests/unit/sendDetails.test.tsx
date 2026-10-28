@@ -11,7 +11,11 @@ import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
 import { _setExchangeRate, _setPreferredFiatCurrency, _setSkipUpdateExchangeRate, getCurrencyCode } from '../../modules/currency';
 import { FiatUnit } from '../../models/fiatUnit';
 import { BitcoinUnit, Chain } from '../../models/bitcoinUnits';
-import { formatBalance } from '../../loc';
+import loc, { formatBalance } from '../../loc';
+import presentAlert from '../../components/Alert';
+import { HapticFeedbackTypes } from '../../modules/hapticFeedback';
+import { scanErrorMessage } from '../../helpers/scanErrorMessage';
+import { SP_MAINNET, SP_MAINNET_2, SP_SIGNET } from '../fixtures/addresses';
 
 jest.mock('../../hooks/context/useStorage');
 jest.mock('../../hooks/context/useContacts');
@@ -31,8 +35,8 @@ jest.mock('../../models/networkTransactionFees', () => {
   const actual = jest.requireActual('../../models/networkTransactionFees');
   return { ...actual, __esModule: true, default: { recommendedFees: () => Promise.resolve(new actual.NetworkTransactionFee(7, 5, 2)) } };
 });
-// Mutable so a test can hand the screen a scanned code the way the scanner does.
-const mockRoute: { params: { isEditable: boolean; walletID: string; onBarScanned?: string } } = {
+// Mutable so a test can hand the screen a scanned code the way the scanner does, or a link from home.
+const mockRoute: { params: { isEditable: boolean; walletID: string; onBarScanned?: string; uri?: string } } = {
   params: { isEditable: true, walletID: 'wallet-1' },
 };
 jest.mock('@react-navigation/native', () => {
@@ -83,36 +87,49 @@ const renderScreen = async () => {
   await act(async () => {});
 };
 
+// Hands the screen a code the way the scanner does. The screen clears it through setParams, a mock
+// here, so clear it too: the next scan then lands even if it's the same code.
+const scan = async (code: string) => {
+  mockRoute.params.onBarScanned = code;
+  screen.rerender(tree());
+  await act(async () => {});
+  delete mockRoute.params.onBarScanned;
+  screen.rerender(tree());
+};
+
 const amount = () => screen.getByTestId('AmountHeroInput').props.value;
+const address = () => screen.getByTestId('AddressInput').props.value;
+const memoUpdates = () => navigation.setParams.mock.calls.filter(([params]) => params?.transactionMemo !== undefined);
 const typeAmount = (text: string) => fireEvent.changeText(screen.getByTestId('AmountHeroInput'), text);
 const unitSegment = (unit: BitcoinUnit) => screen.getByTestId(`AmountUnit-${unit}`);
 const selectUnit = (unit: BitcoinUnit) => fireEvent.press(unitSegment(unit));
 const unitLabel = () => screen.getByTestId('AmountHeroUnit');
 const estimateOf = (sats: number) => screen.getByText(`≈ ${formatBalance(sats, BitcoinUnit.SATS, true)}`);
 
+beforeAll(() => {
+  _setSkipUpdateExchangeRate();
+});
+
+beforeEach(() => {
+  (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+  (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
+  wallet = makeWallet(BitcoinUnit.SATS);
+  saveToDisk = jest.fn();
+  (useStorage as jest.Mock).mockReturnValue({ wallets: [wallet], sleep: () => Promise.resolve(), txMetadata: {}, saveToDisk });
+  (useContacts as jest.Mock).mockReturnValue({
+    contactList: [],
+    getContact: () => undefined,
+    saveContact: jest.fn(),
+    validate: () => [],
+  });
+  (useExtendedNavigation as jest.Mock).mockReturnValue(navigation);
+  delete mockRoute.params.onBarScanned;
+  delete mockRoute.params.uri;
+  _setPreferredFiatCurrency(FiatUnit.INR);
+  _setExchangeRate('BTC_INR', 10_000_000);
+});
+
 describe('unit - SendDetails amount', () => {
-  beforeAll(() => {
-    _setSkipUpdateExchangeRate();
-  });
-
-  beforeEach(() => {
-    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
-    (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
-    wallet = makeWallet(BitcoinUnit.SATS);
-    saveToDisk = jest.fn();
-    (useStorage as jest.Mock).mockReturnValue({ wallets: [wallet], sleep: () => Promise.resolve(), txMetadata: {}, saveToDisk });
-    (useContacts as jest.Mock).mockReturnValue({
-      contactList: [],
-      getContact: () => undefined,
-      saveContact: jest.fn(),
-      validate: () => [],
-    });
-    (useExtendedNavigation as jest.Mock).mockReturnValue(navigation);
-    delete mockRoute.params.onBarScanned;
-    _setPreferredFiatCurrency(FiatUnit.INR);
-    _setExchangeRate('BTC_INR', 10_000_000);
-  });
-
   it('opens in the unit the rest of the app uses', async () => {
     await renderScreen();
     expect(unitLabel()).toHaveTextContent('sats');
@@ -185,16 +202,13 @@ describe('unit - SendDetails amount', () => {
     expect(estimateOf(10_000)).toBeTruthy();
   });
 
-  it('drops a half-typed fiat amount once a scanned code clears the amount', async () => {
+  it('drops a half-typed fiat amount once a scanned code brings its own', async () => {
     await renderScreen();
     selectUnit(BitcoinUnit.LOCAL_CURRENCY);
     typeAmount('0.');
 
-    // the code's 0 sats equal the draft's, but it stored its own amount
-    mockRoute.params.onBarScanned = `bitcoin:${ADDRESS}?amount=0`;
-    screen.rerender(tree());
-    await act(async () => {});
-    expect(amount()).toBe('');
+    await scan(`bitcoin:${SP_MAINNET}?amount=0.0001`);
+    expect(amount()).toBe('1000');
   });
 
   it('keeps the local currency in place, unavailable until a rate arrives', async () => {
@@ -220,5 +234,68 @@ describe('unit - SendDetails amount', () => {
     expect(unitLabel()).toHaveTextContent('BTC');
     expect(wallet.preferredBalanceUnit).toBe(BitcoinUnit.SATS);
     expect(saveToDisk).not.toHaveBeenCalled();
+  });
+});
+
+describe('unit - SendDetails payment requests', () => {
+  it('fills in a scanned silent payment request', async () => {
+    await renderScreen();
+    await scan(`bitcoin:${SP_MAINNET}?amount=0.0001&label=Coffee`);
+
+    expect(address()).toBe(SP_MAINNET);
+    expect(amount()).toBe('10000');
+    expect(memoUpdates()).toEqual([[{ transactionMemo: 'Coffee' }]]);
+    expect(presentAlert).not.toHaveBeenCalled();
+  });
+
+  it('fills in a payment request opened from home', async () => {
+    mockRoute.params.uri = `bitcoin:${SP_MAINNET}?amount=0.0001&label=Coffee`;
+    await renderScreen();
+
+    expect(address()).toBe(SP_MAINNET);
+    expect(amount()).toBe('10000');
+    expect(memoUpdates()).toEqual([[{ transactionMemo: 'Coffee' }]]);
+  });
+
+  it('keeps the amount and note typed in when a scanned request leaves them out', async () => {
+    await renderScreen();
+    typeAmount('1234');
+
+    await scan(`bitcoin:${SP_MAINNET}?label=Shop`);
+    expect(address()).toBe(SP_MAINNET);
+    expect(amount()).toBe('1234');
+
+    navigation.setParams.mockClear();
+    await scan(`bitcoin:${SP_MAINNET_2}?amount=0.0001`);
+    expect(address()).toBe(SP_MAINNET_2);
+    expect(memoUpdates()).toEqual([]);
+  });
+
+  it('fills in the address of a request whose amount it cannot read', async () => {
+    await renderScreen();
+    await scan(`bitcoin:${SP_MAINNET}?amount[]=x&label=Coffee`);
+
+    expect(address()).toBe(SP_MAINNET);
+    expect(amount()).toBe('');
+    expect(presentAlert).not.toHaveBeenCalled();
+  });
+
+  it('says why a scanned code cannot be paid, in the words home uses', async () => {
+    await renderScreen();
+
+    await scan('lnbc1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypq');
+    expect(presentAlert).toHaveBeenLastCalledWith({
+      title: loc.errors.error,
+      message: scanErrorMessage('unrecognized'),
+      hapticFeedback: HapticFeedbackTypes.NotificationError,
+    });
+
+    await scan(`bitcoin:${SP_SIGNET}?amount=0.0001`);
+    expect(presentAlert).toHaveBeenLastCalledWith({
+      title: loc.errors.error,
+      message: scanErrorMessage('wrong_network'),
+      hapticFeedback: HapticFeedbackTypes.NotificationError,
+    });
+    expect(address()).toBe('');
   });
 });
