@@ -7,10 +7,9 @@ import { Animated, InteractionManager, SectionList, StyleSheet, Text, TouchableO
 import A from '../../modules/analytics';
 import { getClipboardContent } from '../../modules/clipboard';
 import { isDesktop } from '../../modules/environment';
-import { getActiveNetwork } from '../../modules/network';
 import * as fs from '../../modules/fs';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
-import DeeplinkSchemaMatch, { TScanError } from '../../class/deeplink-schema-match';
+import DeeplinkSchemaMatch from '../../class/deeplink-schema-match';
 import { ExtendedTransaction, Transaction, TWallet } from '../../class/wallets/types';
 import presentAlert from '../../components/Alert';
 import Toast from '../../components/Toast';
@@ -30,6 +29,7 @@ import { useSettings } from '../../hooks/context/useSettings';
 import SafeAreaSectionList from '../../components/SafeAreaSectionList';
 import TestnetBadge from '../../components/TestnetBadge';
 import { scanQrHelper } from '../../helpers/scan-qr.ts';
+import { scanErrorMessage } from '../../helpers/scanErrorMessage';
 import QRScanIcon from '../../components/icons/QRScanIcon';
 import { ClashFont } from '../../constants/fonts';
 import { satoshiToLocalCurrency } from '../../modules/currency';
@@ -127,15 +127,6 @@ function reducer(state: WalletListState, action: WalletListAction) {
 }
 
 type NavigationProps = NativeStackNavigationProp<DetailViewStackParamList, 'WalletsList'>;
-
-const scanErrorMessage = (error: TScanError): string => {
-  switch (error) {
-    case 'wrong_network':
-      return loc.formatString(loc.wallets.scan_wrong_network, { network: getActiveNetwork().displayName });
-    case 'unrecognized':
-      return loc.wallets.scan_unrecognized;
-  }
-};
 
 const WalletsList: React.FC = () => {
   const [state, dispatch] = useReducer(reducer, initialState);

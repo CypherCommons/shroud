@@ -112,7 +112,12 @@ class DeeplinkSchemaMatch {
     return bip21.encode(address, options);
   }
 
-  static decodeBitcoinUri(uri: string) {
+  /**
+   * What a payment request fills in on the send form. Never throws: input that isn't a URI comes
+   * back as the address, and a `bitcoin:` URI with an option bip21 rejects (a malformed amount)
+   * still yields the address in front of its `?`.
+   */
+  static decodeBitcoinUri(uri: string): { address: string; amount?: number; memo: string } {
     let amount;
     let address = uri || '';
     let memo = '';
@@ -123,11 +128,17 @@ class DeeplinkSchemaMatch {
         if (parsedBitcoinUri.options.amount) {
           amount = Number(parsedBitcoinUri.options.amount);
         }
-        if (parsedBitcoinUri.options.label) {
+        // qs turns a repeated or bracketed key into an array or an object, whatever bip21's types say
+        if (typeof parsedBitcoinUri.options.label === 'string') {
           memo = parsedBitcoinUri.options.label;
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      const canonical = DeeplinkSchemaMatch.canonicalise(address);
+      if (canonical.startsWith('bitcoin:')) {
+        address = DeeplinkSchemaMatch.extractAddress(canonical) || address;
+      }
+    }
     return { address, amount, memo };
   }
 }

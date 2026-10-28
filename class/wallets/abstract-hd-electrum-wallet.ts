@@ -1275,6 +1275,15 @@ export class AbstractHDElectrumWallet extends AbstractHDWallet {
     }
   }
 
+  /**
+   * An address this wallet can build an output for: an on-chain one, or a silent payment one.
+   * Both are checked against the wallet's own network, the one createTransaction routes on, so
+   * the send screen and the builder agree about what is payable.
+   */
+  isPayableAddress(address: string): boolean {
+    return this.isAddressValid(address) || isSilentPaymentAddress(address, this.getNetworkConfig().bitcoinjs);
+  }
+
   async broadcastTx(txhex: string): Promise<boolean> {
     const broadcast = await Electrum.broadcastV2(txhex);
     console.log({ broadcast });

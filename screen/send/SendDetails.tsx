@@ -3,13 +3,11 @@ import { RouteProp, useFocusEffect, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import assert from 'assert';
 import BigNumber from 'bignumber.js';
-import { TOptions } from 'bip21';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, LayoutAnimation, StyleSheet, Text, Pressable, View } from 'react-native';
 import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isSilentPaymentAddress } from '../../helpers/silent-payments';
-import { getActiveNetwork } from '../../modules/network';
 import {
   btcToSatoshi,
   fiatToSatoshi,
@@ -44,6 +42,7 @@ import { KEYBOARD_BOTTOM_OFFSET } from '../../components/SafeAreaScrollView';
 import { shadowSm, useTheme } from '../../components/themes';
 import { Action } from '../../components/types';
 import { ClashFont } from '../../constants/fonts';
+import { scanErrorMessage } from '../../helpers/scanErrorMessage';
 import { amountFieldText, FiatDraft, feeSpeedTierForRate, isAmountEmpty, sanitizeAmountInput } from '../../helpers/send/format';
 import { useStorage } from '../../hooks/context/useStorage';
 import { useContacts } from '../../hooks/context/useContacts';
@@ -54,7 +53,7 @@ import loc, { formatBalance } from '../../loc';
 import { BitcoinUnit, Chain } from '../../models/bitcoinUnits';
 import NetworkTransactionFees, { NetworkTransactionFee, NetworkTransactionFeeType } from '../../models/networkTransactionFees';
 import { SendDetailsStackParamList } from '../../navigation/SendDetailsStackParamList';
-import { CommonToolTipActions, ToolTipAction } from '../../typings/CommonToolTipActions';
+import { CommonToolTipActions } from '../../typings/CommonToolTipActions';
 import ActionSheet from '../ActionSheet';
 
 interface IPaymentDestinations {
@@ -91,7 +90,6 @@ const amountUnitLabel = (unit: BitcoinUnit): string => {
 const SendDetails = () => {
   const { wallets, sleep, txMetadata, saveToDisk } = useStorage();
   const navigation = useExtendedNavigation<NavigationProps>();
-  const selectedDataProcessor = useRef<ToolTipAction | undefined>(undefined);
   const setParams = navigation.setParams;
   const route = useRoute<RouteProps>();
   const feeUnit = route.params?.feeUnit ?? BitcoinUnit.BTC;
@@ -179,32 +177,32 @@ const SendDetails = () => {
 
   const onSelectUnit = useCallback((index: number) => setDisplayUnit(AMOUNT_UNITS[index]), []);
 
+  // One way in for a payment request, however it arrived: typed, pasted, scanned here or opened
+  // from home. Only what the request carries replaces what the user already filled in.
+  const applyPaymentRequest = useCallback(
+    ({ address, amount, memo }: { address: string; amount?: number; memo?: string }) => {
+      setAddresses(addrs => {
+        const a = { ...addrs[0], address };
+        if (amount) {
+          a.amount = String(amount);
+          a.amountSats = btcToSatoshi(String(amount));
+          a.unit = BitcoinUnit.BTC;
+        }
+        return [a, ...addrs.slice(1)];
+      });
+      if (memo?.trim()) setParams({ transactionMemo: memo });
+    },
+    [setParams],
+  );
+
   const onChangeAddress = useCallback(
     (text: string) => {
       const trimmed = text.trim();
       const looksLikeUri = trimmed.includes(':') || trimmed.includes('?');
-      if (looksLikeUri) {
-        const { address, amount, memo } = DeeplinkSchemaMatch.decodeBitcoinUri(trimmed);
-        setAddresses(addrs => {
-          const a = { ...addrs[0] };
-          a.address = address || trimmed;
-          if (amount) {
-            a.amount = String(amount);
-            a.amountSats = btcToSatoshi(String(amount));
-          }
-          return [a, ...addrs.slice(1)];
-        });
-        if (memo) setParams({ transactionMemo: memo });
-      } else {
-        setAddresses(addrs => {
-          const a = { ...addrs[0] };
-          a.address = trimmed;
-          return [a, ...addrs.slice(1)];
-        });
-      }
+      applyPaymentRequest(looksLikeUri ? DeeplinkSchemaMatch.decodeBitcoinUri(trimmed) : { address: trimmed });
       setIsLoading(false);
     },
-    [setParams],
+    [applyPaymentRequest],
   );
 
   // if cutomFee is not set, we need to choose highest possible fee for wallet balance
@@ -250,39 +248,8 @@ const SendDetails = () => {
 
   useEffect(() => {
     // decode route params
-    const currentAddress = addresses[0];
     if (routeParams.uri) {
-      try {
-        const { address, amount, memo } = DeeplinkSchemaMatch.decodeBitcoinUri(routeParams.uri);
-
-        setAddresses(addrs => {
-          addrs[0].unit = BitcoinUnit.BTC;
-          return [...addrs];
-        });
-
-        setAddresses(addrs => {
-          if (currentAddress) {
-            currentAddress.address = address;
-            if (Number(amount) > 0) {
-              currentAddress.amount = amount!;
-              currentAddress.amountSats = btcToSatoshi(amount!);
-            }
-            addrs[0] = currentAddress;
-            return [...addrs];
-          } else {
-            return [...addrs, { address, amount, amountSats: btcToSatoshi(amount!), key: String(Math.random()), unit: amountUnit }];
-          }
-        });
-
-        if (memo?.trim().length > 0) {
-          setParams({ transactionMemo: memo });
-        }
-        setParams({ amountUnit: BitcoinUnit.BTC });
-      } catch (error) {
-        console.log(error);
-        triggerHapticFeedback(HapticFeedbackTypes.NotificationError);
-        presentAlert({ title: loc.errors.error, message: loc.send.details_error_decode });
-      }
+      applyPaymentRequest(DeeplinkSchemaMatch.decodeBitcoinUri(routeParams.uri));
     } else if (routeParams.address) {
       // screen was called with `address` parameter, so we just prefill it
       setAddresses(prevAddresses => {
@@ -425,7 +392,7 @@ const SendDetails = () => {
 
     // replace wrong addresses with dump
     targets = targets.map(t => {
-      if (!wallet.isAddressValid(t.address)) {
+      if (!wallet.isPayableAddress(t.address)) {
         return { ...t, address: '36JxaUrpDzkEerkTf1FzwHNE1Hb7cCjgJV' };
       } else {
         return t;
@@ -483,69 +450,22 @@ const SendDetails = () => {
 
     return change;
   };
-  /**
-   * TODO: refactor this mess, get rid of regexp, use https://github.com/bitcoinjs/bitcoinjs-lib/issues/890 etc etc
-   *
-   * @param data {String} Can be address or `bitcoin:xxxxxxx` uri scheme, or invalid garbage
-   */
-
+  // Sorts a scanned code the way the home scanner does, so both say the same thing about it.
   const processAddressData = useCallback(
-    (data: string | { data?: any }) => {
-      assert(wallet, 'Internal error: wallet not set');
-      if (typeof data !== 'string') {
-        data = String(data.data);
-      }
-      setIsLoading(true);
-      if (!data.replace) {
-        // user probably scanned PSBT and got an object instead of string..?
-        setIsLoading(false);
-        triggerHapticFeedback(HapticFeedbackTypes.NotificationError);
-        return presentAlert({ title: loc.errors.error, message: loc.send.details_address_field_is_not_valid });
-      }
-
-      const dataWithoutSchema = data.replace('bitcoin:', '').replace('BITCOIN:', '');
-      if (wallet.isAddressValid(dataWithoutSchema) || isSilentPaymentAddress(dataWithoutSchema, getActiveNetwork().bitcoinjs)) {
-        setAddresses(addrs => {
-          addrs[0].address = dataWithoutSchema;
-          return [...addrs];
+    (data: string) => {
+      const destination = DeeplinkSchemaMatch.destinationFor(data);
+      if (!('send' in destination)) {
+        presentAlert({
+          title: loc.errors.error,
+          // a setelectrumserver link is only acted on from home
+          message: scanErrorMessage('error' in destination ? destination.error : 'unrecognized'),
+          hapticFeedback: HapticFeedbackTypes.NotificationError,
         });
-        setIsLoading(false);
         return;
       }
-
-      let address = '';
-      let options: TOptions;
-      try {
-        if (!data.toLowerCase().startsWith('bitcoin:')) data = `bitcoin:${data}`;
-        const decoded = DeeplinkSchemaMatch.bip21decode(data);
-        address = decoded.address;
-        options = decoded.options;
-      } catch (error) {
-        data = data.replace(/(amount)=([^&]+)/g, '').replace(/(amount)=([^&]+)&/g, '');
-        const decoded = DeeplinkSchemaMatch.bip21decode(data);
-        decoded.options.amount = 0;
-        address = decoded.address;
-        options = decoded.options;
-      }
-
-      console.log('options', options);
-      if (wallet.isAddressValid(address)) {
-        setAddresses(addrs => {
-          addrs[0].address = address;
-          addrs[0].amount = options?.amount ?? 0;
-          addrs[0].amountSats = new BigNumber(options?.amount ?? 0).multipliedBy(100000000).toNumber();
-          return [...addrs];
-        });
-        setAddresses(addrs => {
-          addrs[0].unit = BitcoinUnit.BTC;
-          return [...addrs];
-        });
-        setParams({ transactionMemo: options.label || '', amountUnit: BitcoinUnit.BTC }); // there used to be `options.message` here as well. bug?
-      }
-
-      setIsLoading(false);
+      applyPaymentRequest(DeeplinkSchemaMatch.decodeBitcoinUri(destination.send));
     },
-    [setParams, wallet],
+    [applyPaymentRequest],
   );
 
   const createTransaction = async () => {
@@ -571,16 +491,13 @@ const SendDetails = () => {
         // first sanity check is that sending amount is not bigger than available balance
         error = frozenBalance > 0 ? loc.send.details_total_exceeds_balance_frozen : loc.send.details_total_exceeds_balance;
         console.log('validation error');
-      } else if (transaction.address) {
-        // address validation handled below
       }
 
       if (!error) {
-        const isSilentPayment = isSilentPaymentAddress(transaction.address, getActiveNetwork().bitcoinjs);
-        if (!wallet.isAddressValid(transaction.address) && !isSilentPayment) {
+        if (!wallet.isPayableAddress(transaction.address)) {
           console.log('validation error');
           error = loc.send.details_address_field_is_not_valid;
-        } else if (isSilentPayment && !wallet.allowSilentPaymentSend()) {
+        } else if (!wallet.allowSilentPaymentSend() && isSilentPaymentAddress(transaction.address, wallet.getNetworkConfig().bitcoinjs)) {
           console.log('validation error');
           error = loc.send.cant_send_to_silentpayment_adress;
         }
@@ -721,7 +638,6 @@ const SendDetails = () => {
     if (data) {
       processAddressData(data);
     }
-    selectedDataProcessor.current = undefined;
     setParams({ onBarScanned: undefined });
   }, [routeParams.onBarScanned, setParams, processAddressData]);
 
@@ -782,7 +698,6 @@ const SendDetails = () => {
     (id: string) => {
       Keyboard.dismiss();
       if (id === CommonToolTipActions.SignPSBT.id) {
-        selectedDataProcessor.current = CommonToolTipActions.SignPSBT;
         navigateToQRCodeScanner();
       } else if (id === CommonToolTipActions.SendMax.id) {
         onUseAllPressed();

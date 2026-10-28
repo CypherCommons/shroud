@@ -143,6 +143,22 @@ describe('wallet identity across networks', () => {
       expect(() => decodeSilentPaymentAddress(mainnetAddress, bitcoin.networks.testnet)).toThrow();
     });
 
+    it("pays silent payment addresses on the wallet's own network, whichever is active", () => {
+      const mainnet = makeWallet('bitcoin');
+      const signet = makeWallet('signet');
+      const spMainnet = mainnet.getSilentPaymentAddress()!;
+      const spSignet = signet.getSilentPaymentAddress()!;
+
+      expect(mainnet.isPayableAddress(spMainnet)).toBe(true);
+      expect(mainnet.isPayableAddress(spSignet)).toBe(false);
+      expect(signet.isPayableAddress(spSignet)).toBe(true);
+      expect(signet.isPayableAddress(spMainnet)).toBe(false);
+      // on-chain addresses still go through the on-chain check, which alone turns silent payment ones away
+      expect(mainnet.isPayableAddress('bc1qykcp2x3djgdtdwelxn9z4j2y956npte0a4sref')).toBe(true);
+      expect(signet.isPayableAddress('tb1q38gfnkegcnf63cqfef5f6xvk35nywefzknv070')).toBe(true);
+      expect(mainnet.isAddressValid(spMainnet)).toBe(false);
+    });
+
     it('derives identical silent payment addresses on testnet4 and signet', () => {
       // Expected, not a bug: both are coin type 1' with the `tb` HRP. It is exactly why storage
       // segregation keys on networkId rather than on the address or derivation path.
