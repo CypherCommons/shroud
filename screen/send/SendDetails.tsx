@@ -407,7 +407,8 @@ const SendDetails = () => {
           newFeePrecalc[opt.key] = fee;
           break;
         } catch (e: any) {
-          if (e.message.includes('Not enough') && !flag) {
+          // the user's own rate must fit the real amount, so it never falls back to send-max
+          if (e.message.includes('Not enough') && !flag && opt.key !== 'current') {
             flag = true;
             targets = targets.map((t, index) => (index > 0 ? { ...t, value: 546 } : { address: t.address }));
             continue;
