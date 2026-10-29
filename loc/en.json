@@ -223,6 +223,7 @@
         "note_visible_to_you": "Only visible to you",
         "network_fee": "Network fee",
         "enter_amount_to_estimate": "Enter amount to estimate",
+        "fee_exceeds_balance": "Not enough balance for this amount and fee",
         "tap_amount_to_edit": "Tap amount to edit",
         "max": "Use Max",
         "max_active": "Max",

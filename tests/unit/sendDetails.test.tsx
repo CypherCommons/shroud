@@ -30,7 +30,7 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
   useSafeAreaFrame: () => ({ x: 0, y: 0, width: 320, height: 640 }),
 }));
-// Plain functions rather than jest.fn: the image-picker mock resets every mock before each test.
+// Plain functions rather than jest.fn, so a jest.resetAllMocks (e.g. from the image-picker mock) can't strip them.
 jest.mock('../../models/networkTransactionFees', () => {
   const actual = jest.requireActual('../../models/networkTransactionFees');
   return { ...actual, __esModule: true, default: { recommendedFees: () => Promise.resolve(new actual.NetworkTransactionFee(7, 5, 2)) } };
@@ -113,6 +113,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  jest.clearAllMocks();
   (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
   (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
   wallet = makeWallet(BitcoinUnit.SATS);
