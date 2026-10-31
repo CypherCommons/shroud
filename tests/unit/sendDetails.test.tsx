@@ -273,6 +273,35 @@ describe('unit - SendDetails payment requests', () => {
     expect(memoUpdates()).toEqual([]);
   });
 
+  it('rounds a requested amount to whole sats', async () => {
+    await renderScreen();
+    // 0.0001 * 3 in float math, as a merchant's checkout might compute it: 0.00030000000000000003
+    await scan(`bitcoin:${SP_MAINNET}?amount=${0.0001 * 3}`);
+    expect(amount()).toBe('30000');
+    const [, targets] = wallet.coinselect.mock.lastCall!;
+    expect(targets).toEqual([{ address: SP_MAINNET, value: 30000 }]);
+
+    await scan(`bitcoin:${SP_MAINNET}?amount=0.000123456`);
+    expect(amount()).toBe('12346');
+  });
+
+  it('shows a small requested amount in BTC as a decimal, not in exponent form', async () => {
+    await renderScreen();
+    selectUnit(BitcoinUnit.BTC);
+    await scan(`bitcoin:${SP_MAINNET}?amount=0.00000099`);
+
+    expect(amount()).toBe('0.00000099');
+  });
+
+  it('keeps the amount typed in when a scanned request asks for less than a sat', async () => {
+    await renderScreen();
+    typeAmount('1234');
+    await scan(`bitcoin:${SP_MAINNET}?amount=0.000000001`);
+
+    expect(address()).toBe(SP_MAINNET);
+    expect(amount()).toBe('1234');
+  });
+
   it('fills in the address of a request whose amount it cannot read', async () => {
     await renderScreen();
     await scan(`bitcoin:${SP_MAINNET}?amount[]=x&label=Coffee`);
