@@ -8,6 +8,7 @@ import {
   TContact,
   TContacts,
   getContact as getContactFrom,
+  isValidContactAddress,
   listContacts,
   removeContact,
   upsertContact,
@@ -31,7 +32,7 @@ export interface ContactsContextType {
 export const ContactsContext = createContext<ContactsContextType>(undefined);
 
 export const ContactsProvider = ({ children }: { children: React.ReactNode }) => {
-  const { saveToDisk, walletsInitialized } = useStorage();
+  const { saveToDisk, walletsInitialized, activeNetworkId } = useStorage();
   const [contacts, setContacts] = useState<TContacts>({});
 
   // walletsInitialized is the signal that loadFromDisk has finished populating the singleton.
@@ -66,7 +67,13 @@ export const ContactsProvider = ({ children }: { children: React.ReactNode }) =>
     setContacts(shroudApp.contacts);
   }, []);
 
-  const contactList = useMemo(() => listContacts(contacts), [contacts]);
+  // The map holds every chain's contacts; only list the ones payable on the active network.
+  // activeNetworkId is not read here, but isValidContactAddress depends on it.
+  const contactList = useMemo(
+    () => listContacts(contacts).filter(c => isValidContactAddress(c.address)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [contacts, activeNetworkId],
+  );
 
   const getContact = useCallback((address: string) => getContactFrom(contacts, address), [contacts]);
 
