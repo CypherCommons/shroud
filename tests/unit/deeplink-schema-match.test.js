@@ -2,7 +2,7 @@ import assert from 'assert';
 
 import DeeplinkSchemaMatch from '../../class/deeplink-schema-match';
 import { DEFAULT_NETWORK_ID, setActiveNetwork } from '../../modules/network';
-import { SP_MAINNET, SP_SIGNET } from '../fixtures/addresses';
+import { SP_MAINNET, SP_MAINNET_2, SP_SIGNET } from '../fixtures/addresses';
 
 jest.mock('../../modules/Electrum', () => {
   const actual = jest.requireActual('../../modules/Electrum');
@@ -150,6 +150,50 @@ describe.each(['', '//'])('unit - DeepLinkSchemaMatch', function (suffix) {
     }
   });
 
+  it('routes a BIP-321 sp= payment link to SendDetails', () => {
+    const upper = SP_MAINNET.toUpperCase();
+    const cases = [
+      { input: `bitcoin:${suffix}?sp=${SP_MAINNET}`, expected: `bitcoin:?sp=${SP_MAINNET}` },
+      { input: `bitcoin:${suffix}?amount=0.001&sp=${SP_MAINNET}&label=Yo`, expected: `bitcoin:?amount=0.001&sp=${SP_MAINNET}&label=Yo` },
+      { input: `BITCOIN:${suffix}?SP=${upper}`, expected: `bitcoin:?SP=${upper}` },
+      { input: `bitcoin:${suffix}${BECH32_MAINNET}?sp=${SP_MAINNET}`, expected: `bitcoin:${BECH32_MAINNET}?sp=${SP_MAINNET}` },
+      { input: `shroud:bitcoin:${suffix}?sp=${SP_MAINNET}`, expected: `bitcoin:?sp=${SP_MAINNET}` },
+    ];
+    for (const { input, expected } of cases) {
+      assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { send: expected }, input);
+    }
+  });
+
+  it('reports a BIP-321 sp= for another network', () => {
+    assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(`bitcoin:${suffix}?sp=${SP_SIGNET}`), { error: 'wrong_network' });
+  });
+
+  it('pays the BIP-321 sp= address, keeping amount and label', () => {
+    const upper = SP_MAINNET.toUpperCase();
+    const cases = [
+      { uri: `bitcoin:${suffix}?sp=${SP_MAINNET}`, address: SP_MAINNET, amount: undefined, memo: '' },
+      { uri: `bitcoin:${suffix}?sp=${SP_MAINNET}&amount=0.001&label=Yo`, address: SP_MAINNET, amount: 0.001, memo: 'Yo' },
+      // the reusable on-chain fallback is not paid when the silent payment address can be
+      { uri: `bitcoin:${suffix}${BECH32_MAINNET}?amount=0.001&sp=${SP_MAINNET}`, address: SP_MAINNET, amount: 0.001, memo: '' },
+      // BIP-321 query keys are case-insensitive, as in an all-uppercase QR code
+      { uri: `BITCOIN:${suffix}?SP=${upper}`, address: upper, amount: undefined, memo: '' },
+      // the first sp= valid on this network, when a link offers one per network
+      { uri: `bitcoin:${suffix}?sp=${SP_SIGNET}&sp=${SP_MAINNET}&sp=${SP_MAINNET_2}`, address: SP_MAINNET, amount: undefined, memo: '' },
+      // a malformed amount still leaves the silent payment address to pay
+      { uri: `bitcoin:${suffix}?sp=${SP_MAINNET}&amount=abc`, address: SP_MAINNET, amount: undefined, memo: '' },
+    ];
+    for (const { uri, ...expected } of cases) {
+      assert.deepStrictEqual(DeeplinkSchemaMatch.decodeBitcoinUri(uri), expected, uri);
+    }
+  });
+
+  it('falls back to the on-chain address when no sp= is usable here', () => {
+    for (const sp of [SP_SIGNET, 'sp1nonsense', '%E0%A4%A']) {
+      const uri = `bitcoin:${suffix}${BECH32_MAINNET}?amount=0.001&sp=${sp}`;
+      assert.deepStrictEqual(DeeplinkSchemaMatch.decodeBitcoinUri(uri), { address: BECH32_MAINNET, amount: 0.001, memo: '' }, uri);
+    }
+  });
+
   it('hands back input with no address to fall back to as it came', () => {
     for (const input of ['not an address', `bitcoin:${suffix}?amount=abc`]) {
       assert.deepStrictEqual(DeeplinkSchemaMatch.decodeBitcoinUri(input), { address: input, amount: undefined, memo: '' }, input);
@@ -194,8 +238,10 @@ describe('unit - DeepLinkSchemaMatch.destinationFor', () => {
       '   ',
       // Not BIP21: on master this opened Send with `bitcoin=…` as the address.
       'bitcoin=12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG',
-      // BIP-321 `sp=` with no on-chain address; see the TODO in destinationFor.
-      `bitcoin:?sp=${SP_MAINNET}`,
+      // BIP-321 `sp=` that is no silent payment address, or only outside a bitcoin: URI
+      'bitcoin:?sp=sp1nonsense',
+      'bitcoin:?sp=%E0%A4%A',
+      `?sp=${SP_MAINNET}`,
       'shroud:setelectrumserver',
       'shroud:setelectrumserver?server=nonsense',
       'shroud:setelectrumserver?server=%E0%A4%A',
@@ -215,8 +261,14 @@ describe('unit - DeepLinkSchemaMatch.destinationFor', () => {
       }
     });
 
+    it('pays the signet sp= of a link that offers one per network', () => {
+      const uri = `bitcoin:?sp=${SP_MAINNET}&sp=${SP_SIGNET}`;
+      assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(uri), { send: uri });
+      assert.deepStrictEqual(DeeplinkSchemaMatch.decodeBitcoinUri(uri), { address: SP_SIGNET, amount: undefined, memo: '' });
+    });
+
     it('reports mainnet addresses as another network', () => {
-      for (const input of [SP_MAINNET, BECH32_MAINNET]) {
+      for (const input of [SP_MAINNET, BECH32_MAINNET, `bitcoin:?sp=${SP_MAINNET}`]) {
         assert.deepStrictEqual(DeeplinkSchemaMatch.destinationFor(input), { error: 'wrong_network' }, input);
       }
     });
