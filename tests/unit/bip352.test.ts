@@ -374,6 +374,22 @@ describe('BIP-352 Silent Payments', () => {
     });
   });
 
+  describe('frozen coins', () => {
+    it('leaves a frozen silent payment UTXO out of the spendable set', () => {
+      const wallet = new HDSilentPaymentsWallet();
+      wallet.setSecret(TEST_SEED);
+
+      const frozen = buildUtxo(wallet.getSpendPublicKey(), wallet.getSilentPaymentAddress()!, 0x07);
+      const spendable = { ...buildUtxo(wallet.getSpendPublicKey(), wallet.getSilentPaymentAddress()!, 0x08), vout: 1 };
+      (wallet as any)._utxo = [frozen, spendable];
+      wallet.setUTXOMetadata(frozen.txid, frozen.vout, { frozen: true });
+
+      expect(wallet.getUtxo().map(u => u.vout)).toEqual([1]);
+      // coin control still lists it, so it can be unfrozen
+      expect(wallet.getUtxo(true).map(u => u.vout)).toEqual([0, 1]);
+    });
+  });
+
   describe('sending to a silent payment (sp1) address from SP-received coins', () => {
     const senderSeed = TEST_SEED;
     const recipientSeed = 'zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo glue';
