@@ -1,8 +1,9 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import * as bip39 from 'bip39';
 import { type PrivateKey } from '@silent-pay/core';
+import { bech32m } from 'bech32';
 import { findSmallestOutpoint, isSilentPaymentAddress, resolveSilentPaymentTargets } from '../../helpers/silent-payments';
-import { getSilentPaymentAddress } from '../../helpers/silent-payments/SilentPaymentKeyDerivation';
+import { getScanPublicKey, getSilentPaymentAddress, getSpendPublicKey } from '../../helpers/silent-payments/SilentPaymentKeyDerivation';
 import { getNetwork } from '../../modules/network';
 import ecc from '../../modules/noble_ecc';
 
@@ -73,6 +74,22 @@ describe('isSilentPaymentAddress', () => {
     expect(isSilentPaymentAddress(undefined, MAINNET.bitcoinjs)).toBe(false);
     expect(isSilentPaymentAddress('', MAINNET.bitcoinjs)).toBe(false);
     expect(isSilentPaymentAddress('sp1nonsense', MAINNET.bitcoinjs)).toBe(false);
+  });
+
+  // decodeSilentPaymentAddress only checks the checksum, HRP and version, then slices the payload
+  // at byte 33. BIP-352 v0 requires exactly 66 bytes holding two compressed public keys.
+  it('rejects a v0 address whose payload is not two 33-byte public keys', () => {
+    const encodeSp = (payload: Uint8Array) => bech32m.encode('sp', [0, ...bech32m.toWords(payload)], 1023);
+    const scanKey = getScanPublicKey(SEED_A, MAINNET);
+    const spendKey = getSpendPublicKey(SEED_A, MAINNET);
+
+    expect(isSilentPaymentAddress(encodeSp(new Uint8Array([...scanKey, ...spendKey])), MAINNET.bitcoinjs)).toBe(true);
+    expect(isSilentPaymentAddress(encodeSp(new Uint8Array(66)), MAINNET.bitcoinjs)).toBe(false);
+    expect(isSilentPaymentAddress(encodeSp(scanKey), MAINNET.bitcoinjs)).toBe(false);
+    expect(isSilentPaymentAddress(encodeSp(new Uint8Array([...scanKey, ...spendKey.slice(0, 32)])), MAINNET.bitcoinjs)).toBe(false);
+    // An uncompressed spend key is a valid point, so the length check is what rejects this one.
+    const uncompressedSpendKey = ecc.pointCompress(spendKey, false);
+    expect(isSilentPaymentAddress(encodeSp(new Uint8Array([...scanKey, ...uncompressedSpendKey])), MAINNET.bitcoinjs)).toBe(false);
   });
 });
 
