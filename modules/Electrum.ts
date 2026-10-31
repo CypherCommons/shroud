@@ -1085,8 +1085,10 @@ export const estimateFee = async function (numberOfBlocks: number): Promise<numb
   if (!mainClient) throw new Error('Electrum client is not connected');
   numberOfBlocks = numberOfBlocks || 1;
   const coinUnitsPerKilobyte = await mainClient.blockchainEstimatefee(numberOfBlocks);
-  if (coinUnitsPerKilobyte === -1) return 1;
-  return Math.round(new BigNumber(coinUnitsPerKilobyte).dividedBy(1024).multipliedBy(100000000).toNumber());
+  // -1 means the server has no estimate; a null or 0 reply is no better
+  if (!(coinUnitsPerKilobyte > 0)) return 1;
+  // BTC per kvB (1000 vbytes) to sat/vB, never below 1 sat/vB
+  return Math.max(1, Math.round(new BigNumber(coinUnitsPerKilobyte).multipliedBy(100000000).dividedBy(1000).toNumber()));
 };
 
 export const serverFeatures = async function () {
