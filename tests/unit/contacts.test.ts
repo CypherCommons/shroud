@@ -276,6 +276,18 @@ describe('readContacts', () => {
     assert.deepStrictEqual(readContacts({ 'not-an-address': { name: 'Mallory', createdAt: 1000, colorIndex: 1 } }), {});
   });
 
+  // Every chain's contacts share one map, so a tsp1 contact read while on mainnet must survive
+  // to be written back by the next save.
+  it("keeps another network's contact but still drops an unknown prefix", () => {
+    const words = bech32m.decode(ADDR_A, 118).words;
+    const tsp = bech32m.encode('tsp', words, 130);
+    const out = readContacts({
+      [tsp]: { name: 'Lena Fischer', createdAt: 1000, colorIndex: 1 },
+      [bech32m.encode('lol', words, 130)]: { name: 'Mallory', createdAt: 1000, colorIndex: 1 },
+    });
+    assert.deepStrictEqual(out, { [tsp]: { name: 'Lena Fischer', createdAt: 1000, colorIndex: 1 } });
+  });
+
   it('keeps the first of two keys that normalize to the same address', () => {
     const out = readContacts({
       [ADDR_A]: { name: 'Anmol Sharma', createdAt: 1000, colorIndex: 2 },
