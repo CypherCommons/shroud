@@ -5,7 +5,7 @@ interface IndexerOutput {
   vout: number;
   pubKey: string;
   value: number;
-  isSpent: boolean | number; // 0 = false (not spent), 1 = true (spent)
+  isSpent?: boolean | number; // Omitted by the indexer by default; Rust treats it as false.
 }
 
 export interface IndexerTransaction {
@@ -45,6 +45,7 @@ export interface SilentPaymentUTXOSerializable extends Omit<SilentPaymentUTXO, '
 export interface SilentPaymentIndexerConfig {
   baseUrl: string;
   onionUrl?: string;
+  fallback?: { baseUrl: string; onionUrl?: string; timeout?: number };
   timeout?: number;
   retry?: {
     count: number;

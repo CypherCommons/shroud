@@ -57,6 +57,10 @@ The Tor addresses are used when Tor is enabled, and can be overridden the same w
 
 Each network keeps a completely separate wallet, balance and transaction history; switching does not migrate anything between them.
 
+You can also select your own Shroud-compatible indexer in **Settings → Network → Silent payment indexer → Change indexer**. Enter its HTTP(S) base URL and, optionally, its own plain-HTTP onion URL. The app tests the endpoint before saving, remembers it separately for each network, and applies it to new requests without a restart. Ensure the indexer serves the selected Bitcoin network; the current API does not identify its chain.
+
+If a saved custom indexer fails or returns an incompatible response, the app retries the request against that network's default indexer and uses the default for the rest of the session. If the replacement indexer is behind, scanning stops at its indexed height and polling resumes the remaining blocks as it catches up. Restarting or testing and saving again retries the custom endpoint. The indexer settings show when fallback is active, and **Use default indexer** removes the custom preference. Fallback respects Tor-only mode. A custom URL without an onion URL is reached over clearnet when permitted; it never inherits the default indexer's onion address.
+
 Electrum only powers the regular-output branch, since silent payments go through the indexer. Default servers ship for every network: mainnet, testnet4 (`testnet.aranguren.org:52002`, TLS) and signet (`electrum.signet.shroudwallet.com:50002`, TLS). To use another, pick it under **Settings → Network → Change server**; the server you pick is remembered per network.
 
 Please make sure that your console is running the most stable versions of npm and node (even-numbered versions).

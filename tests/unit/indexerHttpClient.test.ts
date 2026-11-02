@@ -39,6 +39,7 @@ function createTorManagerMock() {
   return {
     ensureLoaded: jest.fn().mockResolvedValue(undefined),
     markUnavailable: jest.fn(),
+    checkConnection: jest.fn().mockResolvedValue(true),
     get settings() {
       return state.settings;
     },
@@ -104,7 +105,8 @@ describe('unit - IndexerHttpClient Tor routing', () => {
 
     await assert.rejects(client.get('/status', 'test'), /Tor-only mode is enabled but Tor is unavailable/);
     assert.strictEqual(mockFetch.mock.calls.length, 0);
-    assert.strictEqual(torManagerMock.markUnavailable.mock.calls.length, 1);
+    assert.strictEqual(torManagerMock.checkConnection.mock.calls.length, 1);
+    assert.strictEqual(torManagerMock.markUnavailable.mock.calls.length, 0);
   }, 10000);
 
   it('never falls back to clearnet when Tor-only mode is enabled but no onion URL is configured', async () => {

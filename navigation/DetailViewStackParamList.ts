@@ -49,6 +49,7 @@ export type DetailViewStackParamList = {
   Tools: undefined;
   Licensing: undefined;
   About: undefined;
+  IndexerSettings: undefined;
   ElectrumServerSettings: { server?: ElectrumServerItem };
   BlockExplorerSettings: undefined;
   TorSettings: undefined;

@@ -754,15 +754,14 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
       if (!forceFullScan && this.lastScannedBlock > 0) {
         startHeight = this.lastScannedBlock + 1;
-
-        if (startHeight > latestHeight) {
-          return 0;
-        }
       } else {
         startHeight = effectiveBirthHeight;
       }
 
       if (startHeight > endHeight) {
+        // A restored wallet may already be caught up, or ahead of a lagging fallback.
+        // It still needs polling so indexing catch-up does not require a manual refresh.
+        if (!this.cancelScanCallbackScan) this.startPolling();
         return 0;
       }
 
@@ -812,7 +811,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         }
       };
 
-      await indexer.scanForwardWithCallback(
+      const scannedTip = await indexer.scanForwardWithCallback(
         startHeight,
         endHeight,
         async (transactions, rangeEnd) => {
@@ -836,7 +835,14 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
       this._emitScanState('idle', IDLE_SCAN_STATE);
 
-      if (this.lastScannedBlock >= latestHeight && !this.isPollingActive && !this.cancelScanCallbackScan) {
+      // A replacement indexer can be behind the original tip. Keep polling after scanning
+      // everything it currently has, so blocks are revisited as it catches up.
+      const currentTip = scannedTip ?? latestHeight;
+      if (
+        (this.lastScannedBlock >= currentTip || effectiveBirthHeight > currentTip) &&
+        !this.isPollingActive &&
+        !this.cancelScanCallbackScan
+      ) {
         this.startPolling();
       }
 
