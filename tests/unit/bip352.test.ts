@@ -1157,6 +1157,30 @@ describe('BIP-352 Silent Payments', () => {
     });
   });
 
+  describe('confirmations on a received silent payment', () => {
+    const rowFor = (height: number, lastScannedBlock: number) => {
+      const wallet = new HDSilentPaymentsWallet();
+      wallet.setSecret(TEST_SEED);
+      const utxo = { ...buildUtxo(wallet.getSpendPublicKey(), wallet.getSilentPaymentAddress()!, 0x07), height };
+      (wallet as any)._utxo = [utxo];
+      (wallet as any).lastScannedBlock = lastScannedBlock;
+      return wallet.getTransactions().find(t => t.txid === utxo.txid)!;
+    };
+
+    it('counts from the scan tip', () => {
+      expect(rowFor(800_000, 800_000).confirmations).toBe(1);
+      expect(rowFor(800_000, 800_010).confirmations).toBe(11);
+    });
+
+    it('is 0 for a payment still in the mempool', () => {
+      expect(rowFor(0, 800_010).confirmations).toBe(0);
+    });
+
+    it('is at least 1 for a confirmed payment past the scan tip', () => {
+      expect(rowFor(800_005, 800_000).confirmations).toBe(1);
+    });
+  });
+
   describe('save/load round trip', () => {
     it('does not restore runtime-only fields, so SP coins stay spendable and the wallet stays deletable', () => {
       const wallet = new HDSilentPaymentsWallet();
