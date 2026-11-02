@@ -44,7 +44,8 @@ export class IndexerHttpClient {
   }
 
   private async classifyResponse<T>(
-    responsePromise: Promise<{ ok: boolean; status: number; json: () => Promise<any> }>,
+    responsePromise: Promise<{ ok: boolean; status: number; json: () => Promise<any>; text?: () => Promise<string> }>,
+    healthResponse = false,
   ): Promise<AttemptResult<T>> {
     let response;
     try {
@@ -61,6 +62,13 @@ export class IndexerHttpClient {
     }
 
     try {
+      // The deployed indexer returns plain-text HEALTHY; other compatible deployments use JSON.
+      // Read the body only once: native fetch bodies cannot be read again after json() fails.
+      if (healthResponse && response.text) {
+        const body = (await response.text()).trim();
+        if (body.toUpperCase() === 'HEALTHY') return { ok: true, data: { status: 'healthy' } as T };
+        return { ok: true, data: JSON.parse(body) as T };
+      }
       return { ok: true, data: (await response.json()) as T };
     } catch (parseError) {
       return { ok: false, retryable: true, answered: true, message: parseError instanceof Error ? parseError.message : String(parseError) };
@@ -82,6 +90,7 @@ export class IndexerHttpClient {
         socksHost: DEFAULT_SOCKS_HOST,
         socksPort,
       }),
+      endpoint === '/health',
     );
   }
 
@@ -92,6 +101,7 @@ export class IndexerHttpClient {
         headers: { 'Content-Type': 'application/json' },
         timeout,
       }),
+      endpoint === '/health',
     );
   }
 
@@ -131,7 +141,9 @@ export class IndexerHttpClient {
       }
 
       if (!torResult.answered) {
-        torManager.markUnavailable();
+        // A failed onion service does not mean the SOCKS proxy is down. Probe the proxy
+        // before changing global Tor state, so another indexer's onion can still be tried.
+        await torManager.checkConnection();
       }
     }
 

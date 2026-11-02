@@ -94,7 +94,11 @@ describe('deferred birth height (indexer down at creation/import)', () => {
 });
 
 describe('scanBlocks range handling', () => {
-  const indexer = () => new SilentPaymentIndexer({ baseUrl: 'http://indexer.test' });
+  const indexer = () => {
+    const client = new SilentPaymentIndexer({ baseUrl: 'http://indexer.test' });
+    jest.spyOn(client, 'getLatestBlockHeight').mockResolvedValue({ height: TIP });
+    return client;
+  };
 
   it('aborts the scan when a range fetch fails, instead of skipping the range', async () => {
     const sp = indexer();
@@ -176,5 +180,28 @@ describe('scanBlocks range handling', () => {
       expect(await scannedWindows(1010, 1020)).toEqual([{ start: 1010, end: 1020 }]);
       expect(await scannedWindows(1010, 1010)).toEqual([{ start: 1010, end: 1010 }]);
     });
+  });
+});
+
+describe('polling after a fallback indexer catches up to its own tip', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('starts polling for a restored wallet already ahead of its replacement indexer', async () => {
+    stubIndexer({ getLatestBlockHeight: jest.fn().mockResolvedValue({ height: 890000 }) });
+    const wallet = makeWallet();
+    (wallet as any).lastScannedBlock = 900000;
+    const startPolling = jest.spyOn(wallet as any, 'startPolling').mockImplementation(() => {});
+    await expect(wallet.scanForPayments()).resolves.toBe(0);
+    expect(startPolling).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps polling even when the replacement tip is behind the original server', async () => {
+    const fallbackTip = 890000;
+    stubIndexer({ scanForwardWithCallback: jest.fn().mockResolvedValue(fallbackTip) });
+    const wallet = makeWallet();
+    (wallet as any).lastScannedBlock = fallbackTip;
+    const startPolling = jest.spyOn(wallet as any, 'startPolling').mockImplementation(() => {});
+    await wallet.scanForPayments();
+    expect(startPolling).toHaveBeenCalledTimes(1);
   });
 });

@@ -83,7 +83,7 @@ export function spScanTransactions<
     blockHash: string;
     blockTime: number;
     scanTweak: string;
-    outputs: Array<{ transactionId: string; vout: number; pubKey: string; value: number; isSpent: boolean | number }>;
+    outputs: Array<{ transactionId: string; vout: number; pubKey: string; value: number; isSpent?: boolean | number }>;
   },
 >(scanPrivkeyHex: string, spendPubkeysHex: string[], transactions: T[]): RustBatchScanResult {
   if (!isInstalled) {
@@ -108,7 +108,7 @@ export function spScanSingleTransaction<
     blockHash: string;
     blockTime: number;
     scanTweak: string;
-    outputs: Array<{ transactionId: string; vout: number; pubKey: string; value: number; isSpent: boolean | number }>;
+    outputs: Array<{ transactionId: string; vout: number; pubKey: string; value: number; isSpent?: boolean | number }>;
   },
 >(scanPrivkeyHex: string, spendPubkeysHex: string[], transaction: T): RustMatchedUTXO[] {
   if (!isInstalled) {
