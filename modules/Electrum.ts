@@ -9,7 +9,7 @@ import { sha256 as _sha256 } from '@noble/hashes/sha256';
 import presentAlert from '../components/Alert';
 import loc from '../loc';
 import { GROUP_IO_SHROUD } from './currency';
-import { DEFAULT_NETWORK_ID, getActiveNetwork, getActiveNetworkId, type NetworkId, type Peer } from './network';
+import { DEFAULT_NETWORK_ID, getActiveNetwork, getActiveNetworkId, getNetwork, type NetworkId, type Peer } from './network';
 import { uint8ArrayToHex } from './uint8array-extras/index';
 import TorManager, { DEFAULT_SOCKS_HOST } from './torManager';
 import { createSocksNet } from './socksSocket';
@@ -1155,8 +1155,14 @@ const resolveElectrumTransport = async (host: string, tcpPort?: number, sslPort?
 
 /**
  * @returns {Promise<boolean>} Whether provided host:port is a valid electrum server
+ * @throws when the server answers for a chain other than `networkId`
  */
-export const testConnection = async function (host: string, tcpPort?: number, sslPort?: number): Promise<boolean> {
+export const testConnection = async function (
+  host: string,
+  tcpPort?: number,
+  sslPort?: number,
+  networkId: NetworkId = getActiveNetworkId(),
+): Promise<boolean> {
   const transport = await resolveElectrumTransport(host, tcpPort, sslPort);
   if (!transport) return false;
 
@@ -1164,6 +1170,7 @@ export const testConnection = async function (host: string, tcpPort?: number, ss
 
   client.onError = () => {}; // mute
   let timeoutId: NodeJS.Timeout | undefined;
+  let wrongNetwork = false;
   try {
     const rez = await Promise.race([
       new Promise(resolve => {
@@ -1175,13 +1182,20 @@ export const testConnection = async function (host: string, tcpPort?: number, ss
 
     await client.server_version('2.7.11', '1.4');
     await client.server_ping();
-    return true;
+    // a server for another chain answers just as well, then returns empty history and rejects
+    // our broadcasts
+    const features = await client.server_features();
+    if (String(features?.genesis_hash).toLowerCase() === getNetwork(networkId).genesisHash) return true;
+    wrongNetwork = true;
   } catch (_) {
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
     client.close();
   }
 
+  if (wrongNetwork) {
+    throw new Error(loc.formatString(loc.settings.electrum_error_wrong_network, { network: getNetwork(networkId).displayName }));
+  }
   return false;
 };
 

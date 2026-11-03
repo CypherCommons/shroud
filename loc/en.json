@@ -265,6 +265,7 @@
         "default_title": "On Launch",
         "electrum_error_connect": "Cannot connect to the provided Electrum server",
         "electrum_error_connect_tor": "Cannot connect to the provided Electrum server. Please make sure Orbot app is connected and try again.",
+        "electrum_error_wrong_network": "This Electrum server is not on {network}. Use a server for {network}, or switch networks first.",
         "electrum_error_onion_requires_tor": "Connecting to a .onion Electrum server requires Tor to be enabled. Turn on Use Tor in Network settings and try again.",
         "electrum_saved": "Your changes have been saved successfully. Restarting Shroud may be required for the changes to take effect.",
         "set_electrum_server_as_default": "Set {server} as the default Electrum server?",

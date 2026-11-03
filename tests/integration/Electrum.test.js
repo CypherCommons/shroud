@@ -109,11 +109,16 @@ describe('Electrum', () => {
     // The testnet4 fallback peer shipped in modules/network.ts. Asserted live because it is the
     // only default that chain has — if aranguren drops the endpoint, testnet4 silently
     // falls back to "no server configured" and only manual entry works. NB 51002 on the same host
-    // is testnet3, so a port typo here would pass a connection test while serving the wrong chain.
-    assert.ok(await Electrum.testConnection('testnet.aranguren.org', false, 52002));
+    // is testnet3, which the genesis check rejects.
+    assert.ok(await Electrum.testConnection('testnet.aranguren.org', false, 52002, 'testnet4'));
+    await assert.rejects(Electrum.testConnection('testnet.aranguren.org', false, 51002, 'testnet4'));
 
     // Likewise the signet fallback peer, the only signet default.
-    assert.ok(await Electrum.testConnection('electrum.signet.shroudwallet.com', false, 50002));
+    assert.ok(await Electrum.testConnection('electrum.signet.shroudwallet.com', false, 50002, 'signet'));
+
+    // a server for another chain is not accepted
+    await assert.rejects(Electrum.testConnection('electrum.signet.shroudwallet.com', false, 50002, 'bitcoin'));
+    await assert.rejects(Electrum.testConnection('electrum1.bluewallet.io', false, 443, 'signet'));
   });
 
   it('ElectrumClient can estimate fees', async () => {
