@@ -4,6 +4,7 @@ import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-n
 import { ContactListItem } from '../class/contacts';
 import { shortenAddress } from '../utils/transactionHelpers';
 import ContactAvatar from './ContactAvatar';
+import ChatIcon from './icons/ChatIcon';
 import ChevronRightIcon from './icons/ChevronRightIcon';
 import PaperPlaneIcon from './icons/PaperPlaneIcon';
 import { useTheme } from './themes';
@@ -26,13 +27,14 @@ type ContactRowProps = {
   testID: string;
   /** Spacing is the list's to set: neither variant carries a margin of its own. */
   style?: StyleProp<ViewStyle>;
-  /** Only the bare row shows it. */
+  /** The bare row shows the badge, preview and unread count; the card only its unread count. */
   chat?: ContactChatInfo;
 } & (
   | // Bare row that opens the contact, for a screen whose whole job is the list.
   { variant?: 'row' }
   // Bordered card carrying its own pay action, for a list sharing a screen with other content.
-  | { variant: 'card'; onPay: (address: string) => void }
+  // `onMessage` adds a chat shortcut beside Pay; leave it out while chat is off.
+  | { variant: 'card'; onPay: (address: string) => void; onMessage?: (address: string) => void }
 );
 
 const ContactRow: React.FC<ContactRowProps> = props => {
@@ -84,6 +86,25 @@ const ContactRow: React.FC<ContactRowProps> = props => {
       testID={testID}
     >
       {identity}
+      {props.onMessage && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${loc.chat.message} ${contact.name}`}
+          style={[styles.message, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderDefault }]}
+          onPress={() => props.onMessage?.(contact.address)}
+          testID={`${testID}-Message`}
+        >
+          <ChatIcon size={20} color={colors.textBrand} />
+          {chat && chat.unread > 0 && (
+            <View
+              style={[styles.messageDot, { backgroundColor: colors.brandPrimary, borderColor: colors.surfaceBrandSubtle }]}
+              testID={`${testID}-MessageUnread`}
+            >
+              <Text style={[styles.messageDotText, { color: colors.white }]}>{chat.unread > 9 ? '9+' : chat.unread}</Text>
+            </View>
+          )}
+        </Pressable>
+      )}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${loc.contacts.pay} ${contact.name}`}
@@ -125,6 +146,20 @@ const styles = StyleSheet.create({
   unread: { minWidth: 24, height: 24, borderRadius: 12, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center' },
   unreadText: { fontFamily: ClashFont.medium, fontSize: 13 },
   rowAddress: { fontFamily: ClashFont.regular, fontSize: 14, lineHeight: 17 },
+  message: { width: 40, height: 40, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  messageDot: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageDotText: { fontFamily: ClashFont.medium, fontSize: 10 },
   pay: {
     flexDirection: 'row',
     alignItems: 'center',
