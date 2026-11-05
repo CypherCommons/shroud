@@ -107,7 +107,19 @@ export type ChatEvents = {
   thread: (peer: string) => void;
   /** A well-formed payment notice arrived from a peer, on this wallet's network. */
   notice: (event: { peer: string; noticeId: string; notice: PaymentNotice; rumor: Rumor }) => void;
+  /** A payment notice we sent went out, so its confirmation can be followed. */
+  noticeSent: (event: { peer: string; noticeId: string; txid: string }) => void;
 };
+
+/** A payment notice whose card has not reached Confirmed, with what is needed to keep working on it. */
+export interface PendingNotice {
+  peer: string;
+  noticeId: string;
+  mine: boolean;
+  notice: PaymentNotice;
+  status: IncomingNoticeStatus | OutgoingNoticeStatus;
+  amount?: number;
+}
 
 export class PeerNotOnChatError extends Error {
   constructor(public readonly peer: string) {
@@ -933,7 +945,21 @@ export class ChatService extends Emitter<ChatEvents> {
     const rumor = buildNoticeRumor(this.me, { ...notice, net: this.opts.networkId }, requestId, this.now());
     this.noticePeers.set(rumor.id, peer);
     await this.sendRumor(peer, rumor);
+    this.emit('noticeSent', { peer, noticeId: rumor.id, txid: notice.txid });
     return rumor;
+  }
+
+  /** Notices still short of Confirmed, across every conversation: what to pick back up after a restart. */
+  async listPendingNotices(): Promise<PendingNotice[]> {
+    const out: PendingNotice[] = [];
+    for (const peer of this.peers.keys()) {
+      for (const item of await this.getThread(peer)) {
+        if (item.kind === 'notice' && item.status !== 'confirmed') {
+          out.push({ peer, noticeId: item.id, mine: item.mine, notice: item.notice, status: item.status, amount: item.amount });
+        }
+      }
+    }
+    return out;
   }
 
   async sendReceipt(peer: string, noticeId: string, status: ReceiptStatus, txid: string, amount: number): Promise<Rumor> {

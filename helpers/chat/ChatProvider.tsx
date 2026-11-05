@@ -8,6 +8,8 @@ import { useStorage } from '../../hooks/context/useStorage';
 import { ChatService, type ChatStatus, type MessageRequest, type PeerIndexEntry, type ThreadItem } from './ChatService';
 import { deriveChatIdentity } from './identity';
 import { ChatNetwork } from './network';
+import { electrumChain } from './electrumChain';
+import { PaymentTracker } from './PaymentTracker';
 
 /** Why chat is not running, when it isn't. `undefined` means it is (or is starting). */
 export type ChatUnavailableReason = 'disabled' | 'tor-only' | 'no-wallet';
@@ -85,6 +87,7 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
     let cancelled = false;
     let svc: ChatService | undefined;
     let network: ChatNetwork | undefined;
+    let tracker: PaymentTracker | undefined;
     const offs: (() => void)[] = [];
 
     (async () => {
@@ -105,13 +108,19 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
         offs.push(svc.on('index', () => setVersion(v => v + 1)));
         await svc.start();
         if (cancelled) throw new Error('cancelled');
+        // Payment notices become card states and receipts, with the wallet finding the payment.
+        tracker = new PaymentTracker(svc, current, electrumChain, {
+          log: (message, error) => console.log(`[chat] ${message}`, error ?? ''),
+        });
+        await tracker.start();
         setService(svc);
         setStatus(svc.status);
       } catch (e) {
         if (!cancelled) console.warn('[chat] could not start', e);
+        tracker?.stop();
         await svc?.stop().catch(() => undefined);
         network?.destroy();
-        svc = network = undefined;
+        svc = network = tracker = undefined;
       }
     })();
 
@@ -119,6 +128,7 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
       cancelled = true;
       offs.forEach(off => off());
       setService(undefined);
+      tracker?.stop();
       const stopping = svc;
       const net = network;
       if (stopping) {
