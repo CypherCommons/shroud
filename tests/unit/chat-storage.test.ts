@@ -8,6 +8,7 @@ import {
   open,
   seal,
   storePrefix,
+  wipeAllChatStorage,
   wipeChatStorage,
   type StorageBackend,
 } from '../../helpers/chat/storage';
@@ -195,5 +196,9 @@ describe('createChatStores', () => {
     await wipeChatStorage(backend, PK_A);
     expect([...backend.map.keys()].every(k => k.startsWith(`shroud-chat:${PK_B}:`))).toBe(true);
     expect(backend.map.size).toBeGreaterThan(0);
+
+    backend.map.set('unrelated-key', 'keep');
+    await wipeAllChatStorage(backend);
+    expect([...backend.map.keys()]).toEqual(['unrelated-key']);
   });
 });

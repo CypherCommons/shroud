@@ -192,3 +192,8 @@ export async function wipeChatStorage(backend: StorageBackend, pubkey: string): 
   const prefix = `${NAMESPACE}:${pubkey}:`;
   for (const k of await backend.getAllKeys()) if (k.startsWith(prefix)) await backend.removeItem(k);
 }
+
+/** Removes every chat record of every wallet on the device: what a device wipe uses. */
+export async function wipeAllChatStorage(backend: StorageBackend): Promise<void> {
+  for (const k of await backend.getAllKeys()) if (k.startsWith(`${NAMESPACE}:`)) await backend.removeItem(k);
+}
