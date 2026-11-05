@@ -91,7 +91,7 @@ export class ChatNetwork implements NostrNetworkInterface {
             onevent: ev => observer.next?.(ev as NostrEvent),
           }),
         );
-        return { unsubscribe: () => subs.forEach(s => void s.close()) };
+        return { unsubscribe: () => subs.forEach(s => s.close()) };
       },
     };
   }
