@@ -1,7 +1,7 @@
 import { webcrypto } from 'crypto';
 import { InMemoryRelay } from '../../helpers/chat/inMemoryRelay';
 import { nobleSubtle } from '../../helpers/chat/nobleSubtle';
-import { ChatService, type ThreadItem } from '../../helpers/chat/ChatService';
+import { type ThreadItem } from '../../helpers/chat/ChatService';
 import { PaymentTracker, type ChainPort, type PaymentWalletPort } from '../../helpers/chat/PaymentTracker';
 import { RELAYS, makeUser, waitFor, type User } from './chatTestKit';
 
@@ -163,8 +163,7 @@ describe('PaymentTracker', () => {
   }, 30000);
 
   it('picks pending payments back up after a restart', async () => {
-    const { relay, alice, bob, bobChain, bobWallet, bobTracker, pay } = await setup();
-    void relay;
+    const { alice, bob, bobWallet, bobTracker, pay } = await setup();
     bobWallet.detect.mockResolvedValue(HIT(0));
     await pay();
     await waitFor(async () => (await card(bob, alice.identity.pubkey))?.status === 'pending', 'pending');
@@ -188,7 +187,6 @@ describe('PaymentTracker', () => {
       return (t.find(i => i.kind === 'notice') as any)?.status === 'confirmed';
     }, 'the restored card to confirm');
     await waitFor(async () => (await card(alice, bob.identity.pubkey))?.status === 'confirmed', "Alice's card to confirm");
-    void bobChain;
   }, 40000);
 
   it('re-checks a notice that was still verifying when the app closed', async () => {

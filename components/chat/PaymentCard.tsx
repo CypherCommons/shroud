@@ -56,8 +56,10 @@ export const PaymentNoticeCard: React.FC<NoticeCardProps> = ({ item, name }) => 
   const { colors } = useTheme();
   const confirmed = item.status === 'confirmed';
   const label = noticeLabel(item, name);
-  // Incoming amounts are what our own scan matched; until it has, the sender's claim is not shown as ours.
-  const amount = item.mine ? item.notice.amount : item.amount;
+  // Incoming amounts are what our own scan matched. Until it has matched, the sender's claim is shown
+  // muted as a claim, never as something received.
+  const matched = item.mine || item.amount !== undefined;
+  const amount = item.mine ? item.notice.amount : (item.amount ?? item.notice.amount);
   const tint = confirmed
     ? colors.statusSuccess
     : item.status === 'verifying' || item.status === 'sent'
@@ -75,7 +77,7 @@ export const PaymentNoticeCard: React.FC<NoticeCardProps> = ({ item, name }) => 
           <PaperPlaneIcon size={16} color={colors.textBrand} />
           <Text style={[styles.title, { color: colors.textBrand }]}>{item.mine ? loc.chat.card_you_sent : loc.chat.card_you_received}</Text>
         </View>
-        <Text style={[styles.amount, { color: colors.textPrimary }]}>{amount !== undefined ? sats(amount) : '…'}</Text>
+        <Text style={[styles.amount, { color: matched ? colors.textPrimary : colors.textMuted }]}>{sats(amount)}</Text>
         {!!item.notice.note && <Text style={[styles.note, { color: colors.textSecondary }]}>{item.notice.note}</Text>}
         <FadeIn stateKey={item.status}>
           <View style={styles.status} testID={`ChatNoticeStatus-${item.id}`}>

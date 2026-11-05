@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ClashFont } from '../../constants/fonts';
@@ -20,12 +20,18 @@ const RequestPaymentSheet: React.FC<RequestPaymentSheetProps> = ({ visible, onCl
   const [amountText, setAmountText] = useState('');
   const [note, setNote] = useState('');
 
-  useEffect(() => {
-    if (!visible) {
-      setAmountText('');
-      setNote('');
-    }
-  }, [visible]);
+  // Cleared on the way out, so the next request starts empty.
+  const close = () => {
+    setAmountText('');
+    setNote('');
+    onClose();
+  };
+  const submit = () => {
+    const request = { amount, note: note.trim() || undefined };
+    setAmountText('');
+    setNote('');
+    onSubmit(request);
+  };
 
   const amount = /^\d+$/.test(amountText) ? Number(amountText) : 0;
   const valid = Number.isSafeInteger(amount) && amount > 0 && amount <= MAX_SATS;
@@ -33,9 +39,9 @@ const RequestPaymentSheet: React.FC<RequestPaymentSheetProps> = ({ visible, onCl
   const inputStyle = [styles.input, { backgroundColor: colors.fieldBackground, color: colors.textPrimary }];
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={close}>
       <KeyboardAvoidingView behavior="padding" style={[styles.overlay, { backgroundColor: colors.scrim }]}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel={loc._.cancel} />
+        <Pressable style={styles.backdrop} onPress={close} accessibilityLabel={loc._.cancel} />
         <View style={[styles.sheet, { backgroundColor: colors.background }]}>
           <Text style={[styles.title, { color: colors.textPrimary }]}>{loc.chat.request_prompt_title}</Text>
           <TextInput
@@ -58,7 +64,7 @@ const RequestPaymentSheet: React.FC<RequestPaymentSheetProps> = ({ visible, onCl
           />
           <ActionButton
             title={loc.chat.request_prompt_send}
-            onPress={() => onSubmit({ amount, note: note.trim() || undefined })}
+            onPress={submit}
             disabled={!valid}
             backgroundColor={colors.brandPrimary}
             color={colors.white}

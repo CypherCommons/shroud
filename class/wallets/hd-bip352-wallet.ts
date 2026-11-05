@@ -881,7 +881,8 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
    */
   async detectUnconfirmedPayment(params: { txid: string; tweak: string; hex?: string }): Promise<DetectedPayment> {
     const { txid, tweak, hex } = params;
-    if (!/^[0-9a-f]{64}$/.test(txid) || !/^0[23][0-9a-f]{64}$/.test(tweak)) throw new Error('detectUnconfirmedPayment: malformed txid or tweak');
+    if (!/^[0-9a-f]{64}$/.test(txid) || !/^0[23][0-9a-f]{64}$/.test(tweak))
+      throw new Error('detectUnconfirmedPayment: malformed txid or tweak');
 
     // A tweak that is not even a curve point cannot match anything: answer "not found" rather than
     // feed the scanner something it throws on, or spend a network round trip on it.
@@ -907,7 +908,9 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
     if (!known && hex !== undefined) {
       // The sender's broadcast may not have reached our server yet; ours is verified, so help it along.
-      Electrum.broadcastV2(hex).catch(error => console.log('[SP] detectUnconfirmedPayment: rebroadcast ignored:', String(error?.message ?? error)));
+      Electrum.broadcastV2(hex).catch(error =>
+        console.log('[SP] detectUnconfirmedPayment: rebroadcast ignored:', String(error?.message ?? error)),
+      );
     }
     if (rawHex === undefined) return { found: false, outputs: [], totalValue: 0, confirmations: 0 };
 
@@ -1657,7 +1660,9 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
    * input would silently produce a wrong tweak that matches nothing. Returns null then. Spent SP
    * coins are still found, so this works after the transaction has been broadcast.
    */
-  private computeInputScanData(tx: bitcoin.Transaction): { sumOfInputPubKeys: Uint8Array; inputHash: Uint8Array; tweak: Uint8Array } | null {
+  private computeInputScanData(
+    tx: bitcoin.Transaction,
+  ): { sumOfInputPubKeys: Uint8Array; inputHash: Uint8Array; tweak: Uint8Array } | null {
     const ourInputs = tx.ins.map(input => ({
       txid: Buffer.from(input.hash).reverse().toString('hex'),
       vout: input.index,

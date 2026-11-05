@@ -76,9 +76,17 @@ export class PaymentTracker {
   async start(): Promise<void> {
     if (!this.stopped) return;
     this.stopped = false;
-    this.offs.push(this.service.on('notice', e => void this.onNotice(e.peer, e.noticeId, e.notice, e.rumor)));
+    this.offs.push(
+      this.service.on('notice', e => {
+        this.onNotice(e.peer, e.noticeId, e.notice, e.rumor).catch(err => this.log('notice handling failed', err));
+      }),
+    );
     this.offs.push(this.service.on('noticeSent', e => this.trackOutgoing(e.peer, e.noticeId, e.txid)));
-    this.offs.push(this.chain.onNewBlock(() => void this.onBlock()));
+    this.offs.push(
+      this.chain.onNewBlock(() => {
+        this.onBlock().catch(err => this.log('block handling failed', err));
+      }),
+    );
     try {
       for (const pending of await this.service.listPendingNotices()) await this.resume(pending);
     } catch (e) {
