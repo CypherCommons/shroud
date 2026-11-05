@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { FlatList, ListRenderItemInfo, StyleSheet, Text, View } from 'react-native';
 import { RouteProp, useIsFocused, useRoute } from '@react-navigation/native';
 import { useHeaderHeight } from '@react-navigation/elements';
@@ -7,12 +7,15 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import presentAlert from '../../components/Alert';
 import ChatBubble from '../../components/chat/ChatBubble';
 import ChatComposer from '../../components/chat/ChatComposer';
+import RequestPaymentSheet from '../../components/chat/RequestPaymentSheet';
 import { PaymentNoticeCard, PaymentRequestCard } from '../../components/chat/PaymentCard';
 import ContactAvatar from '../../components/ContactAvatar';
 import { useTheme } from '../../components/themes';
 import { ClashFont } from '../../constants/fonts';
 import { PeerNotOnChatError, type ThreadItem } from '../../helpers/chat/ChatService';
 import { useChat, useChatPeer, useChatThread, useIsOnChat } from '../../helpers/chat/ChatProvider';
+import { requestBelongsToSender } from '../../helpers/chat/requests';
+import { getActiveNetwork } from '../../modules/network';
 import { useContacts } from '../../hooks/context/useContacts';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
 import { useSendToAddress } from '../../hooks/useSendToAddress';
@@ -87,6 +90,37 @@ const ChatThread: React.FC = () => {
     [service, target, name],
   );
 
+  const [requestOpen, setRequestOpen] = useState(false);
+  const onRequest = useMemo(() => (params.address ? () => setRequestOpen(true) : undefined), [params.address]);
+
+  const submitRequest = useCallback(
+    async ({ amount, note }: { amount: number; note?: string }) => {
+      setRequestOpen(false);
+      if (!service || !target) return;
+      try {
+        await service.sendRequest(target, { address: service.address, amount, note });
+      } catch (e) {
+        presentAlert({ message: loc.chat.send_failed });
+      }
+    },
+    [service, target],
+  );
+
+  const payRequest = useCallback(
+    (item: Extract<ThreadItem, { kind: 'request' }>) => {
+      if (!peer) return;
+      // Pay only an address that is the sender's own; see requestBelongsToSender.
+      if (!requestBelongsToSender(item.request.address, peer, getActiveNetwork().bitcoinjs)) {
+        presentAlert({ message: loc.chat.request_wrong_sender });
+        return;
+      }
+      sendToAddress(item.request.address, { amountSats: item.request.amount, memo: item.request.note, chatRequestId: item.id });
+    },
+    [peer, sendToAddress],
+  );
+
+  const declineRequest = useCallback((item: Extract<ThreadItem, { kind: 'request' }>) => service?.declineRequestCard(item.id), [service]);
+
   const onPay = useMemo(() => (params.address ? () => sendToAddress(params.address) : undefined), [params.address, sendToAddress]);
 
   const renderItem = useCallback(
@@ -98,10 +132,10 @@ const ChatThread: React.FC = () => {
         case 'notice':
           return <PaymentNoticeCard item={item} name={name} />;
         default:
-          return <PaymentRequestCard item={item} />;
+          return <PaymentRequestCard item={item} onPay={() => payRequest(item)} onDecline={() => declineRequest(item)} />;
       }
     },
-    [name],
+    [name, payRequest, declineRequest],
   );
 
   let notice: string | undefined;
@@ -140,7 +174,8 @@ const ChatThread: React.FC = () => {
           </Text>
         </View>
       )}
-      <ChatComposer onSend={onSend} onPay={onPay} disabled={!service || !canMessage} />
+      <ChatComposer onSend={onSend} onPay={onPay} onRequest={onRequest} disabled={!service || !canMessage} />
+      <RequestPaymentSheet visible={requestOpen} onClose={() => setRequestOpen(false)} onSubmit={submitRequest} />
     </KeyboardAvoidingView>
   );
 };

@@ -253,6 +253,11 @@ export class ChatService extends Emitter<ChatEvents> {
     return this.me;
   }
 
+  /** This wallet's own silent payment address: what a payment request asks to be paid to. */
+  get address(): string {
+    return this.opts.identity.address;
+  }
+
   /** Resolves once the background network work started by `start()` has finished (or given up for now). */
   settled(): Promise<void> {
     return this.settledPromise;
