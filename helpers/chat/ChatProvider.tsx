@@ -171,11 +171,36 @@ export const ChatProvider = ({ children }: { children: React.ReactNode }) => {
 
 export const useChat = (): ChatContextType => useContext(ChatContext);
 
-/** The chat pubkey for a contact address, or undefined (service not ready, bad address). */
-export function useChatPeer(address: string | undefined): string | undefined {
+/** The chat pubkey for a contact address or raw pubkey, or undefined (service not ready, bad address). */
+export function useChatPeer(target: string | undefined): string | undefined {
   const { service } = useChat();
-  return useMemo(() => (service && address ? service.pubkeyForAddress(address) : undefined), [service, address]);
+  return useMemo(() => (service && target ? service.resolvePeer(target) : undefined), [service, target]);
 }
+
+/** Chat pubkeys of the given contacts that can be messaged, from one batched lookup. Empty until it answers. */
+export function useChatDiscovery(addresses: string[]): Set<string> {
+  const { service } = useChat();
+  const [found, setFound] = useState<{ service: ChatService; key: string; peers: Set<string> } | undefined>();
+  const key = addresses.join(',');
+  useEffect(() => {
+    if (!service || addresses.length === 0) return undefined;
+    let alive = true;
+    service
+      .discover(addresses)
+      .then(peers => {
+        if (alive) setFound({ service, key, peers });
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+    // `key` stands for the address list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service, key]);
+  return found && found.service === service && found.key === key ? found.peers : EMPTY_SET;
+}
+
+const EMPTY_SET: Set<string> = new Set();
 
 /** Whether a contact can be messaged: `undefined` while checking. A conversation already existing counts. */
 export function useIsOnChat(address: string | undefined): boolean | undefined {
@@ -204,7 +229,7 @@ export function useChatThread(address: string | undefined): { items: ThreadItem[
   const [loaded, setLoaded] = useState<{ service: ChatService; address: string; items: ThreadItem[] } | undefined>();
   useEffect(() => {
     if (!service || !address) return undefined;
-    const peer = service.pubkeyForAddress(address);
+    const peer = service.resolvePeer(address);
     if (!peer) return undefined;
     const state = { alive: true, running: false, again: false };
     const load = async () => {

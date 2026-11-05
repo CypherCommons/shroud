@@ -433,8 +433,8 @@ export class ChatService extends Emitter<ChatEvents> {
   }
 
   /** Whether the contact has published a key package, i.e. can be messaged. Cached briefly. */
-  async isOnChat(address: string, force = false): Promise<boolean> {
-    const peer = this.pubkeyForAddress(address);
+  async isOnChat(target: string, force = false): Promise<boolean> {
+    const peer = this.resolvePeer(target);
     if (!peer) return false;
     if (this.peers.has(peer)) return true;
     const cached = this.keyPackageCache.get(peer);
@@ -442,6 +442,33 @@ export class ChatService extends Emitter<ChatEvents> {
     const packages = await this.fetchKeyPackages(peer);
     this.keyPackageCache.set(peer, { at: Date.now(), present: packages.length > 0 });
     return packages.length > 0;
+  }
+
+  /**
+   * Which of these contacts have published a key package, from one batched relay query. Catches
+   * peers on the shared relay list; `isOnChat` does the precise per-peer check (their own relays).
+   * Returns chat pubkeys. Cached with `isOnChat`'s cache.
+   */
+  async discover(addresses: string[]): Promise<Set<string>> {
+    const found = new Set<string>();
+    const unknown: string[] = [];
+    for (const address of addresses) {
+      const peer = this.pubkeyForAddress(address);
+      if (!peer) continue;
+      const cached = this.keyPackageCache.get(peer);
+      if (this.peers.has(peer) || (cached && Date.now() - cached.at < KEY_PACKAGE_CACHE_MS && cached.present)) found.add(peer);
+      else if (!cached || Date.now() - cached.at >= KEY_PACKAGE_CACHE_MS) unknown.push(peer);
+    }
+    for (let i = 0; i < unknown.length; i += 40) {
+      const batch = unknown.slice(i, i + 40);
+      const events = await this.opts.network.request(this.relays(), { kinds: [KIND_KEY_PACKAGE], authors: batch });
+      const present = new Set(events.map(e => e.pubkey));
+      for (const peer of batch) {
+        this.keyPackageCache.set(peer, { at: Date.now(), present: present.has(peer) });
+        if (present.has(peer)) found.add(peer);
+      }
+    }
+    return found;
   }
 
   private async peerRelays(peer: string): Promise<string[]> {
@@ -880,8 +907,13 @@ export class ChatService extends Emitter<ChatEvents> {
     await this.requireClient().groups.send(group.id, createApplicationMessageIntent(rumor));
   }
 
-  private requirePeer(address: string): string {
-    const peer = this.pubkeyForAddress(address);
+  /** A contact's silent payment address or a raw chat pubkey (someone who is not a contact), as a pubkey. */
+  resolvePeer(target: string): string | undefined {
+    return /^[0-9a-f]{64}$/.test(target) ? target : this.pubkeyForAddress(target);
+  }
+
+  private requirePeer(target: string): string {
+    const peer = this.resolvePeer(target);
     if (!peer) throw new Error('not a silent payment address on this network');
     return peer;
   }
