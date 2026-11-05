@@ -147,6 +147,16 @@ let connectionAttempt: number = 0;
 // current list, which is what keeps any seed safe.
 const randomPeerIndex = (): number => Math.floor(Math.random() * 1000);
 let currentPeerIndex = randomPeerIndex();
+const newBlockListeners = new Set<(height: number) => void>();
+
+/** Calls `listener` with the new tip height each time the server announces a block. Returns the unsubscribe function. */
+export function onNewBlock(listener: (height: number) => void): () => void {
+  newBlockListeners.add(listener);
+  return () => {
+    newBlockListeners.delete(listener);
+  };
+}
+
 let latestBlock: { height: number; time: number } | { height: undefined; time: undefined } = { height: undefined, time: undefined };
 const txhashHeightCache: Record<string, number> = {};
 let _realm: Realm | undefined;
@@ -341,6 +351,18 @@ export async function connectMain(): Promise<void> {
             break;
         }
       }
+      // The server pushes a header per block on this subscription; fan it out to whoever is waiting on one.
+      (mainClient as any).subscribe?.on?.('blockchain.headers.subscribe', (params: any) => {
+        const height = params?.[0]?.height;
+        if (typeof height !== 'number') return;
+        for (const listener of [...newBlockListeners]) {
+          try {
+            listener(height);
+          } catch (e) {
+            console.warn('onNewBlock listener threw', e);
+          }
+        }
+      });
       const header = await mainClient.blockchainHeaders_subscribe();
       if (header && header.height) {
         latestBlock = {
