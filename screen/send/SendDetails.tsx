@@ -254,11 +254,14 @@ const SendDetails = () => {
       // screen was called with `address` parameter, so we just prefill it
       setAddresses(prevAddresses => {
         const updatedAddresses = [...prevAddresses];
+        // A payment request from chat arrives with its amount; storage is BTC, like a scanned URI's.
+        const requestedSats = routeParams.amountSats;
         updatedAddresses[0] = {
           ...updatedAddresses[0],
           address: routeParams.address!,
-          amount: 0,
-          amountSats: 0,
+          amount: requestedSats ? new BigNumber(requestedSats).dividedBy(100000000).toFixed(8) : 0,
+          amountSats: requestedSats ?? 0,
+          ...(requestedSats ? { unit: BitcoinUnit.BTC } : {}),
         };
         return updatedAddresses;
       });
@@ -618,6 +621,8 @@ const SendDetails = () => {
       // address has already been replaced by the derived one-time on-chain output. Capture
       // the address as the user actually entered/picked it, before that substitution.
       recipientAddress: addresses.length === 1 ? addresses[0].address : undefined,
+      payees: targets.flatMap(t => (t.address ? [{ address: t.address, value: t.value }] : [])),
+      chatRequestId: routeParams.chatRequestId,
     });
     setIsLoading(false);
   };

@@ -36,7 +36,9 @@ jest.mock('../../models/networkTransactionFees', () => {
   return { ...actual, __esModule: true, default: { recommendedFees: () => Promise.resolve(new actual.NetworkTransactionFee(7, 5, 2)) } };
 });
 // Mutable so a test can hand the screen a scanned code the way the scanner does, or a link from home.
-const mockRoute: { params: { isEditable: boolean; walletID: string; onBarScanned?: string; uri?: string } } = {
+const mockRoute: {
+  params: { isEditable: boolean; walletID: string; onBarScanned?: string; uri?: string; address?: string; amountSats?: number };
+} = {
   params: { isEditable: true, walletID: 'wallet-1' },
 };
 jest.mock('@react-navigation/native', () => {
@@ -127,6 +129,8 @@ beforeEach(() => {
   (useExtendedNavigation as jest.Mock).mockReturnValue(navigation);
   delete mockRoute.params.onBarScanned;
   delete mockRoute.params.uri;
+  delete mockRoute.params.address;
+  delete mockRoute.params.amountSats;
   _setPreferredFiatCurrency(FiatUnit.INR);
   _setExchangeRate('BTC_INR', 10_000_000);
 });
@@ -257,6 +261,15 @@ describe('unit - SendDetails payment requests', () => {
     expect(address()).toBe(SP_MAINNET);
     expect(amount()).toBe('10000');
     expect(memoUpdates()).toEqual([[{ transactionMemo: 'Coffee' }]]);
+  });
+
+  it('fills in the address and amount of a payment request opened from chat', async () => {
+    mockRoute.params.address = SP_MAINNET;
+    mockRoute.params.amountSats = 50_000;
+    await renderScreen();
+
+    expect(address()).toBe(SP_MAINNET);
+    expect(amount()).toBe('50000');
   });
 
   it('keeps the amount and note typed in when a scanned request leaves them out', async () => {

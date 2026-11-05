@@ -6,6 +6,7 @@ import { SizeClassProvider } from './components/Context/SizeClassProvider';
 import { SettingsProvider } from './components/Context/SettingsProvider';
 import { getEffectiveTheme } from './components/themes';
 import { ContactsProvider } from './components/Context/ContactsProvider';
+import { ChatProvider } from './helpers/chat/ChatProvider';
 import MasterView from './navigation/MasterView';
 import AppLock from './components/AppLock';
 import UpdateGate from './components/UpdateGate';
@@ -105,7 +106,9 @@ const App = () => {
           <StorageProvider>
             <SettingsProvider>
               <ContactsProvider>
-                <ThemedNavigationContainer />
+                <ChatProvider>
+                  <ThemedNavigationContainer />
+                </ChatProvider>
               </ContactsProvider>
             </SettingsProvider>
           </StorageProvider>

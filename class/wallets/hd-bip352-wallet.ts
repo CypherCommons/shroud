@@ -95,6 +95,14 @@ export type ScanByTxidResult = {
   bothBranchesFailed: boolean;
 };
 
+export type DetectedPayment = {
+  found: boolean;
+  outputs: OwnedOutput[];
+  totalValue: number;
+  /** Electrum's confirmation count for the transaction: 0 while it is in the mempool. */
+  confirmations: number;
+};
+
 // What getTransactions knows about our coins and addresses, worked out once per call.
 type Ownership = {
   spUtxosByOutpoint: Map<string, SilentPaymentUTXO>;
@@ -858,6 +866,100 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   }
 
   /**
+   * Instant detection of a payment a sender told us about: finds our silent payment outputs in a
+   * transaction that may still be in the mempool, using the scan tweak the sender computed.
+   *
+   * Nothing from the message is trusted. The transaction comes from the supplied `hex` only if it
+   * hashes to `txid` (a mismatch throws), otherwise from Electrum, which serves mempool
+   * transactions. The tweak is only a scanner input: a wrong one matches nothing, and a match means
+   * we hold the key to spend that very output. A hash-verified `hex` Electrum has not seen is
+   * rebroadcast, best effort.
+   *
+   * Matches are stored as height-0 (pending) coins through the same de-duplicating `addUTXO` the
+   * block scan uses, so the later confirmed record fills in the height instead of adding a twin.
+   * `lastScannedBlock` is deliberately left alone: this is one transaction, not a range.
+   */
+  async detectUnconfirmedPayment(params: { txid: string; tweak: string; hex?: string }): Promise<DetectedPayment> {
+    const { txid, tweak, hex } = params;
+    if (!/^[0-9a-f]{64}$/.test(txid) || !/^0[23][0-9a-f]{64}$/.test(tweak))
+      throw new Error('detectUnconfirmedPayment: malformed txid or tweak');
+
+    // A tweak that is not even a curve point cannot match anything: answer "not found" rather than
+    // feed the scanner something it throws on, or spend a network round trip on it.
+    if (!ecc.isPoint(Buffer.from(tweak, 'hex'))) return { found: false, outputs: [], totalValue: 0, confirmations: 0 };
+
+    let rawHex = hex;
+    if (rawHex !== undefined && bitcoin.Transaction.fromHex(rawHex).getId() !== txid) {
+      throw new Error('detectUnconfirmedPayment: transaction hex does not hash to the txid');
+    }
+
+    let confirmations = 0;
+    let known = false;
+    try {
+      const fetched = (await Electrum.multiGetTransactionByTxid([txid], true))[txid];
+      if (fetched) {
+        known = true;
+        confirmations = fetched.confirmations ?? 0;
+        if (rawHex === undefined) rawHex = (await Electrum.multiGetTransactionByTxid([txid], false))[txid];
+      }
+    } catch (error) {
+      console.warn('[SP] detectUnconfirmedPayment: Electrum lookup failed:', error);
+    }
+
+    if (!known && hex !== undefined) {
+      // The sender's broadcast may not have reached our server yet; ours is verified, so help it along.
+      Electrum.broadcastV2(hex).catch(error =>
+        console.log('[SP] detectUnconfirmedPayment: rebroadcast ignored:', String(error?.message ?? error)),
+      );
+    }
+    if (rawHex === undefined) return { found: false, outputs: [], totalValue: 0, confirmations: 0 };
+
+    const tx = bitcoin.Transaction.fromHex(rawHex);
+    if (tx.getId() !== txid) throw new Error('detectUnconfirmedPayment: fetched transaction does not match the txid');
+
+    const outputs: IndexerTransaction['outputs'] = [];
+    tx.outs.forEach((out, vout) => {
+      if (out.script.length === 34 && out.script[0] === 0x51 && out.script[1] === 0x20) {
+        outputs.push({
+          transactionId: txid,
+          vout,
+          pubKey: Buffer.from(out.script.subarray(2)).toString('hex'),
+          value: Number(out.value),
+          isSpent: false,
+        });
+      }
+    });
+    if (outputs.length === 0) return { found: false, outputs: [], totalValue: 0, confirmations };
+
+    const indexerTx: IndexerTransaction = {
+      id: txid,
+      blockHeight: 0,
+      blockHash: '',
+      blockTime: Math.floor(Date.now() / 1000),
+      scanTweak: tweak,
+      outputs,
+    };
+    const { utxos } = await this.processTransactions([indexerTx]);
+
+    let added = false;
+    for (const utxo of utxos) {
+      if (this.addUTXO(utxo)) added = true;
+    }
+    if (added) {
+      this.onBalanceChangeCallback?.();
+      this.onPersistCallback?.();
+    }
+
+    const owned: OwnedOutput[] = utxos.map(utxo => ({
+      vout: utxo.vout,
+      value: utxo.value,
+      kind: 'silent-payment' as const,
+      isChange: this.isLabelChangeOutput(utxo),
+    }));
+    return { found: owned.length > 0, outputs: owned, totalValue: owned.reduce((sum, o) => sum + o.value, 0), confirmations };
+  }
+
+  /**
    * Answers "did this txid pay me?" by detecting owned outputs directly from the transaction,
    * on both the Silent Payment side (indexer) and the regular-address side (Electrum), then
    * merging what each side found. Detection never depends on the wallet already having synced
@@ -1549,6 +1651,65 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   }
 
   /**
+   * What BIP-352 derives from a transaction's inputs, for a transaction whose every input is ours:
+   * the summed input public key `A_sum`, the input hash over it and the smallest outpoint, and the
+   * scan tweak `inputHash · A_sum` — the same 33-byte compressed point the indexer calls `scanTweak`,
+   * which the scanner takes in place of the inputs.
+   *
+   * Every input must be ours, SP or regular: the input hash covers *all* of them, so a foreign
+   * input would silently produce a wrong tweak that matches nothing. Returns null then. Spent SP
+   * coins are still found, so this works after the transaction has been broadcast.
+   */
+  private computeInputScanData(
+    tx: bitcoin.Transaction,
+  ): { sumOfInputPubKeys: Uint8Array; inputHash: Uint8Array; tweak: Uint8Array } | null {
+    const ourInputs = tx.ins.map(input => ({
+      txid: Buffer.from(input.hash).reverse().toString('hex'),
+      vout: input.index,
+    }));
+
+    const ownUtxos = this.getOwnUtxosByOutpoint();
+    const inputPrivKeys: PrivateKey[] = [];
+    for (const { txid, vout } of ourInputs) {
+      const utxo = ownUtxos.get(`${txid}:${vout}`);
+      if (!utxo) {
+        console.warn(`[SP] Skipping scan data: input ${txid}:${vout} is not one of our UTXOs`);
+        return null;
+      }
+      const { keyPair } = this.resolveInputKeys(utxo);
+      inputPrivKeys.push({ key: Buffer.from(keyPair.privateKey!).toString('hex'), isXOnly: true });
+    }
+    if (inputPrivKeys.length === 0) return null;
+
+    const sumOfInputPrivKeys = calculateSumOfPrivateKeys(inputPrivKeys);
+    const sumOfInputPubKeys = ecc.pointFromScalar(sumOfInputPrivKeys, true);
+    if (!sumOfInputPubKeys) {
+      console.warn('[SP] Skipping scan data: summed input keys are not a valid point');
+      return null;
+    }
+
+    // BIP-352 keys the input hash on the lexicographically smallest outpoint.
+    const inputHash = createInputHash(sumOfInputPubKeys, findSmallestOutpoint(ourInputs));
+    const tweak = ecc.pointMultiply(sumOfInputPubKeys, inputHash, true);
+    if (!tweak) {
+      console.warn('[SP] Skipping scan data: input hash is not a valid scalar');
+      return null;
+    }
+    return { sumOfInputPubKeys, inputHash, tweak };
+  }
+
+  /**
+   * The BIP-352 scan tweak (66 hex chars) of a transaction we are about to send or just sent, or
+   * null when an input is not ours. Sent to the payee so they can find the payment in the mempool
+   * without waiting for an indexer. It reveals nothing a block explorer's inputs would not, but it
+   * does let the holder of the scan key find the outputs, so it only ever goes inside the encrypted chat.
+   */
+  computeScanTweak(tx: bitcoin.Transaction): string | null {
+    const data = this.computeInputScanData(tx);
+    return data ? Buffer.from(data.tweak).toString('hex') : null;
+  }
+
+  /**
    * Scan a transaction we just built for silent payment outputs belonging to us — in
    * practice our label-0 change, but a self-payment to the main address is found too.
    *
@@ -1561,33 +1722,9 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
    * Both are handled because `resolveSpendKeys` derives the owning key per UTXO.
    */
   private scanBroadcastedTxForOurOutputs(tx: bitcoin.Transaction, broadcastedTxid: string): void {
-    const ourInputs = tx.ins.map(input => ({
-      txid: Buffer.from(input.hash).reverse().toString('hex'),
-      vout: input.index,
-    }));
-
-    const ownUtxos = this.getOwnUtxosByOutpoint();
-    const inputPrivKeys: PrivateKey[] = [];
-    for (const { txid, vout } of ourInputs) {
-      const utxo = ownUtxos.get(`${txid}:${vout}`);
-      if (!utxo) {
-        console.warn(`[SP] Skipping instant change scan: input ${txid}:${vout} is not one of our UTXOs`);
-        return;
-      }
-      const { keyPair } = this.resolveInputKeys(utxo);
-      inputPrivKeys.push({ key: Buffer.from(keyPair.privateKey!).toString('hex'), isXOnly: true });
-    }
-
-    const sumOfInputPrivKeys = calculateSumOfPrivateKeys(inputPrivKeys);
-    const sumOfInputPubKeys = ecc.pointFromScalar(sumOfInputPrivKeys, true);
-    if (!sumOfInputPubKeys) {
-      console.warn('[SP] Skipping instant change scan: summed input keys are not a valid point');
-      return;
-    }
-
-    // BIP-352 keys the input hash on the lexicographically smallest outpoint. Shared with the
-    // sender side so both compute it the same way.
-    const smallestOutpoint = findSmallestOutpoint(ourInputs);
+    const scanData = this.computeInputScanData(tx);
+    if (!scanData) return;
+    const { sumOfInputPubKeys, inputHash } = scanData;
 
     // Taproot outputs as the 33-byte even-Y pubkeys the scanner compares against.
     const outputsByHex = new Map<string, number>();
@@ -1605,7 +1742,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       getScanPrivateKey(seed, networkConfig),
       getSpendPublicKey(seed, networkConfig),
       sumOfInputPubKeys,
-      createInputHash(sumOfInputPubKeys, smallestOutpoint),
+      inputHash,
       [...outputsByHex.keys()].map(hex => Buffer.from(hex, 'hex')),
       getSilentPaymentChangeLabelMap(seed, networkConfig),
     );

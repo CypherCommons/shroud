@@ -29,6 +29,21 @@ if (typeof localStorage !== 'undefined') {
   localStorage.debug = isDev ? '*' : '';
 }
 
+// React Native has no WebCrypto. marmot-ts (chat) needs `crypto.subtle`, so install a @noble-backed
+// one only when it's missing. Lazy: the noble curve/cipher modules load on first use, not at start-up.
+if (typeof global.crypto === 'undefined') global.crypto = {};
+if (!global.crypto.subtle) {
+  Object.defineProperty(global.crypto, 'subtle', {
+    configurable: true,
+    enumerable: true,
+    get() {
+      const subtle = require('./helpers/chat/nobleSubtle').nobleSubtle;
+      Object.defineProperty(global.crypto, 'subtle', { value: subtle, configurable: true, writable: true });
+      return subtle;
+    },
+  });
+}
+
 // If using the crypto shim, uncomment the following line to ensure
 // crypto is loaded first, so it can populate global.crypto
 require('crypto');

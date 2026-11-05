@@ -14,6 +14,8 @@ export type SendDetailsParams = {
   address?: string;
   amount?: number;
   amountSats?: number;
+  // The Shroud Chat payment request being paid; the notice sent after the broadcast carries it.
+  chatRequestId?: string;
   onBarScanned?: string;
   unit?: BitcoinUnit;
   noRbf?: boolean;
@@ -57,6 +59,10 @@ export type SendDetailsStackParamList = {
     // to Success so "Save as a Contact" can validate the actual sp1... address, not the
     // one-time on-chain output.
     recipientAddress?: string;
+    // Every payee as entered, before createTransaction() swaps silent payment addresses for their
+    // one-time outputs. Shroud Chat tells those on chat about the payment.
+    payees?: { address: string; value?: number }[];
+    chatRequestId?: string;
   };
   PsbtWithHardwareWallet: {
     memo?: string;

@@ -4,11 +4,20 @@ import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-n
 import { ContactListItem } from '../class/contacts';
 import { shortenAddress } from '../utils/transactionHelpers';
 import ContactAvatar from './ContactAvatar';
+import ChatIcon from './icons/ChatIcon';
 import ChevronRightIcon from './icons/ChevronRightIcon';
 import PaperPlaneIcon from './icons/PaperPlaneIcon';
 import { useTheme } from './themes';
 import { ClashFont } from '../constants/fonts';
 import loc from '../loc';
+
+/** What the contact list shows of a contact's Shroud chat. Absent while chat is off or not yet looked up. */
+export type ContactChatInfo = {
+  onShroud: boolean;
+  unread: number;
+  /** The last message, already worded for the row. */
+  preview?: string;
+};
 
 type ContactRowProps = {
   contact: ContactListItem;
@@ -18,15 +27,18 @@ type ContactRowProps = {
   testID: string;
   /** Spacing is the list's to set: neither variant carries a margin of its own. */
   style?: StyleProp<ViewStyle>;
+  /** The bare row shows the badge, preview and unread count; the card only its unread count. */
+  chat?: ContactChatInfo;
 } & (
   | // Bare row that opens the contact, for a screen whose whole job is the list.
   { variant?: 'row' }
   // Bordered card carrying its own pay action, for a list sharing a screen with other content.
-  | { variant: 'card'; onPay: (address: string) => void }
+  // `onMessage` adds a chat shortcut beside Pay; leave it out while chat is off.
+  | { variant: 'card'; onPay: (address: string) => void; onMessage?: (address: string) => void }
 );
 
 const ContactRow: React.FC<ContactRowProps> = props => {
-  const { contact, onPress, testID, style } = props;
+  const { contact, onPress, testID, style, chat } = props;
   const { colors } = useTheme();
   const isCard = props.variant === 'card';
 
@@ -34,11 +46,18 @@ const ContactRow: React.FC<ContactRowProps> = props => {
     <>
       <ContactAvatar name={contact.name} colorIndex={contact.colorIndex} size={48} borderRadius={16} />
       <View style={[styles.text, isCard ? styles.cardText : styles.rowText]}>
-        <Text style={[styles.rowName, { color: colors.textPrimary }]} numberOfLines={1}>
-          {contact.name}
-        </Text>
+        <View style={styles.nameLine}>
+          <Text style={[styles.rowName, styles.nameText, { color: colors.textPrimary }]} numberOfLines={1}>
+            {contact.name}
+          </Text>
+          {!isCard && chat?.onShroud && (
+            <View style={[styles.badge, { backgroundColor: colors.surfaceSubtle }]} testID={`${testID}-OnShroud`}>
+              <Text style={[styles.badgeText, { color: colors.textBrand }]}>{loc.chat.on_shroud}</Text>
+            </View>
+          )}
+        </View>
         <Text style={[styles.rowAddress, { color: colors.textMuted }]} numberOfLines={1}>
-          {shortenAddress(contact.address, 8)}
+          {!isCard && chat?.preview ? chat.preview : shortenAddress(contact.address, 8)}
         </Text>
       </View>
     </>
@@ -48,7 +67,13 @@ const ContactRow: React.FC<ContactRowProps> = props => {
     return (
       <Pressable accessibilityRole="button" style={[styles.row, style]} onPress={() => onPress(contact.address)} testID={testID}>
         {identity}
-        <ChevronRightIcon color={colors.iconSecondary} />
+        {chat && chat.unread > 0 ? (
+          <View style={[styles.unread, { backgroundColor: colors.brandPrimary }]} testID={`${testID}-Unread`}>
+            <Text style={[styles.unreadText, { color: colors.white }]}>{chat.unread > 99 ? '99+' : chat.unread}</Text>
+          </View>
+        ) : (
+          <ChevronRightIcon color={colors.iconSecondary} />
+        )}
       </Pressable>
     );
   }
@@ -61,6 +86,25 @@ const ContactRow: React.FC<ContactRowProps> = props => {
       testID={testID}
     >
       {identity}
+      {props.onMessage && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${loc.chat.message} ${contact.name}`}
+          style={[styles.message, { backgroundColor: colors.surfaceSubtle, borderColor: colors.borderDefault }]}
+          onPress={() => props.onMessage?.(contact.address)}
+          testID={`${testID}-Message`}
+        >
+          <ChatIcon size={20} color={colors.textBrand} />
+          {chat && chat.unread > 0 && (
+            <View
+              style={[styles.messageDot, { backgroundColor: colors.brandPrimary, borderColor: colors.surfaceBrandSubtle }]}
+              testID={`${testID}-MessageUnread`}
+            >
+              <Text style={[styles.messageDotText, { color: colors.white }]}>{chat.unread > 9 ? '9+' : chat.unread}</Text>
+            </View>
+          )}
+        </Pressable>
+      )}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${loc.contacts.pay} ${contact.name}`}
@@ -95,7 +139,27 @@ const styles = StyleSheet.create({
   rowText: { gap: 12 },
   cardText: { gap: 4 },
   rowName: { fontFamily: ClashFont.medium, fontSize: 16, lineHeight: 20 },
+  nameLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  nameText: { flexShrink: 1 },
+  badge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
+  badgeText: { fontFamily: ClashFont.medium, fontSize: 11 },
+  unread: { minWidth: 24, height: 24, borderRadius: 12, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center' },
+  unreadText: { fontFamily: ClashFont.medium, fontSize: 13 },
   rowAddress: { fontFamily: ClashFont.regular, fontSize: 14, lineHeight: 17 },
+  message: { width: 40, height: 40, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  messageDot: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageDotText: { fontFamily: ClashFont.medium, fontSize: 10 },
   pay: {
     flexDirection: 'row',
     alignItems: 'center',

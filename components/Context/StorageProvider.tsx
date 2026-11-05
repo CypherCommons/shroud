@@ -14,6 +14,8 @@ import { type ScanStateInfo, IDLE_SCAN_STATE, isScannable } from '../../helpers/
 import { getActiveNetworkId, type NetworkId } from '../../modules/network';
 import { assertNetworkSwitchable, rollbackNetworkSwitch, switchNetworkBackends } from '../../modules/networkPreference';
 import { clearPin } from '../../helpers/pinLock';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { wipeAllChatStorage } from '../../helpers/chat/storage';
 
 const shroudApp = ShroudApp.getInstance();
 
@@ -299,6 +301,8 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     }
     txMetadata.current = {};
     await shroudApp.wipeAllData();
+    // Chat keeps its own encrypted records beside the wallet's; a device wipe takes them too.
+    await wipeAllChatStorage(AsyncStorage).catch(e => console.warn('could not wipe chat storage', e));
     await clearPin();
     setWallets([]);
   }, []);

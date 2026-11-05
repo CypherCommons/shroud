@@ -41,6 +41,9 @@ import OnboardingStack from './OnboardingStack';
 import ContactList from '../screen/contacts/ContactList';
 import ContactEdit from '../screen/contacts/ContactEdit';
 import ContactDetail from '../screen/contacts/ContactDetail';
+import ChatThread from '../screen/chat/ChatThread';
+import MessageRequests from '../screen/chat/MessageRequests';
+import ChatSettings from '../screen/settings/ChatSettings';
 import { useStorage } from '../hooks/context/useStorage';
 import { navigationRef } from '../NavigationService';
 
@@ -147,6 +150,13 @@ const DetailViewStackScreensStack = () => {
         component={ContactDetail}
         options={navigationStyle({ title: loc.contacts.header })(theme)}
       />
+      <DetailViewStack.Screen name="ChatThread" component={ChatThread} options={navigationStyle({ title: '' })(theme)} />
+      <DetailViewStack.Screen
+        name="ChatRequests"
+        component={MessageRequests}
+        options={navigationStyle({ title: loc.chat.requests_title })(theme)}
+      />
+      <DetailViewStack.Screen name="ChatSettings" component={ChatSettings} options={navigationStyle({ title: loc.chat.title })(theme)} />
       <DetailViewStack.Screen name="Licensing" component={Licensing} options={navigationStyle({ title: loc.settings.license })(theme)} />
       <DetailViewStack.Screen name="About" component={About} options={navigationStyle({ title: loc.settings.about })(theme)} />
       <DetailViewStack.Screen

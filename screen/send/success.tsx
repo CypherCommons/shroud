@@ -16,6 +16,7 @@ import { SendDetailsStackParamList } from '../../navigation/SendDetailsStackPara
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation.ts';
 import { btcToSatoshi, satoshiToLocalCurrency } from '../../modules/currency';
 import { useContacts } from '../../hooks/context/useContacts';
+import { useChat } from '../../helpers/chat/ChatProvider';
 
 type RouteProps = RouteProp<SendDetailsStackParamList, 'Success'>;
 
@@ -24,8 +25,12 @@ const Success = () => {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const route = useRoute<RouteProps>();
-  const { amount, recipientAddress } = route.params || {};
+  const { amount, recipientAddress, txid } = route.params || {};
   const { getContact } = useContacts();
+  const { service: chatService } = useChat();
+  // The notice goes out after the broadcast and can take a few seconds, so this appears when it has.
+  const [notified, setNotified] = React.useState(false);
+  React.useEffect(() => chatService?.on('noticeSent', e => e.txid === txid && setNotified(true)), [chatService, txid]);
 
   const amountStr = amount != null ? String(amount) : '0';
   const amountSats = amount != null ? btcToSatoshi(amount) : 0;
@@ -57,6 +62,12 @@ const Success = () => {
 
         {contact && (
           <ContactChip name={contact.name} colorIndex={contact.colorIndex} style={styles.contactChip} testID="SuccessContactChip" />
+        )}
+
+        {notified && contact && (
+          <Text style={[styles.notified, { color: colors.textMuted }]} testID="SuccessChatNotified">
+            {loc.formatString(loc.chat.notified, { name: contact.name }) as string}
+          </Text>
         )}
 
         {/* The payment is already sent, so leaving for the contact editor would strand the user
@@ -139,6 +150,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   // The chip hugs its name, so it centres rather than sitting under the sheet's left edge.
+  notified: { fontFamily: ClashFont.regular, fontSize: 14, textAlign: 'center' },
   contactChip: {
     alignSelf: 'center',
   },
