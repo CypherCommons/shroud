@@ -20,6 +20,8 @@ export interface NotifyArgs {
   /** What the transaction paid in total to non-change outputs: stands in for a send-max payee's amount. */
   fallbackAmount?: number;
   note?: string;
+  /** The chat payment request this pays, when it paid one. */
+  requestId?: string;
   network: Network;
   log?: (message: string, error?: unknown) => void;
 }
@@ -39,7 +41,11 @@ export async function notifyPayees(args: NotifyArgs): Promise<string[]> {
         const amount = payee.value ?? (sp.length === 1 ? args.fallbackAmount : undefined);
         if (!amount || amount <= 0) return;
         if (!(await service.isOnChat(payee.address))) return;
-        await service.sendNotice(payee.address, { txid, tweak, hex, amount, note: note?.trim() ? note.trim() : undefined });
+        await service.sendNotice(
+          payee.address,
+          { txid, tweak, hex, amount, note: note?.trim() ? note.trim() : undefined },
+          sp.length === 1 ? args.requestId : undefined,
+        );
         notified.push(payee.address);
       } catch (e) {
         args.log?.(`could not notify ${payee.address.slice(0, 12)}…`, e);

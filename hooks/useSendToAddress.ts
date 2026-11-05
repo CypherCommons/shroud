@@ -10,14 +10,32 @@ import { useStorage } from './context/useStorage';
  * navigator and stops there, which silently drops the prefilled address. Every caller getting
  * that wrong the same way is what this hook is for.
  */
+export type SendToAddressOptions = {
+  /** Prefilled amount in sats. */
+  amountSats?: number;
+  /** Prefilled note. */
+  memo?: string;
+  /** The chat payment request this pays: the payment notice sent afterwards points back at it. */
+  chatRequestId?: string;
+};
+
 export const useSendToAddress = () => {
   const navigation = useExtendedNavigation();
   const { wallets } = useStorage();
 
   return useCallback(
-    (address?: string) => {
+    (address?: string, options: SendToAddressOptions = {}) => {
       if (wallets.length === 0) return;
-      navigation.navigate('SendDetailsRoot', { screen: 'SendDetails', params: { walletID: wallets[0].getID(), address } });
+      navigation.navigate('SendDetailsRoot', {
+        screen: 'SendDetails',
+        params: {
+          walletID: wallets[0].getID(),
+          address,
+          amountSats: options.amountSats,
+          transactionMemo: options.memo,
+          chatRequestId: options.chatRequestId,
+        },
+      });
     },
     [navigation, wallets],
   );

@@ -65,7 +65,7 @@ const Confirm: React.FC = () => {
   const { isBiometricUseCapableAndEnabled } = useBiometrics();
   const navigation = useExtendedNavigation<ConfirmNavigationProp>();
   const route = useRoute<ConfirmRouteProp>();
-  const { recipients, walletID, fee, tx, recipientAddress, payees, memo } = route.params;
+  const { recipients, walletID, fee, tx, recipientAddress, payees, memo, chatRequestId } = route.params;
   const { service: chatService } = useChat();
 
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -144,6 +144,7 @@ const Confirm: React.FC = () => {
           payees,
           fallbackAmount: amount > 0 ? amount : undefined,
           note: memo,
+          requestId: chatRequestId,
           network: wallet.getNetworkConfig().bitcoinjs,
           log: (message, error) => console.log(`[chat] ${message}`, error ?? ''),
         }).catch(() => undefined);
