@@ -57,6 +57,9 @@ export type SendDetailsStackParamList = {
     // to Success so "Save as a Contact" can validate the actual sp1... address, not the
     // one-time on-chain output.
     recipientAddress?: string;
+    // Every payee as entered, before createTransaction() swaps silent payment addresses for their
+    // one-time outputs. Shroud Chat tells those on chat about the payment.
+    payees?: { address: string; value?: number }[];
   };
   PsbtWithHardwareWallet: {
     memo?: string;

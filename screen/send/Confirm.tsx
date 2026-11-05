@@ -25,6 +25,9 @@ import DetailRow from '../../components/DetailRow';
 import SendIcon from '../../components/icons/SendIcon';
 import { ClashFont } from '../../constants/fonts';
 import { computeTotalSats } from '../../helpers/send/format';
+import { useChat } from '../../helpers/chat/ChatProvider';
+import { notifyPayees } from '../../helpers/chat/notifyPayees';
+import type { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
 
 enum ActionType {
   SET_LOADING = 'SET_LOADING',
@@ -62,7 +65,8 @@ const Confirm: React.FC = () => {
   const { isBiometricUseCapableAndEnabled } = useBiometrics();
   const navigation = useExtendedNavigation<ConfirmNavigationProp>();
   const route = useRoute<ConfirmRouteProp>();
-  const { recipients, walletID, fee, tx, recipientAddress } = route.params;
+  const { recipients, walletID, fee, tx, recipientAddress, payees, memo } = route.params;
+  const { service: chatService } = useChat();
 
   const [state, dispatch] = useReducer(reducer, initialState);
   const { navigate, goBack } = navigation;
@@ -103,6 +107,16 @@ const Confirm: React.FC = () => {
         }
       }
 
+      // The scan tweak needs the inputs as they are now, so it is taken before the broadcast marks them spent.
+      let scanTweak: string | null = null;
+      if (chatService && payees?.length) {
+        try {
+          scanTweak = (wallet as HDSilentPaymentsWallet).computeScanTweak(bitcoin.Transaction.fromHex(tx));
+        } catch (e) {
+          console.warn('[chat] could not compute the scan tweak', e);
+        }
+      }
+
       const txidsToWatch = [];
       const result = await broadcastTransaction(tx);
       if (!result) {
@@ -118,6 +132,21 @@ const Confirm: React.FC = () => {
         if (recipient.value) {
           amount += recipient.value;
         }
+      }
+
+      // Fire and forget: never holds up the Success screen. Payees not on chat are covered by Track Payment.
+      if (chatService && scanTweak && payees?.length) {
+        notifyPayees({
+          service: chatService,
+          txid,
+          hex: tx,
+          tweak: scanTweak,
+          payees,
+          fallbackAmount: amount > 0 ? amount : undefined,
+          note: memo,
+          network: wallet.getNetworkConfig().bitcoinjs,
+          log: (message, error) => console.log(`[chat] ${message}`, error ?? ''),
+        }).catch(() => undefined);
       }
 
       amount = Number(formatBalanceWithoutSuffix(amount, BitcoinUnit.BTC, false));

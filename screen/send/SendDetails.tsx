@@ -618,6 +618,7 @@ const SendDetails = () => {
       // address has already been replaced by the derived one-time on-chain output. Capture
       // the address as the user actually entered/picked it, before that substitution.
       recipientAddress: addresses.length === 1 ? addresses[0].address : undefined,
+      payees: targets.flatMap(t => (t.address ? [{ address: t.address, value: t.value }] : [])),
     });
     setIsLoading(false);
   };
