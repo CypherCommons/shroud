@@ -12,6 +12,7 @@ import InfoBanner from '../../components/InfoBanner';
 import SafeAreaScrollView from '../../components/SafeAreaScrollView';
 import { useTheme } from '../../components/themes';
 import { ClashFont } from '../../constants/fonts';
+import { useChat, useChatPeer, useIsOnChat } from '../../helpers/chat/ChatProvider';
 import { useContacts } from '../../hooks/context/useContacts';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
 import loc from '../../loc';
@@ -20,6 +21,7 @@ import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/haptic
 import { useSendToAddress } from '../../hooks/useSendToAddress';
 import CopyIcon from '../../components/icons/CopyIcon';
 import EditIcon from '../../components/icons/EditIcon';
+import ChatIcon from '../../components/icons/ChatIcon';
 import PaperPlaneIcon from '../../components/icons/PaperPlaneIcon';
 import TrashIcon from '../../components/icons/TrashIcon';
 
@@ -33,6 +35,11 @@ const ContactDetail: React.FC = () => {
   const { getContact, deleteContact } = useContacts();
   const sendToAddress = useSendToAddress();
   const [copied, setCopied] = useState(false);
+  const { unavailable: chatUnavailable, peers: chatPeers } = useChat();
+  const chatPeer = useChatPeer(params.address);
+  const hasConversation = chatPeers.some(p => p.peer === chatPeer);
+  const onChat = useIsOnChat(hasConversation ? undefined : params.address);
+  const unread = chatPeers.find(p => p.peer === chatPeer)?.unread ?? 0;
 
   const contact = getContact(params.address);
 
@@ -74,6 +81,9 @@ const ContactDetail: React.FC = () => {
   if (contact === undefined) return null;
 
   const onPay = () => sendToAddress(params.address);
+  const onMessage = () => navigation.navigate('ChatThread', { address: params.address });
+  const showMessage = chatUnavailable === undefined;
+  const notOnChat = !hasConversation && onChat === false;
 
   // The copy button tints while it holds, the way DetailRow's does: without any acknowledgement a
   // tap on the address reads as a no-op.
@@ -115,15 +125,36 @@ const ContactDetail: React.FC = () => {
           </Text>
         </View>
 
-        <ActionButton
-          title={loc.contacts.pay}
-          Icon={PaperPlaneIcon}
-          iconSize={20}
-          onPress={onPay}
-          backgroundColor={colors.brandPrimary}
-          color={colors.white}
-          testID="ContactPayButton"
-        />
+        <View style={styles.actions}>
+          <ActionButton
+            title={loc.contacts.pay}
+            Icon={PaperPlaneIcon}
+            iconSize={20}
+            onPress={onPay}
+            backgroundColor={colors.brandPrimary}
+            color={colors.white}
+            style={styles.action}
+            testID="ContactPayButton"
+          />
+          {showMessage && (
+            <ActionButton
+              title={unread > 0 ? `${loc.chat.message} (${unread})` : loc.chat.message}
+              Icon={ChatIcon}
+              iconSize={20}
+              onPress={onMessage}
+              disabled={notOnChat}
+              backgroundColor={colors.surfaceSubtle}
+              color={colors.textBrand}
+              style={styles.action}
+              testID="ContactMessageButton"
+            />
+          )}
+        </View>
+        {showMessage && notOnChat && (
+          <Text style={[styles.notOnChat, { color: colors.textMuted }]} testID="ContactNotOnChat">
+            {loc.formatString(loc.chat.not_on_chat, { name: contact.name }) as string}
+          </Text>
+        )}
 
         <View style={styles.addressSection}>
           <View style={styles.addressHead}>
@@ -177,6 +208,9 @@ const styles = StyleSheet.create({
   editLabel: { fontFamily: ClashFont.medium, fontSize: 16 },
   content: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 0 },
   body: { gap: 24 },
+  actions: { flexDirection: 'row', gap: 12 },
+  action: { flex: 1 },
+  notOnChat: { fontFamily: ClashFont.regular, fontSize: 14, textAlign: 'center', marginTop: -12 },
   header: { alignItems: 'center', gap: 12 },
   name: { fontFamily: ClashFont.medium, fontSize: 28, letterSpacing: -1 },
   addressSection: { gap: 8 },
