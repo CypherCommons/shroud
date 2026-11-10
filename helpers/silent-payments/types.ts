@@ -21,6 +21,18 @@ export interface TransactionResponse {
   transactions: IndexerTransaction[];
 }
 
+export interface SpentIndexBlock {
+  height: number;
+  blockHash: string;
+  blockTime: number;
+  /** Concatenated 8-byte spent outpoint hashes, hex. */
+  hashes: string;
+}
+
+export interface SpentIndexResponse {
+  blocks: SpentIndexBlock[];
+}
+
 export interface LatestBlockHeightResponse {
   height: number;
 }

@@ -4,7 +4,9 @@ import { Buffer } from 'buffer';
 import { ECPairFactory, ECPairInterface } from 'ecpair';
 import { AbstractHDElectrumWallet, isChangeOutput } from './abstract-hd-electrum-wallet.ts';
 import * as Electrum from '../../modules/Electrum';
-import { getDefaultIndexer, SilentPaymentIndexer } from '../../modules/SilentPaymentIndexer';
+import { getDefaultIndexer, RANGE_BATCH_SIZE, SilentPaymentIndexer } from '../../modules/SilentPaymentIndexer';
+import { checkedThrough, matchSpent } from '../../helpers/silent-payments/spentIndex';
+import type { SpentIndexBlock } from '../../helpers/silent-payments/types';
 import ecc from '../../modules/noble_ecc';
 import {
   calculateSumOfPrivateKeys,
@@ -122,6 +124,9 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   private spendKeyCandidates: SpendKeyPair[] | null = null;
   private transactionProcessor: RustTransactionProcessor | null = null;
   private lastScannedBlock: number = 0;
+  // Spent index checked through this height. null on wallets from before spend detection, which
+  // need a one-off catch-up pass because the forward scan never revisits old blocks.
+  private _spentCheckedHeight: number | null = null;
   // 0 means "not set yet"; the per-network activation height is applied by
   // `getEffectiveBirthHeight`. Deliberately *not* initialised from the network here: on
   // deserialization this field initialiser runs before `fromJson` has restored `networkId`, so
@@ -755,11 +760,16 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       if (!forceFullScan && this.lastScannedBlock > 0) {
         startHeight = this.lastScannedBlock + 1;
 
+        // before the early return below, so a wallet that is already synced still catches up
+        await this.catchUpSpentIndex(indexer, Math.min(this.lastScannedBlock, latestHeight));
+
         if (startHeight > latestHeight) {
           return 0;
         }
       } else {
         startHeight = effectiveBirthHeight;
+        // this scan re-reads the spent index from the start, so it is the one that checks it
+        this._spentCheckedHeight = startHeight - 1;
       }
 
       if (startHeight > endHeight) {
@@ -815,7 +825,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       await indexer.scanForwardWithCallback(
         startHeight,
         endHeight,
-        async (transactions, rangeEnd) => {
+        async (transactions, rangeEnd, spentBlocks) => {
           if (this.cancelScanCallbackScan) {
             throw new Error('SCAN_CANCELLED');
           }
@@ -827,6 +837,12 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
           // rangeEnd, not the highest tx height: the whole range was queried, so it is all scanned
           const addedCount = this.commitUTXOs(result.utxos, Math.max(result.lastScannedBlock, rangeEnd));
           totalUTXOsAdded += addedCount;
+
+          // after commitUTXOs, so a coin received and spent inside this range is caught
+          if (spentBlocks) {
+            this.applySpentIndex(spentBlocks);
+            this.advanceSpentChecked(spentBlocks, rangeEnd);
+          }
 
           return addedCount;
         },
@@ -854,6 +870,132 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
       this._emitScanState('error', { error: error.message ?? 'Unknown scan error' });
       throw error;
+    }
+  }
+
+  /**
+   * Unspent SP coins, plus the inputs of our own unconfirmed sends. Matching those inputs is how our
+   * own sends get confirmed.
+   */
+  private spentCheckOutpoints(): SilentPaymentUTXO[] {
+    const pendingInputs = new Set(
+      this._sp_spending_txs.filter(tx => !tx.blockhash).flatMap(tx => tx.inputs.map(i => `${i.txid}:${i.vout}`)),
+    );
+    return this.getSilentPaymentUTXOs().filter(u => !u.isSpent || pendingInputs.has(`${u.txid}:${u.vout}`));
+  }
+
+  private applySpentIndex(blocks: SpentIndexBlock[]): void {
+    const matches = matchSpent(this.spentCheckOutpoints(), blocks);
+    for (const block of blocks) {
+      const spent = matches.get(block.height);
+      if (spent) this.applySpentOutpoints(block, spent);
+    }
+  }
+
+  /**
+   * A spend of one of our own recorded txs confirms it. Anything else was spent by another wallet on
+   * this seed and is recorded as one outgoing tx per block.
+   */
+  private applySpentOutpoints(block: SpentIndexBlock, outpoints: SilentPaymentUTXO[]): void {
+    const confirm = (tx: Transaction) => {
+      tx.blockhash = block.blockHash;
+      tx.height = block.height;
+      tx.blocktime = block.blockTime;
+    };
+
+    const unknown: SilentPaymentUTXO[] = [];
+    for (const utxo of outpoints) {
+      const own = this._sp_spending_txs.find(tx => !tx.blockhash && tx.inputs.some(i => i.txid === utxo.txid && i.vout === utxo.vout));
+      if (own) {
+        confirm(own);
+      } else if (this.markUTXOAsSpent(utxo.txid, utxo.vout)) {
+        unknown.push(utxo);
+      }
+    }
+
+    if (unknown.length > 0) {
+      const txid = `unknown:${block.height}:${unknown[0].txid}:${unknown[0].vout}`;
+      const tx: Transaction = {
+        txid,
+        hash: txid,
+        version: 2,
+        size: 0,
+        vsize: 0,
+        weight: 0,
+        locktime: 0,
+        value: -unknown.reduce((sum, u) => sum + u.value, 0),
+        confirmations: 0,
+        blockhash: '',
+        time: block.blockTime,
+        blocktime: block.blockTime,
+        timestamp: block.blockTime,
+        inputs: unknown.map(u => ({
+          txid: u.txid,
+          vout: u.vout,
+          scriptSig: { asm: '', hex: '' },
+          txinwitness: [],
+          sequence: 0,
+          addresses: [u.silentPaymentAddress || ''],
+          value: u.value,
+        })),
+        outputs: [],
+        external: true,
+      };
+      confirm(tx);
+      this._sp_spending_txs.push(tx);
+    }
+
+    this.onPersistCallback?.();
+    this.onBalanceChangeCallback?.();
+  }
+
+  /**
+   * Moves `_spentCheckedHeight` forward over the heights `blocks` covers without a gap. A range
+   * that does not start right after it, or a height the indexer has no entry for, leaves it where
+   * it is, so the catch-up pass checks those blocks on a later sync instead of skipping them.
+   */
+  private advanceSpentChecked(blocks: SpentIndexBlock[], upTo: number): boolean {
+    const from = (this._spentCheckedHeight ?? upTo) + 1;
+    const checked = checkedThrough(blocks, from, upTo);
+    if (checked < from) return false;
+    this._spentCheckedHeight = checked;
+    this.onPersistCallback?.();
+    return checked === upTo;
+  }
+
+  /**
+   * Spent-index-only pass over blocks the forward scan has already passed but whose spends were
+   * not checked: wallets from before spend detection, and ranges the indexer had no spent index
+   * for. Stops at the first gap and picks up from there on the next sync.
+   */
+  private async catchUpSpentIndex(indexer: SilentPaymentIndexer, upTo: number): Promise<void> {
+    // TODO: reorgs aren't handled: a spend moved into an already-checked block isn't found, and a
+    // spend a reorg removes stays marked
+    if (this._spentCheckedHeight === null) {
+      // nothing was ever checked: start at the oldest coin that could still be unspent
+      const heights = this.spentCheckOutpoints()
+        .map(u => u.height)
+        .filter(h => h > 0);
+      this._spentCheckedHeight = (heights.length > 0 ? Math.min(...heights) : upTo + 1) - 1;
+      this.onPersistCallback?.();
+    }
+
+    while (this._spentCheckedHeight < upTo) {
+      await this._waitIfPaused();
+      if (this.cancelScanCallbackScan) throw new Error('SCAN_CANCELLED');
+
+      const rangeStart = this._spentCheckedHeight + 1;
+      const rangeEnd = Math.min(rangeStart - (rangeStart % RANGE_BATCH_SIZE) + RANGE_BATCH_SIZE - 1, upTo);
+      let blocks: SpentIndexBlock[];
+      try {
+        ({ blocks } = await indexer.getSpentIndexByRange(rangeStart, rangeEnd));
+      } catch (error: any) {
+        console.warn(`[SP] Spent index catch-up stopped at ${rangeStart}: ${error?.message ?? error}`);
+        return;
+      }
+
+      this.applySpentIndex(blocks);
+      if (!this.advanceSpentChecked(blocks, rangeEnd)) return;
     }
   }
 
@@ -1212,9 +1354,12 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     const spSpendingTransactions = this._sp_spending_txs
       .filter(tx => !regularTxids.has(tx.txid))
       .map(tx => {
+        // confirmations stored at confirm time go stale, so derive them from the scan tip. copies, so
+        // memoized list rows see a new object when a send confirms
+        const current = tx.height ? { ...tx, confirmations: Math.max(this.lastScannedBlock - tx.height + 1, 1) } : tx;
         // our own records keep output values in sats
         const selfTransfer = this.findSelfTransfer(tx, ownership, sats => sats);
-        return selfTransfer ? { ...tx, selfTransfer } : tx;
+        return selfTransfer ? { ...current, selfTransfer } : current;
       });
 
     const txMap = new Map<string, SilentPaymentUTXO[]>();
