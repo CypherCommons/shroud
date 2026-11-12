@@ -118,6 +118,7 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
     );
 
     const title = useMemo(() => {
+      if (item.external) return loc.transactions.external_spend;
       if (relevantAddress) {
         return shortenAddress(relevantAddress);
       }
@@ -126,7 +127,7 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
       } else {
         return transactionTimeToReadable(item.timestamp);
       }
-    }, [relevantAddress, item.confirmations, item.timestamp]);
+    }, [relevantAddress, item.external, item.confirmations, item.timestamp]);
 
     const timeText = useMemo(() => {
       if (item.confirmations === 0) {
@@ -247,7 +248,7 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
         },
         {
           ...CommonToolTipActions.CopyTXID,
-          hidden: !item.hash,
+          hidden: !item.hash || !!item.external,
         },
         CommonToolTipActions.Details,
         [
@@ -259,7 +260,7 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
       ];
 
       return actions as Action[];
-    }, [isBalanceHidden, subtitle, item.hash, subtitleNumberOfLines]);
+    }, [isBalanceHidden, subtitle, item.hash, item.external, subtitleNumberOfLines]);
 
     const accessibilityState = useMemo(() => {
       return {
@@ -324,6 +325,7 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = memo(
       prevProps.item.hash === nextProps.item.hash &&
       prevProps.item.value === nextProps.item.value &&
       prevProps.item.timestamp === nextProps.item.timestamp &&
+      prevProps.item.confirmations === nextProps.item.confirmations &&
       prevProps.itemPriceUnit === nextProps.itemPriceUnit &&
       prevProps.walletID === nextProps.walletID &&
       prevProps.searchQuery === nextProps.searchQuery
