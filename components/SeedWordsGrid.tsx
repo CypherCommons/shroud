@@ -13,7 +13,7 @@ interface SeedWordsGridProps {
  * The seed-word pill grid used by the Settings > Security "view recovery phrase" screen: a
  * numbered index box + word box per word, laid out two-up. `revealed` toggles between the real
  * word text and a placeholder bar, and restyles the pill borders/fills to match. The
- * wallet-creation backup screen (PleaseBackup.tsx) renders its own words via SeedWords.tsx and
+ * wallet-creation backup screen (PleaseBackup.tsx) renders its own words and
  * does not use this component.
  */
 const SeedWordsGrid = forwardRef<View, SeedWordsGridProps>(({ words, revealed, onLayout }, ref) => {

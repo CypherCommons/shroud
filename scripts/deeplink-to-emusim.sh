@@ -5,7 +5,7 @@ deepLinks=(
   "bitcoin:bc1qh6tf004ty7z7un2v5ntu4mkf630545gvhs45u7?amount=666&label=Yo"
   "BITCOIN:BC1Q3RL0MKYK0ZRTXFMQN9WPCD3GNAZ00YV9YP0HXE"
   "shroud:bitcoin:12eQ9m4sgAwTSQoNXkRABKhCXCsjm2jdVG"
-  "shroud:setelectrumserver?server=electrum1.bluewallet.io%3A443%3As"
+  "shroud:setelectrumserver?server=electrum.signet.shroudwallet.com%3A50002%3As"
 )
 
 testOptions=("Send" "Notification")
