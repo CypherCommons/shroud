@@ -125,6 +125,7 @@ beforeEach(() => {
     validate: () => [],
   });
   (useExtendedNavigation as jest.Mock).mockReturnValue(navigation);
+  navigation.setParams.mockClear();
   delete mockRoute.params.onBarScanned;
   delete mockRoute.params.uri;
   _setPreferredFiatCurrency(FiatUnit.INR);
