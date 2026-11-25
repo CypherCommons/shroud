@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, userEvent } from '@testing-library/react-native';
 
 import ActionButton from '../../components/ActionButton';
 import { IconProps } from '../../components/icons/types';
@@ -44,16 +44,18 @@ describe('unit - ActionButton', () => {
     expect(onPress).not.toHaveBeenCalled();
   });
 
-  it('shows a spinner in the icon’s place while loading, keeps its colours and ignores presses', () => {
+  it('shows a spinner in the icon’s place while loading, keeps its colours and ignores presses', async () => {
     const { onPress } = renderButton({ loading: true });
 
     expect(screen.queryByTestId('Glyph')).toBeNull();
     expect(screen.getByTestId('ButtonSpinner')).toBeTruthy();
+    // busy, not unavailable: a screen reader mustn't call it dimmed
     expect(screen.getByTestId('Button')).toBeBusy();
-    expect(screen.getByTestId('Button')).toBeDisabled();
+    expect(screen.getByTestId('Button')).not.toBeDisabled();
     expect(StyleSheet.flatten(screen.getByTestId('Button').props.style)).toMatchObject({ backgroundColor: '#111111' });
 
-    fireEvent.press(screen.getByTestId('Button'));
+    // a real press, through the button's own handlers: fireEvent.press would call the prop of whatever holds one
+    await userEvent.setup().press(screen.getByTestId('Button'));
     expect(onPress).not.toHaveBeenCalled();
   });
 

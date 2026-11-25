@@ -12,7 +12,7 @@ interface ActionButtonProps {
   Icon?: React.FC<IconProps>;
   iconSize?: number;
   backgroundColor: string;
-  /** Applied to both the title and the icon, so the two never drift apart. */
+  /** The title's colour, and the icon's unless `iconColor` says otherwise. */
   color: string;
   /** For a design that tints the icon apart from the title. The loading spinner follows it too. */
   iconColor?: string;
@@ -55,8 +55,9 @@ const ActionButton: React.FC<ActionButtonProps> = ({
     <Pressable
       accessibilityRole="button"
       accessibilityState={loading ? { busy: true } : undefined}
-      disabled={loading || disabled}
-      onPress={onPress}
+      disabled={disabled}
+      // busy ignores presses without disabling the button, which a screen reader would read out as dimmed
+      onPress={loading ? undefined : onPress}
       testID={testID}
       style={({ pressed }) => [
         actionButtonStyles.button,

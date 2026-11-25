@@ -36,7 +36,8 @@ function formatEtaAbout(ms: number | null): string | null {
 
 /**
  * "about 2m left", counting down each second between the wallet's estimates (a batch apart, ~7s). Its
- * own component, so the countdown re-renders only itself.
+ * own component, so the countdown re-renders only itself. Keyed on the estimate, so each new one
+ * starts the count afresh.
  */
 const EtaCountdown: React.FC<{ eta: number | null; etaComputedAt: number | null; running: boolean }> = ({
   eta,
@@ -44,13 +45,7 @@ const EtaCountdown: React.FC<{ eta: number | null; etaComputedAt: number | null;
   running,
 }) => {
   const { colors } = useTheme();
-  const [estimate, setEstimate] = useState({ eta, etaComputedAt });
   const [left, setLeft] = useState(eta);
-
-  if (estimate.eta !== eta || estimate.etaComputedAt !== etaComputedAt) {
-    setEstimate({ eta, etaComputedAt });
-    setLeft(eta);
-  }
 
   useEffect(() => {
     if (!running || eta === null || etaComputedAt === null) return;
@@ -67,24 +62,45 @@ const EtaCountdown: React.FC<{ eta: number | null; etaComputedAt: number | null;
 };
 
 /**
- * Fades a layout in as the screen moves to it, so a change of state reads as one rather than a jump.
- * Opacity, on the native driver: LayoutAnimation can't be relied on here, being off on Android by
- * default and dropped on iOS whenever something else commits first.
+ * Fades a layout in as the screen moves to it, so a change of state reads as one rather than a jump; not
+ * the layout the screen opens on, which arrives with the screen. A cover in the screen's colour fades away
+ * over the new layout rather than the layout fading in itself, which would mean mounting it afresh: the
+ * title and subtitle must stay put for Android to read out their changes as live regions, and the button
+ * for a screen reader's focus to stay on it. Opacity, on the native driver: LayoutAnimation can't be relied
+ * on here, being off on Android by default and dropped on iOS whenever something else commits first.
  */
-const FadeIn: React.FC<{ animate: boolean; children: React.ReactNode }> = ({ animate, children }) => {
-  const [opacity] = useState(() => new Animated.Value(animate ? 0 : 1));
-
-  useEffect(() => {
-    if (!animate) return;
-    const animation = Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true });
-    animation.start();
-    return () => animation.stop();
-  }, [animate, opacity]);
+const FadeIn: React.FC<{ layout: string; children: React.ReactNode }> = ({ layout, children }) => {
+  const { colors } = useTheme();
+  const [openedOn, setOpenedOn] = useState<string | null>(layout);
+  if (openedOn !== null && layout !== openedOn) {
+    setOpenedOn(null);
+  }
 
   return (
-    <Animated.View style={[styles.layout, { opacity }]} testID="SyncLayout">
+    <View style={styles.layout} testID="SyncLayout">
       {children}
-    </Animated.View>
+      {openedOn === null && <FadeCover key={layout} color={colors.background} />}
+    </View>
+  );
+};
+
+const FadeCover: React.FC<{ color: string }> = ({ color }) => {
+  const [opacity] = useState(() => new Animated.Value(1));
+
+  useEffect(() => {
+    const animation = Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true });
+    animation.start();
+    return () => animation.stop();
+  }, [opacity]);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity }]}
+      testID="SyncFadeCover"
+    />
   );
 };
 
@@ -110,13 +126,8 @@ const SyncScreen: React.FC<SyncScreenProps> = () => {
   const scan = live ? scanState : lastLive;
 
   const inProgress = status === 'scanning' || status === 'paused';
-  // Scanning and paused are one layout with different words, so only a move between layouts fades;
-  // and not the one the screen opens on, which arrives with the screen.
+  // Scanning and paused are one layout with different words, so only a move between layouts fades.
   const layout = inProgress ? 'progress' : status;
-  const [openedOn, setOpenedOn] = useState<string | null>(layout);
-  if (openedOn !== null && layout !== openedOn) {
-    setOpenedOn(null);
-  }
 
   const percent = status === 'done' ? 100 : (scan.progress?.percentComplete ?? null);
   // A scan's first numbers come after its first window, so the bar sweeps until then rather than
@@ -143,71 +154,27 @@ const SyncScreen: React.FC<SyncScreenProps> = () => {
       AccessibilityInfo.announceForAccessibilityWithOptions(feedbackText, { queue: true });
   }, [feedbackText]);
 
-  const renderActionButton = () => {
-    switch (status) {
-      case 'scanning':
-        return (
-          <ActionButton
-            title={loc.sync.btn_pause}
-            onPress={pause}
-            Icon={PauseIcon}
-            iconSize={13}
-            backgroundColor={colors.brandPrimary}
-            color={colors.white}
-            style={styles.button}
-            testID="SyncPauseButton"
-          />
-        );
-      case 'paused':
-        return (
-          <ActionButton
-            title={loc.sync.btn_continue}
-            onPress={resume}
-            Icon={PlayIcon}
-            iconSize={17}
-            backgroundColor={colors.brandPrimary}
-            color={colors.white}
-            style={styles.button}
-            testID="SyncContinueButton"
-          />
-        );
-      case 'done':
-        return (
-          <ActionButton
-            title={busy ? loc.sync.btn_checking : loc.sync.btn_check_again}
-            onPress={check}
-            loading={busy}
-            Icon={RefreshIcon}
-            iconSize={20}
-            backgroundColor={colors.accentSubtle}
-            borderColor={colors.brandPrimary}
-            color={colors.textBrand}
-            iconColor={colors.brandPrimary}
-            style={styles.button}
-            testID="SyncCheckAgainButton"
-          />
-        );
-      case 'error':
-        return (
-          <ActionButton
-            title={busy ? loc.sync.btn_checking : loc.sync.btn_retry}
-            onPress={check}
-            loading={busy}
-            Icon={RefreshIcon}
-            iconSize={20}
-            backgroundColor={colors.brandPrimary}
-            color={colors.white}
-            style={styles.button}
-            testID="SyncRetryButton"
-          />
-        );
-    }
-  };
+  // Each layout's button: brand-filled unless it says otherwise. Done and error both check for payments.
+  const checkButton = { onPress: check, loading: busy, Icon: RefreshIcon, iconSize: 20 };
+  const button = {
+    scanning: { title: loc.sync.btn_pause, onPress: pause, Icon: PauseIcon, iconSize: 13, testID: 'SyncPauseButton' },
+    paused: { title: loc.sync.btn_continue, onPress: resume, Icon: PlayIcon, iconSize: 17, testID: 'SyncContinueButton' },
+    done: {
+      ...checkButton,
+      title: busy ? loc.sync.btn_checking : loc.sync.btn_check_again,
+      backgroundColor: colors.accentSubtle,
+      borderColor: colors.brandPrimary,
+      color: colors.textBrand,
+      iconColor: colors.brandPrimary,
+      testID: 'SyncCheckAgainButton',
+    },
+    error: { ...checkButton, title: busy ? loc.sync.btn_checking : loc.sync.btn_retry, testID: 'SyncRetryButton' },
+  }[status];
 
   return (
     <SafeArea>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} alwaysBounceVertical={false}>
-        <FadeIn key={layout} animate={openedOn === null}>
+        <FadeIn layout={layout}>
           <View style={styles.iconBadge} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
             <SyncStatusIcon status={status} size={66} />
           </View>
@@ -233,7 +200,14 @@ const SyncScreen: React.FC<SyncScreenProps> = () => {
             </View>
           )}
 
-          {inProgress && <EtaCountdown eta={scan.eta} etaComputedAt={scan.etaComputedAt} running={scanState.status === 'scanning'} />}
+          {inProgress && (
+            <EtaCountdown
+              key={scan.etaComputedAt ?? 'none'}
+              eta={scan.eta}
+              etaComputedAt={scan.etaComputedAt}
+              running={scanState.status === 'scanning'}
+            />
+          )}
 
           {status !== 'error' && (
             <ProgressBar
@@ -272,7 +246,7 @@ const SyncScreen: React.FC<SyncScreenProps> = () => {
             </View>
           )}
 
-          {renderActionButton()}
+          <ActionButton backgroundColor={colors.brandPrimary} color={colors.white} style={styles.button} {...button} />
         </FadeIn>
 
         <View style={[styles.privacyCard, { backgroundColor: colors.surfaceSubtle }]}>

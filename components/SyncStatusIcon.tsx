@@ -1,5 +1,6 @@
 import React from 'react';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import type { SyncDisplayStatus } from '../hooks/useSyncDisplayStatus';
 import { useTheme } from './themes';
 
 export const PauseIcon = ({ color = 'white', size = 32 }: { color?: string; size?: number }) => (
@@ -21,10 +22,8 @@ export const PlayIcon = ({ color = 'white', size = 17 }: { color?: string; size?
   </Svg>
 );
 
-export type SyncStatusIconType = 'scanning' | 'paused' | 'done' | 'error';
-
 interface SyncStatusIconProps {
-  status: SyncStatusIconType;
+  status: SyncDisplayStatus;
   size?: number;
 }
 

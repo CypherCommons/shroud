@@ -72,6 +72,18 @@ describe('useSyncDisplayStatus', () => {
     expect(result.current).toEqual({ status: 'done', settled: true });
   });
 
+  it('keeps its minimum time on screen when the clock goes back meanwhile', () => {
+    const { result, rerender } = mount('idle');
+    rerender({ status: 'scanning', hold: false });
+    act(() => jest.advanceTimersByTime(400));
+
+    jest.setSystemTime(Date.now() - 10 * 60_000); // a network time correction, say
+    rerender({ status: 'idle', hold: false });
+    act(() => jest.advanceTimersByTime(800));
+
+    expect(result.current).toEqual({ status: 'done', settled: true });
+  });
+
   it('swaps between scanning and paused in the same render', () => {
     const { result, rerender } = mount('scanning');
 

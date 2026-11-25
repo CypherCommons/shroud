@@ -2,15 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { ScanStatus } from '../helpers/silent-payments';
 
-/** The Sync screen's layouts: `idle` reads as done, the wallet caught up. */
-export type SyncDisplayStatus = 'done' | 'scanning' | 'paused' | 'error';
+/** The Sync screen's layouts: the scan's statuses, with `idle` read as done, the wallet caught up. */
+export type SyncDisplayStatus = Exclude<ScanStatus, 'idle'> | 'done';
 
 // A scan has to run this long before the screen swaps to its progress layout, so the scan each new
 // block brings (often over in a few hundred milliseconds) doesn't flash it.
-export const SCANNING_SHOW_DELAY_MS = 400;
+const SCANNING_SHOW_DELAY_MS = 400;
 // Once shown, the progress layout stays at least this long, so a scan ending right after it appeared
 // doesn't flicker it away.
-export const SCANNING_MIN_VISIBLE_MS = 800;
+const SCANNING_MIN_VISIBLE_MS = 800;
 
 const isSwap = (a: SyncDisplayStatus, b: SyncDisplayStatus) => (a === 'scanning' && b === 'paused') || (a === 'paused' && b === 'scanning');
 const isLanding = (status: SyncDisplayStatus) => status === 'done' || status === 'error';
@@ -40,7 +40,8 @@ export function syncDisplayDelay(
 export function useSyncDisplayStatus(status: ScanStatus, hold: boolean): { status: SyncDisplayStatus; settled: boolean } {
   const target: SyncDisplayStatus = status === 'idle' ? 'done' : status;
   const [shown, setShown] = useState<SyncDisplayStatus>(target);
-  // when the target and the shown layout last changed, so a pending wait survives `hold` changing
+  // when the target and the shown layout last changed, so a pending wait survives `hold` changing. On the
+  // monotonic clock: a clock change can't stretch a wait.
   const since = useRef({ target: 0, shown: 0 });
 
   // Pause and Continue land with the wallet's emit, in the same commit: the two layouts differ only in
@@ -50,15 +51,15 @@ export function useSyncDisplayStatus(status: ScanStatus, hold: boolean): { statu
   }
 
   useEffect(() => {
-    since.current.target = Date.now();
+    since.current.target = performance.now();
   }, [target]);
 
   useEffect(() => {
-    since.current.shown = Date.now();
+    since.current.shown = performance.now();
   }, [shown]);
 
   useEffect(() => {
-    const now = Date.now();
+    const now = performance.now();
     const delay = syncDisplayDelay(shown, target, { hold, targetForMs: now - since.current.target, shownForMs: now - since.current.shown });
     if (delay === null) return;
 

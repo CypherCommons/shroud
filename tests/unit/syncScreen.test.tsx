@@ -8,6 +8,7 @@ import { CHECK_FEEDBACK_MS, CHECK_MIN_BUSY_MS } from '../../hooks/useCheckForPay
 import loc from '../../loc';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
 import SyncScreen from '../../screen/wallets/SyncScreen';
+import { defer } from '../helpers/defer';
 
 // What useStorage hands the screen, kept in a test's state so the wallet can change it under the screen.
 const mockStorage = React.createContext<{ scanState: ScanStateInfo; wallets: unknown[] } | null>(null);
@@ -16,11 +17,7 @@ jest.mock('../../hooks/context/useStorage', () => ({
   useStorage: () => require('react').useContext(mockStorage),
 }));
 jest.mock('../../modules/hapticFeedback');
-jest.mock('react-native-safe-area-context', () => ({
-  SafeAreaProvider: ({ children }: { children: React.ReactNode }) => children,
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-  useSafeAreaFrame: () => ({ x: 0, y: 0, width: 320, height: 640 }),
-}));
+jest.mock('react-native-safe-area-context', () => require('react-native-safe-area-context/jest/mock').default);
 
 const TIP = 900_000;
 const idle: ScanStateInfo = { ...IDLE_SCAN_STATE, lastScannedBlock: TIP };
@@ -34,14 +31,6 @@ const scanning = (percentComplete: number | null, eta: Partial<ScanStateInfo> = 
       : { currentBlock: TIP + 10, tipHeight: TIP + 20, totalBlocks: 20, blocksScanned: 10, percentComplete, utxosFound: 0 },
   ...eta,
 });
-
-const defer = <T,>() => {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>(_resolve => {
-    resolve = _resolve;
-  });
-  return { promise, resolve };
-};
 
 /** The screen over a fake scannable wallet whose pause and resume emit at once, like the real one. */
 const renderScreen = (initial: ScanStateInfo) => {
@@ -180,13 +169,37 @@ describe('unit - SyncScreen', () => {
   it('fades a new layout in, but not the one it opens on', () => {
     const timing = jest.spyOn(Animated, 'timing');
     const { emit } = renderScreen(idle);
-    expect(screen.getByTestId('SyncLayout')).toHaveStyle({ opacity: 1 });
+    expect(screen.queryByTestId('SyncFadeCover', { includeHiddenElements: true })).toBeNull();
 
     emit(scanning(null));
     advance(400);
 
-    expect(screen.getByTestId('SyncLayout')).toHaveStyle({ opacity: 0 });
-    expect(timing).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ toValue: 1, useNativeDriver: true }));
+    // a cover in the screen's colour fades away over the new layout
+    expect(screen.getByTestId('SyncFadeCover', { includeHiddenElements: true })).toHaveStyle({ opacity: 1 });
+    expect(timing).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ toValue: 0, useNativeDriver: true }));
+  });
+
+  // Android reads out a live region's changes, not one just mounted; and remounting the button would take a
+  // screen reader's focus off it
+  it('keeps the title, subtitle and button mounted from one layout to the next, for screen readers', async () => {
+    const answer = defer<number>();
+    const { wallet, emit } = renderScreen(failed);
+    wallet.checkForPayments.mockReturnValue(answer.promise);
+    const title = screen.getByRole('header');
+    const subtitle = screen.getByText(loc.sync.error_description);
+    const button = screen.getByTestId('SyncRetryButton');
+
+    fireEvent.press(button);
+    emit(idle);
+    await act(async () => answer.resolve(0));
+    advance(CHECK_MIN_BUSY_MS);
+    advance(0);
+
+    expect(screen.getByText(loc.sync.done)).toBe(title);
+    expect(screen.getByText(loc.sync.checked_just_now)).toBe(subtitle);
+    expect(screen.getByTestId('SyncCheckAgainButton')).toBe(button);
+    expect(title.props.accessibilityLiveRegion).toBe('polite');
+    expect(subtitle.props.accessibilityLiveRegion).toBe('polite');
   });
 
   it('pauses and continues with no delay', () => {
