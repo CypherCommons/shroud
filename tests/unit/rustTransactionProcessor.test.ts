@@ -58,12 +58,12 @@ describe('unit - RustTransactionProcessor', () => {
   beforeEach(() => {
     mockScan.mockReset();
     clock = 0;
-    jest.spyOn(Date, 'now').mockImplementation(() => clock);
+    jest.spyOn(performance, 'now').mockImplementation(() => clock);
     jest.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  // Each slice holds the thread `ms`. A task queued just before the batch starts shows where the batch let
-  // other work run, and `yields` counts the batch's own yields.
+  // Each slice holds the thread `ms`. Records the slices and the batch's yields in the order they came, with a
+  // task queued just before the batch, which shows where the batch let other work run.
   const runWithSlicesOf = async (ms: number, sliceCount: number) => {
     const order: string[] = [];
     answerPerSlice(() => {
@@ -71,13 +71,16 @@ describe('unit - RustTransactionProcessor', () => {
       order.push('slice');
     });
     setTimeout(() => order.push('other task'), 0);
-    const timers = jest.spyOn(global, 'setTimeout');
+    const realSetTimeout = global.setTimeout;
+    const timers = jest.spyOn(global, 'setTimeout').mockImplementation(((callback: () => void, delay?: number) => {
+      order.push('yield');
+      return realSetTimeout(callback, delay);
+    }) as typeof setTimeout);
 
     await processor.processBatch(transactions((sliceCount - 1) * SCAN_SLICE_SIZE + 1));
 
-    const yields = timers.mock.calls.length;
     timers.mockRestore();
-    return { order, yields };
+    return order;
   };
 
   afterEach(() => jest.restoreAllMocks());
@@ -91,27 +94,43 @@ describe('unit - RustTransactionProcessor', () => {
     expect(found.map(utxo => utxo.txid)).toEqual(['tx0', `tx${SCAN_SLICE_SIZE}`, `tx${2 * SCAN_SLICE_SIZE}`]);
   });
 
-  it(`lets the app run once slices have held the thread ${SCAN_YIELD_AFTER_MS}ms`, async () => {
-    const { order, yields } = await runWithSlicesOf(20, 3);
+  it('lets the app run before scanning a window of several slices, which it has only just parsed', async () => {
+    const order = await runWithSlicesOf(5, 2);
 
-    // 20ms, then 40ms: the waiting task gets its turn before the third slice
-    expect(order).toEqual(['slice', 'slice', 'other task', 'slice']);
-    expect(yields).toBe(1);
+    expect(order.slice(0, 3)).toEqual(['yield', 'other task', 'slice']);
+  });
+
+  it(`lets the app run again once slices have held the thread ${SCAN_YIELD_AFTER_MS}ms`, async () => {
+    const order = await runWithSlicesOf(20, 3);
+
+    // 20ms, then 40ms: a yield before the third slice
+    expect(order).toEqual(['yield', 'other task', 'slice', 'slice', 'yield', 'slice']);
   });
 
   it('yields after every slice that holds the thread that long on its own', async () => {
-    const { order, yields } = await runWithSlicesOf(SCAN_YIELD_AFTER_MS + 10, 3);
+    const order = await runWithSlicesOf(SCAN_YIELD_AFTER_MS + 10, 3);
 
-    expect(order).toEqual(['slice', 'other task', 'slice', 'slice']);
-    expect(yields).toBe(2);
+    expect(order).toEqual(['yield', 'other task', 'slice', 'yield', 'slice', 'yield', 'slice']);
   });
 
   it('runs quick slices back to back, without idling between them', async () => {
-    const { order, yields } = await runWithSlicesOf(5, 3);
+    const order = await runWithSlicesOf(5, 3);
 
-    // 15ms in all, so no yield, which would cost up to a frame on iOS: the waiting task runs after the batch
-    expect(order).toEqual(['slice', 'slice', 'slice']);
-    expect(yields).toBe(0);
+    // 15ms in all, so no yield after the first, which would cost up to a frame on iOS
+    expect(order).toEqual(['yield', 'other task', 'slice', 'slice', 'slice']);
+  });
+
+  it('scans a window of one slice at once, with nothing parsed big enough to wait on', async () => {
+    const order = await runWithSlicesOf(5, 1);
+
+    expect(order).toEqual(['slice']);
+  });
+
+  it('stops before the first slice on a cancel, by throwing', async () => {
+    answerPerSlice();
+
+    await expect(processor.processBatch(transactions(1), () => true)).rejects.toThrow('SCAN_CANCELLED');
+    expect(mockScan).not.toHaveBeenCalled();
   });
 
   it('stops between slices on a cancel, by throwing, so the caller never marks the window scanned', async () => {

@@ -25,6 +25,9 @@ export const SCAN_YIELD_AFTER_MS = 30;
 // runtime gets back to touches, timers and rendering.
 const yieldToEventLoop = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
+// The monotonic clock, so that a change to the device's clock mid-scan can't stop the scan yielding.
+const now = () => performance.now();
+
 export class RustTransactionProcessor {
   private scanPrivkeyHex: string;
   /** Main spend pubkey plus the label-0 (change) spend pubkey — the scanner tries both. */
@@ -71,27 +74,24 @@ export class RustTransactionProcessor {
       return [];
     }
 
-    if (cancelScanCallback?.()) {
-      return [];
-    }
-
     try {
       const matched: RustMatchedUTXO[] = [];
       let transactionsScanned = 0;
       let outputsScanned = 0;
 
-      let holdingSince = Date.now();
+      // A window of more than one slice came in as a large JSON body, decoded and parsed in this same task
+      // just now: let the app catch up before the slices add to that hold.
+      if (transactions.length > SCAN_SLICE_SIZE) await yieldToEventLoop();
+      let holdingSince = now();
       for (let start = 0; start < transactions.length; start += SCAN_SLICE_SIZE) {
-        if (start > 0) {
-          if (Date.now() - holdingSince >= SCAN_YIELD_AFTER_MS) {
-            await yieldToEventLoop();
-            holdingSince = Date.now();
-          }
-          // Thrown rather than returning what's found so far: once this resolves the caller marks the
-          // whole window scanned, so the slices not yet scanned would be skipped for good.
-          if (cancelScanCallback?.()) {
-            throw new Error('SCAN_CANCELLED');
-          }
+        if (start > 0 && now() - holdingSince >= SCAN_YIELD_AFTER_MS) {
+          await yieldToEventLoop();
+          holdingSince = now();
+        }
+        // Thrown rather than returning what's found so far: once this resolves the caller marks the whole
+        // window scanned, so the slices not yet scanned would be skipped for good.
+        if (cancelScanCallback?.()) {
+          throw new Error('SCAN_CANCELLED');
         }
 
         const result: RustBatchScanResult = spScanTransactions(
