@@ -30,7 +30,8 @@ afterEach(() => {
 describe('useCheckForPayments', () => {
   it('stays busy for at least 600ms, even when the check answers at once', async () => {
     const answer = defer<number>();
-    const { result } = renderHook(() => useCheckForPayments(walletChecking(() => answer.promise)));
+    const wallet = walletChecking(() => answer.promise);
+    const { result } = renderHook(() => useCheckForPayments(wallet));
 
     act(() => result.current.check());
     expect(result.current.checking).toBe(true);
@@ -45,7 +46,8 @@ describe('useCheckForPayments', () => {
 
   it('stays busy for as long as a slow check takes', async () => {
     const answer = defer<number>();
-    const { result } = renderHook(() => useCheckForPayments(walletChecking(() => answer.promise)));
+    const wallet = walletChecking(() => answer.promise);
+    const { result } = renderHook(() => useCheckForPayments(wallet));
 
     act(() => result.current.check());
     act(() => jest.advanceTimersByTime(2000));
@@ -58,7 +60,8 @@ describe('useCheckForPayments', () => {
 
   it('reports a check that failed', async () => {
     const answer = defer<number>();
-    const { result } = renderHook(() => useCheckForPayments(walletChecking(() => answer.promise)));
+    const wallet = walletChecking(() => answer.promise);
+    const { result } = renderHook(() => useCheckForPayments(wallet));
 
     act(() => result.current.check());
     await act(async () => answer.reject(new Error('indexer down')));
@@ -88,7 +91,8 @@ describe('useCheckForPayments', () => {
 
   it('keeps to its minimum busy time when the clock goes back mid-check', async () => {
     const answer = defer<number>();
-    const { result } = renderHook(() => useCheckForPayments(walletChecking(() => answer.promise)));
+    const wallet = walletChecking(() => answer.promise);
+    const { result } = renderHook(() => useCheckForPayments(wallet));
 
     act(() => result.current.check());
     jest.setSystemTime(Date.now() - 10 * 60_000); // a network time correction, say
@@ -98,19 +102,21 @@ describe('useCheckForPayments', () => {
     expect(result.current.checking).toBe(false);
   });
 
-  it('leaves nothing running once the screen has gone', async () => {
+  it('carries a check on past the screen that started it, and shows it running on the next', async () => {
     const answer = defer<number>();
-    const { result, unmount } = renderHook(() => useCheckForPayments(walletChecking(() => answer.promise)));
+    const wallet = walletChecking(() => answer.promise);
+    const first = renderHook(() => useCheckForPayments(wallet));
+    act(() => first.result.current.check());
+    first.unmount();
 
-    act(() => result.current.check());
-    unmount();
-    const timers = jest.getTimerCount();
-    // outside act, whose async form leaves a timer of its own
-    answer.resolve(0);
-    for (let i = 0; i < 10; i++) await Promise.resolve();
+    const next = renderHook(() => useCheckForPayments(wallet));
+    expect(next.result.current.checking).toBe(true);
+    act(() => next.result.current.check());
+    expect(wallet.checkForPayments).toHaveBeenCalledTimes(1);
 
-    // no timer left to settle a check nobody is waiting for
-    expect(jest.getTimerCount()).toBe(timers);
+    await act(async () => answer.resolve(0));
+    act(() => jest.advanceTimersByTime(CHECK_MIN_BUSY_MS));
+    expect(next.result.current).toMatchObject({ checking: false, outcome: { ok: true } });
   });
 
   it('does nothing without a wallet', () => {
@@ -133,7 +139,8 @@ describe('useCheckFeedback', () => {
     );
 
   it('waits for the screen to land before showing an outcome', () => {
-    const { result, rerender } = mount(outcome(1), null);
+    const { result, rerender } = mount(null, null);
+    rerender({ outcome: outcome(1), landedOn: null });
     expect(result.current).toEqual({ feedback: null, pending: true });
     expect(triggerHapticFeedback).not.toHaveBeenCalled();
 
@@ -143,7 +150,8 @@ describe('useCheckFeedback', () => {
   });
 
   it('shows a confirmation for 3s', () => {
-    const { result } = mount(outcome(1), 'done');
+    const { result, rerender } = mount(null, 'done');
+    rerender({ outcome: outcome(1), landedOn: 'done' });
 
     act(() => jest.advanceTimersByTime(CHECK_FEEDBACK_MS - 1));
     expect(result.current.feedback).toBe('checked');
@@ -156,19 +164,28 @@ describe('useCheckFeedback', () => {
     ['a check that failed', outcome(1, false), 'done'],
     ['a check that ended on an error', outcome(1, true), 'error'],
   ])('reports %s with a warning haptic', (_label, failed, landedOn) => {
-    const { result } = mount(failed, landedOn);
+    const { result, rerender } = mount(null, landedOn);
+    rerender({ outcome: failed, landedOn });
 
     expect(result.current.feedback).toBe('failed');
     expect(triggerHapticFeedback).toHaveBeenCalledWith(HapticFeedbackTypes.NotificationWarning);
   });
 
   it('shows each outcome once', () => {
-    const { result, rerender } = mount(outcome(1), 'done');
+    const { result, rerender } = mount(null, 'done');
+    rerender({ outcome: outcome(1), landedOn: 'done' });
     act(() => jest.advanceTimersByTime(CHECK_FEEDBACK_MS));
 
     rerender({ outcome: outcome(1), landedOn: 'done' });
 
     expect(result.current.feedback).toBeNull();
     expect(triggerHapticFeedback).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves out an earlier check’s outcome, already in when the screen opened', () => {
+    const { result } = mount(outcome(1), 'done');
+
+    expect(result.current).toEqual({ feedback: null, pending: false });
+    expect(triggerHapticFeedback).not.toHaveBeenCalled();
   });
 });

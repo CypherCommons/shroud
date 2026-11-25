@@ -13,17 +13,14 @@ export const useScannableWallet = (): IScannableWallet | null => {
 
 /**
  * Memoised scan controls for a scannable wallet, so every screen driving the scan shares one
- * definition of what each control does (and doesn't allocate a new callback per render).
- *
- * `retry` checks again from scratch rather than resuming: on error the scan was never paused
- * (activeScanPromise is already null), so resumeScan() would be a no-op.
+ * definition of what each control does (and doesn't allocate a new callback per render). Checking
+ * again is useCheckForPayments, which also tells the screens while a check runs.
  */
 export const useScanActions = (wallet: IScannableWallet | null) =>
   useMemo(
     () => ({
       pause: () => wallet?.pauseScan(),
       resume: () => wallet?.resumeScan(),
-      retry: () => wallet?.checkForPayments().catch((e: any) => console.warn('[useScanActions] retry scan error:', e)),
     }),
     [wallet],
   );

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import type { IScannableWallet } from '../helpers/silent-payments';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../modules/hapticFeedback';
@@ -11,54 +11,50 @@ export const CHECK_FEEDBACK_MS = 3000;
 export type CheckOutcome = { id: number; ok: boolean };
 export type CheckFeedback = 'checked' | 'failed';
 
+type CheckState = { checking: boolean; outcome: CheckOutcome | null };
+
+const IDLE: CheckState = { checking: false, outcome: null };
+
 /**
- * Runs the wallet's payment check for a button: `checking` from the tap until the check is over (at
- * least CHECK_MIN_BUSY_MS), then the check's `outcome`. A tap while a check runs does nothing.
+ * A wallet's payment check as every screen sees it: one started from the home banner shows as running on the
+ * Sync screen too, and outlives the screen that started it.
  */
-export function useCheckForPayments(wallet: IScannableWallet | null): {
-  check: () => void;
-  checking: boolean;
-  outcome: CheckOutcome | null;
-} {
-  const [checking, setChecking] = useState(false);
-  const [outcome, setOutcome] = useState<CheckOutcome | null>(null);
-  const inFlight = useRef(false);
-  const mounted = useRef(true);
-  const minBusyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastId = useRef(0);
+class PaymentCheck {
+  private state: CheckState = IDLE;
+  private listeners = new Set<() => void>();
+  private lastId = 0;
 
-  useEffect(() => {
-    mounted.current = true;
+  constructor(private readonly wallet: IScannableWallet) {}
+
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
     return () => {
-      mounted.current = false;
-      if (minBusyTimer.current) clearTimeout(minBusyTimer.current);
+      this.listeners.delete(listener);
     };
-  }, []);
+  };
 
-  const check = useCallback(() => {
-    // the ref, not `checking`: a second tap can land before the render that disables the button
-    if (!wallet || inFlight.current) return;
-    inFlight.current = true;
-    setChecking(true);
+  getState = () => this.state;
+
+  /** Busy from now until the check is over, and at least CHECK_MIN_BUSY_MS. A call while one runs does nothing. */
+  run = () => {
+    if (this.state.checking) return;
+    this.setState({ ...this.state, checking: true });
 
     // Over once both the check and its minimum time are: whichever ends last settles it.
     let ok: boolean | null = null;
     let minBusyOver = false;
     const settle = () => {
       if (ok === null || !minBusyOver) return;
-      inFlight.current = false;
-      if (!mounted.current) return;
-      lastId.current += 1;
-      setChecking(false);
-      setOutcome({ id: lastId.current, ok });
+      this.lastId += 1;
+      this.setState({ checking: false, outcome: { id: this.lastId, ok } });
     };
 
     // a timer from the tap rather than a reading of the clock, which a clock change mid-check would throw off
-    minBusyTimer.current = setTimeout(() => {
+    setTimeout(() => {
       minBusyOver = true;
       settle();
     }, CHECK_MIN_BUSY_MS);
-    wallet.checkForPayments().then(
+    this.wallet.checkForPayments().then(
       () => {
         ok = true;
         settle();
@@ -69,21 +65,55 @@ export function useCheckForPayments(wallet: IScannableWallet | null): {
         settle();
       },
     );
-  }, [wallet]);
+  };
 
-  return { check, checking, outcome };
+  private setState(state: CheckState) {
+    this.state = state;
+    this.listeners.forEach(listener => listener());
+  }
+}
+
+const checks = new WeakMap<IScannableWallet, PaymentCheck>();
+
+const checkFor = (wallet: IScannableWallet): PaymentCheck => {
+  let check = checks.get(wallet);
+  if (check === undefined) {
+    check = new PaymentCheck(wallet);
+    checks.set(wallet, check);
+  }
+  return check;
+};
+
+const noListeners = () => () => {};
+const idle = () => IDLE;
+const nothing = () => {};
+
+/**
+ * Runs the wallet's payment check for a button: `checking` from the tap until the check is over (at
+ * least CHECK_MIN_BUSY_MS), then the check's `outcome`. A tap while a check runs does nothing. Every
+ * screen using it for the same wallet sees the same check.
+ */
+export function useCheckForPayments(wallet: IScannableWallet | null): {
+  check: () => void;
+  checking: boolean;
+  outcome: CheckOutcome | null;
+} {
+  const paymentCheck = wallet ? checkFor(wallet) : null;
+  const { checking, outcome } = useSyncExternalStore(paymentCheck?.subscribe ?? noListeners, paymentCheck?.getState ?? idle);
+  return { check: paymentCheck?.run ?? nothing, checking, outcome };
 }
 
 /**
  * Shows each check's outcome once, with its haptic, for CHECK_FEEDBACK_MS. It waits until the screen
  * has `landedOn` the layout the check ended in, so a confirmation never shows over a scan still on
- * screen; `pending` is true while an outcome waits.
+ * screen; `pending` is true while an outcome waits. An outcome already in when the screen opened is
+ * an earlier check's, which it never showed, and isn't shown.
  */
 export function useCheckFeedback(
   outcome: CheckOutcome | null,
   landedOn: 'done' | 'error' | null,
 ): { feedback: CheckFeedback | null; pending: boolean } {
-  const [presentedId, setPresentedId] = useState(0);
+  const [presentedId, setPresentedId] = useState(() => outcome?.id ?? 0);
   // an object, so that the same feedback twice in a row is shown, with its haptic, the second time too
   const [shown, setShown] = useState<{ kind: CheckFeedback } | null>(null);
 

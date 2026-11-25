@@ -1,10 +1,10 @@
 import React from 'react';
 import { AccessibilityInfo, Animated, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, renderHook, screen } from '@testing-library/react-native';
 
 import { IDLE_SCAN_STATE, type ScanStateInfo } from '../../helpers/silent-payments/types';
-import { CHECK_FEEDBACK_MS, CHECK_MIN_BUSY_MS } from '../../hooks/useCheckForPayments';
+import { CHECK_FEEDBACK_MS, CHECK_MIN_BUSY_MS, useCheckForPayments } from '../../hooks/useCheckForPayments';
 import loc from '../../loc';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
 import SyncScreen from '../../screen/wallets/SyncScreen';
@@ -62,12 +62,12 @@ const renderScreen = (initial: ScanStateInfo) => {
     );
   };
 
-  render(
+  const view = render(
     <NavigationContainer>
       <Harness />
     </NavigationContainer>,
   );
-  return { wallet, emit: (state: ScanStateInfo) => act(() => emit(state)) };
+  return { wallet, view, emit: (state: ScanStateInfo) => act(() => emit(state)) };
 };
 
 const advance = (ms: number) => act(() => jest.advanceTimersByTime(ms));
@@ -111,6 +111,17 @@ describe('unit - SyncScreen', () => {
 
     fireEvent.press(screen.getByTestId('SyncCheckAgainButton'));
     expect(wallet.checkForPayments).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a check started elsewhere, from the home banner say, as running', () => {
+    const { wallet, view } = renderScreen(failed);
+    wallet.checkForPayments.mockReturnValue(new Promise(() => {}));
+    const banner = renderHook(() => useCheckForPayments(wallet as never));
+
+    act(() => banner.result.current.check());
+
+    expect(view.getByTestId('SyncRetryButton')).toBeBusy();
+    expect(view.getByText(loc.sync.btn_checking)).toBeTruthy();
   });
 
   it('confirms a check that found the wallet caught up, then goes back to watching', async () => {

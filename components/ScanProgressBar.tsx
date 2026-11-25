@@ -6,21 +6,23 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import loc from '../loc';
-import type { ScanStateInfo } from '../helpers/silent-payments';
+import type { IScannableWallet, ScanStateInfo } from '../helpers/silent-payments';
+import { useCheckForPayments } from '../hooks/useCheckForPayments';
 import { DetailViewStackParamList } from '../navigation/DetailViewStackParamList';
 import { useTheme } from './themes';
 import { ClashFont } from '../constants/fonts';
 
 interface Props {
   scanState: ScanStateInfo;
-  onResume: () => void;
-  onRetry: () => void;
+  wallet: IScannableWallet;
 }
 
 type NavigationProps = NativeStackNavigationProp<DetailViewStackParamList>;
 
-const ScanProgressBar: React.FC<Props> = ({ scanState, onResume, onRetry }) => {
+const ScanProgressBar: React.FC<Props> = ({ scanState, wallet }) => {
   const { colors } = useTheme();
+  // the same check the Sync screen runs, so a retry from here answers the tap and shows as running there too
+  const { check, checking } = useCheckForPayments(wallet);
   const navigation = useNavigation<NavigationProps>();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseAnimRef = useRef<Animated.CompositeAnimation | null>(null);
@@ -88,7 +90,7 @@ const ScanProgressBar: React.FC<Props> = ({ scanState, onResume, onRetry }) => {
             {blockText}
           </Text>
         </TouchableOpacity>
-        <Pressable onPress={onResume} hitSlop={8} accessibilityRole="button" accessibilityLabel={loc.sync.banner_resume}>
+        <Pressable onPress={() => wallet.resumeScan()} hitSlop={8} accessibilityRole="button" accessibilityLabel={loc.sync.banner_resume}>
           <Text style={[styles.actionText, { color: colors.textBrand }]}>{loc.sync.banner_resume}</Text>
         </Pressable>
       </View>
@@ -112,8 +114,14 @@ const ScanProgressBar: React.FC<Props> = ({ scanState, onResume, onRetry }) => {
             {loc.sync.banner_error}
           </Text>
         </TouchableOpacity>
-        <Pressable onPress={onRetry} hitSlop={8} accessibilityRole="button" accessibilityLabel={loc.sync.btn_retry}>
-          <Text style={[styles.actionText, { color: colors.statusError }]}>{loc.sync.btn_retry}</Text>
+        <Pressable
+          onPress={check}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityState={checking ? { busy: true } : undefined}
+          testID="ScanBannerRetry"
+        >
+          <Text style={[styles.actionText, { color: colors.statusError }]}>{checking ? loc.sync.btn_checking : loc.sync.btn_retry}</Text>
         </Pressable>
       </View>
     );
