@@ -274,6 +274,60 @@ async function getSavedPeer(): Promise<Peer | null> {
   }
 }
 
+/** The server is reachable and speaks Electrum, but serves a chain other than the one asked for. */
+export class WrongChainError extends Error {
+  // Names the server so the user knows which entry to fix, and so a repeat for the same saved
+  // server is not suppressed by the alert's duplicate check.
+  constructor(peer: Peer, networkId: NetworkId) {
+    super(
+      loc.formatString(loc.settings.electrum_error_wrong_network, {
+        server: `${peer.host}:${peer.ssl ?? peer.tcp}`,
+        network: getNetwork(networkId).displayName,
+      }),
+    );
+    this.name = 'WrongChainError';
+  }
+}
+
+/**
+ * The one way to open an Electrum connection: resolves the transport, negotiates the protocol and
+ * proves the server is on `networkId` by its genesis hash. Any reachable Electrum server passes the
+ * version handshake, including one for another chain, which then returns empty history and rejects
+ * our broadcasts without ever saying why. Throws WrongChainError for one of those; an unreachable
+ * or timed-out server throws as it comes. The caller owns the returned client.
+ */
+async function openClient(
+  peer: Peer,
+  networkId: NetworkId = getActiveNetworkId(),
+): Promise<{ client: typeof ElectrumClient; version: string[] }> {
+  const transport = await resolveElectrumTransport(peer.host, peer.tcp, peer.ssl);
+  if (!transport) {
+    throw new Error(`Cannot connect to ${peer.host}: onion servers require Tor to be enabled with a tcp port configured`);
+  }
+
+  const client = new ElectrumClient(transport.net, tls, transport.port, peer.host, transport.protocol);
+  client.onError = () => {}; // muted until the caller installs its own
+  let timeoutId: NodeJS.Timeout | undefined;
+  try {
+    const version = await Promise.race([
+      client.initElectrum({ client: 'shroud', version: '1.4' }),
+      new Promise<never>((_resolve, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`Timed out connecting to ${peer.host}`)), 5000);
+      }),
+    ]);
+    const features = await client.server_features();
+    if (String(features?.genesis_hash).toLowerCase() !== getNetwork(networkId).genesisHash) {
+      throw new WrongChainError(peer, networkId);
+    }
+    return { client, version };
+  } catch (e) {
+    client.close();
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function connectMain(): Promise<void> {
   let usingPeer = getNextPeer();
   const savedPeer = await getSavedPeer();
@@ -292,11 +346,8 @@ export async function connectMain(): Promise<void> {
 
   try {
     console.log('begin connection:', JSON.stringify(usingPeer));
-    const transport = await resolveElectrumTransport(usingPeer.host, usingPeer.tcp, usingPeer.ssl);
-    if (!transport) {
-      throw new Error(`Cannot connect to ${usingPeer.host}: onion servers require Tor to be enabled with a tcp port configured`);
-    }
-    mainClient = new ElectrumClient(transport.net, tls, transport.port, usingPeer.host, transport.protocol);
+    let ver: string[];
+    ({ client: mainClient, version: ver } = await openClient(usingPeer));
 
     mainClient.onError = function (e: { message: string }) {
       console.log('electrum mainClient.onError():', e.message);
@@ -313,7 +364,6 @@ export async function connectMain(): Promise<void> {
         setTimeout(connectMain, usingPeer.host.endsWith('.onion') ? 4000 : 500);
       }
     };
-    const ver = await mainClient.initElectrum({ client: 'shroud', version: '1.4' });
     if (ver && ver[0]) {
       console.log('connected to ', ver);
       serverName = ver[0];
@@ -355,6 +405,12 @@ export async function connectMain(): Promise<void> {
     console.log('bad connection:', JSON.stringify(usingPeer), e);
     mainClient?.close();
     mainClient = undefined;
+    if (e instanceof WrongChainError) {
+      // Retrying the same server cannot help, and a silent fallback would hide a misconfigured
+      // saved server or shipped peer. Say what is wrong; "try again" moves on to the next peer.
+      presentNetworkErrorAlert(usingPeer, e.message);
+      return;
+    }
   }
 
   if (!mainConnected) {
@@ -372,14 +428,16 @@ export async function connectMain(): Promise<void> {
   }
 }
 
-const presentNetworkErrorAlert = async (usingPeer?: Peer) => {
+const presentNetworkErrorAlert = async (usingPeer?: Peer, message?: string) => {
   presentAlert({
     allowRepeat: false,
     title: loc.errors.network,
-    message: loc.formatString(
-      usingPeer ? loc.settings.electrum_unable_to_connect : loc.settings.electrum_error_connect,
-      usingPeer ? { server: `${usingPeer.host}:${usingPeer.ssl ?? usingPeer.tcp}` } : {},
-    ),
+    message:
+      message ??
+      loc.formatString(
+        usingPeer ? loc.settings.electrum_unable_to_connect : loc.settings.electrum_error_connect,
+        usingPeer ? { server: `${usingPeer.host}:${usingPeer.ssl ?? usingPeer.tcp}` } : {},
+      ),
     buttons: [
       {
         text: loc.wallets.list_tryagain,
@@ -1154,8 +1212,9 @@ const resolveElectrumTransport = async (host: string, tcpPort?: number, sslPort?
 };
 
 /**
- * @returns {Promise<boolean>} Whether provided host:port is a valid electrum server
- * @throws when the server answers for a chain other than `networkId`
+ * Whether `host:port` is an Electrum server for `networkId`, as the settings screen checks before
+ * saving one. An unreachable server is `false`; one on another chain throws WrongChainError so the
+ * screen can say why. Same handshake as connectMain, so what passes here is what connects later.
  */
 export const testConnection = async function (
   host: string,
@@ -1163,40 +1222,14 @@ export const testConnection = async function (
   sslPort?: number,
   networkId: NetworkId = getActiveNetworkId(),
 ): Promise<boolean> {
-  const transport = await resolveElectrumTransport(host, tcpPort, sslPort);
-  if (!transport) return false;
-
-  const client = new ElectrumClient(transport.net, tls, transport.port, host, transport.protocol);
-
-  client.onError = () => {}; // mute
-  let timeoutId: NodeJS.Timeout | undefined;
-  let wrongNetwork = false;
   try {
-    const rez = await Promise.race([
-      new Promise(resolve => {
-        timeoutId = setTimeout(() => resolve('timeout'), 5000);
-      }),
-      client.connect(),
-    ]);
-    if (rez === 'timeout') return false;
-
-    await client.server_version('2.7.11', '1.4');
-    await client.server_ping();
-    // a server for another chain answers just as well, then returns empty history and rejects
-    // our broadcasts
-    const features = await client.server_features();
-    if (String(features?.genesis_hash).toLowerCase() === getNetwork(networkId).genesisHash) return true;
-    wrongNetwork = true;
-  } catch (_) {
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    const { client } = await openClient({ host, tcp: tcpPort, ssl: sslPort }, networkId);
     client.close();
+    return true;
+  } catch (e) {
+    if (e instanceof WrongChainError) throw e;
+    return false;
   }
-
-  if (wrongNetwork) {
-    throw new Error(loc.formatString(loc.settings.electrum_error_wrong_network, { network: getNetwork(networkId).displayName }));
-  }
-  return false;
 };
 
 export const forceDisconnect = (): void => {
