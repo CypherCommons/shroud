@@ -53,6 +53,8 @@ export interface NetworkConfig {
   /** BIP-44 coin type for every derivation path. 1' for all test chains. */
   coinType: 0 | 1;
   isTestnet: boolean;
+  /** Hash of block 0, as an Electrum server reports it in server.features: tells the chains apart. */
+  genesisHash: string;
   /**
    * Floor for silent-payment scanning. On mainnet this is the BIP-352 merge height, which saves
    * scanning ~840k pointless blocks.
@@ -114,6 +116,7 @@ const NETWORKS: Record<NetworkId, NetworkConfig> = {
     bitcoinjs: bitcoin.networks.bitcoin,
     coinType: 0,
     isTestnet: false,
+    genesisHash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
     bip352ActivationHeight: BIP352_ACTIVATION_HEIGHT,
     electrumPeers: MAINNET_ELECTRUM_PEERS,
     explorerTxUrl: txid => `https://mempool.space/tx/${txid}`,
@@ -128,6 +131,7 @@ const NETWORKS: Record<NetworkId, NetworkConfig> = {
     bitcoinjs: bitcoin.networks.testnet,
     coinType: 1,
     isTestnet: true,
+    genesisHash: '00000000da84f2bafbbc53dee25a72ae507ff4914b867c565be350b0da8bf043',
     bip352ActivationHeight: 0,
     electrumPeers: TESTNET4_ELECTRUM_PEERS,
     explorerTxUrl: txid => `https://mempool.space/testnet4/tx/${txid}`,
@@ -142,6 +146,7 @@ const NETWORKS: Record<NetworkId, NetworkConfig> = {
     bitcoinjs: bitcoin.networks.testnet,
     coinType: 1,
     isTestnet: true,
+    genesisHash: '00000008819873e925422c1ff0f99f7cc9bbb232af63a077a480a3633bee1ef6',
     bip352ActivationHeight: 0,
     electrumPeers: SIGNET_ELECTRUM_PEERS,
     explorerTxUrl: txid => `https://mempool.space/signet/tx/${txid}`,
