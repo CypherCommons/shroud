@@ -1,8 +1,9 @@
 import * as Electrum from '../../modules/Electrum';
 import { AbstractHDElectrumWallet } from '../../class/wallets/abstract-hd-electrum-wallet';
 import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
-import { type ScanStateInfo, type SilentPaymentUTXO } from '../../helpers/silent-payments/types';
-import * as indexerModule from '../../modules/SilentPaymentIndexer';
+import { type ScanStateInfo } from '../../helpers/silent-payments/types';
+import { defer } from '../helpers/defer';
+import { spCoin as coin, stubIndexer, TIP } from '../helpers/silentPayments';
 
 jest.mock('../../modules/Electrum', () => ({
   multiGetUtxoByAddress: jest.fn(),
@@ -10,18 +11,6 @@ jest.mock('../../modules/Electrum', () => ({
 }));
 
 const TEST_SEED = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const TIP = 900_000;
-
-const stubIndexer = (overrides: Record<string, any> = {}) => {
-  const indexer = {
-    getLatestBlockHeight: jest.fn().mockResolvedValue({ height: TIP }),
-    getBlockHeightByTimestamp: jest.fn(),
-    scanForwardWithCallback: jest.fn().mockResolvedValue(undefined),
-    ...overrides,
-  };
-  jest.spyOn(indexerModule, 'getDefaultIndexer').mockReturnValue(indexer as any);
-  return indexer;
-};
 
 /** A wallet that has already scanned up to `lastScannedBlock`. */
 const syncedWallet = (lastScannedBlock = TIP) => {
@@ -35,28 +24,6 @@ const recordStates = (wallet: HDSilentPaymentsWallet) => {
   const states: ScanStateInfo[] = [];
   wallet.setOnScanStateChangeCallback(state => states.push(state));
   return states;
-};
-
-const coin = (txid: string, address: string): SilentPaymentUTXO => ({
-  txid,
-  vout: 0,
-  value: 1000,
-  height: TIP + 1,
-  address,
-  silentPaymentAddress: '',
-  pubKey: '',
-  tweak: new Uint8Array(32),
-  blockHash: '',
-  blockTime: 0,
-  isSpent: false,
-});
-
-const defer = <T>() => {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>(_resolve => {
-    resolve = _resolve;
-  });
-  return { promise, resolve };
 };
 
 const flush = () => new Promise(resolve => setImmediate(resolve));

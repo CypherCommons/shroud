@@ -1,23 +1,15 @@
 import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
 import { BIP352_ACTIVATION_HEIGHT } from '../../modules/constants';
-import * as indexerModule from '../../modules/SilentPaymentIndexer';
 import { SilentPaymentIndexer } from '../../modules/SilentPaymentIndexer';
+import { stubIndexer as stubIndexerWith, TIP } from '../helpers/silentPayments';
 
 const TEST_SEED = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const CREATED_AT = 1_750_000_000; // some unix-seconds timestamp
-const TIP = 900_000;
 const RESOLVED = 890_000;
 
-const stubIndexer = (overrides: Record<string, any> = {}) => {
-  const scanForwardWithCallback = jest.fn().mockResolvedValue(undefined);
-  jest.spyOn(indexerModule, 'getDefaultIndexer').mockReturnValue({
-    getLatestBlockHeight: jest.fn().mockResolvedValue({ height: TIP }),
-    getBlockHeightByTimestamp: jest.fn().mockResolvedValue({ blockHeight: RESOLVED }),
-    scanForwardWithCallback,
-    ...overrides,
-  } as any);
-  return scanForwardWithCallback;
-};
+const stubIndexer = (overrides: Record<string, any> = {}) =>
+  stubIndexerWith({ getBlockHeightByTimestamp: jest.fn().mockResolvedValue({ blockHeight: RESOLVED }), ...overrides })
+    .scanForwardWithCallback;
 
 const makeWallet = () => {
   const w = new HDSilentPaymentsWallet();

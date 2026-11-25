@@ -1,25 +1,11 @@
 import * as Electrum from '../../modules/Electrum';
 import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet.ts';
-import { type SilentPaymentUTXO } from '../../helpers/silent-payments/types.ts';
+import { spCoin as coin } from '../helpers/silentPayments';
 
 jest.mock('../../modules/Electrum', () => ({
   multiGetUtxoByAddress: jest.fn(),
   multiGetHistoryByAddress: jest.fn(),
 }));
-
-const coin = (txid: string, address: string): SilentPaymentUTXO => ({
-  txid,
-  vout: 0,
-  value: 1000,
-  height: 1,
-  address,
-  silentPaymentAddress: '',
-  pubKey: '',
-  tweak: new Uint8Array(32),
-  blockHash: '',
-  blockTime: 0,
-  isSpent: false,
-});
 
 describe('markSpentSilentPaymentUTXOs', () => {
   it('marks only coins Electrum knows but no longer lists as unspent', async () => {
