@@ -71,7 +71,7 @@ describe('deferred birth height (indexer down at creation/import)', () => {
     const scan = stubIndexer({ getBlockHeightByTimestamp: jest.fn().mockResolvedValue(response) });
     const w = pendingWallet();
 
-    await expect(w.scanForPayments()).resolves.toBe(0);
+    await expect(w.scanForPayments()).rejects.toThrow('BIRTH_HEIGHT_PENDING');
     expect(scan).not.toHaveBeenCalled();
     expect(w.getPendingBirthTimestamp()).toBe(CREATED_AT);
   });
@@ -80,9 +80,10 @@ describe('deferred birth height (indexer down at creation/import)', () => {
     const scan = stubIndexer({ getBlockHeightByTimestamp: jest.fn().mockRejectedValue(new Error('indexer down')) });
     const w = pendingWallet();
 
-    // first two refreshes defer rather than rescan the whole chain
-    await expect(w.scanForPayments()).resolves.toBe(0);
-    await expect(w.scanForPayments()).resolves.toBe(0);
+    // first two refreshes defer rather than rescan the whole chain, and say nothing was scanned
+    await expect(w.scanForPayments()).rejects.toThrow('BIRTH_HEIGHT_PENDING');
+    await expect(w.scanForPayments()).rejects.toThrow('BIRTH_HEIGHT_PENDING');
+    expect(w.getScanState().status).toBe('error');
     expect(scan).not.toHaveBeenCalled();
     expect(w.getPendingBirthTimestamp()).toBe(CREATED_AT);
 

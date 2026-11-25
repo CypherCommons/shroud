@@ -1169,7 +1169,7 @@ describe('BIP-352 Silent Payments', () => {
       (wallet as any)._utxo = [utxo];
       (wallet as any).lastScannedBlock = 900_000;
       send(wallet); // fills spendKeyCandidates with real Uint8Arrays
-      (wallet as any).isPollingActive = true;
+      (wallet as any)._pollTimer = 42; // a timer id, as React Native hands them out
       (wallet as any).cancelScanCallbackScan = true;
       (wallet as any)._scanState = { ...(wallet as any)._scanState, status: 'scanning' };
       (wallet as any)._scanSamples = [{ t: 1, percent: 50 }];
@@ -1189,6 +1189,19 @@ describe('BIP-352 Silent Payments', () => {
 
       expect(send(loaded).tx).toBeDefined();
       expect(() => loaded.clearCache()).not.toThrow();
+      wallet.clearCache();
+    });
+
+    it('drops the polling fields wallets saved before runtime fields were kept out of storage', () => {
+      const wallet = HDSilentPaymentsWallet.fromMnemonic(TEST_SEED);
+      wallet.prepareForSerialization();
+
+      const loaded = HDSilentPaymentsWallet.fromJson(
+        JSON.stringify({ ...wallet.toPersistable(), pollingIntervalId: 17, isPollingActive: true }),
+      );
+
+      expect(loaded).not.toHaveProperty('pollingIntervalId');
+      expect(loaded).not.toHaveProperty('isPollingActive');
       wallet.clearCache();
     });
 
