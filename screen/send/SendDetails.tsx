@@ -648,13 +648,6 @@ const SendDetails = () => {
     });
   }, [navigation, wallet]);
 
-  const onReplaceableFeeSwitchValueChanged = useCallback(
-    (value: boolean) => {
-      setParams({ isTransactionReplaceable: value });
-    },
-    [setParams],
-  );
-
   const onUseAllPressed = useCallback(() => {
     // toggle off if we're already sending max
     if (recipient?.amount === BitcoinUnit.MAX) {
@@ -697,17 +690,13 @@ const SendDetails = () => {
   const headerRightOnPress = useCallback(
     (id: string) => {
       Keyboard.dismiss();
-      if (id === CommonToolTipActions.SignPSBT.id) {
-        navigateToQRCodeScanner();
-      } else if (id === CommonToolTipActions.SendMax.id) {
+      if (id === CommonToolTipActions.SendMax.id) {
         onUseAllPressed();
-      } else if (id === CommonToolTipActions.AllowRBF.id) {
-        onReplaceableFeeSwitchValueChanged(!isTransactionReplaceable);
       } else if (id === CommonToolTipActions.CoinControl.id) {
         handleCoinControl();
       }
     },
-    [navigateToQRCodeScanner, onUseAllPressed, onReplaceableFeeSwitchValueChanged, isTransactionReplaceable, handleCoinControl],
+    [onUseAllPressed, handleCoinControl],
   );
 
   const headerRightActions = useCallback(() => {
@@ -726,8 +715,6 @@ const SendDetails = () => {
     walletActions.push(sendMaxAction);
 
     walletActions.push([CommonToolTipActions.CoinControl]);
-
-    walletActions.push([CommonToolTipActions.SignPSBT]);
 
     return walletActions;
   }, [addresses, isEditable, wallet]);

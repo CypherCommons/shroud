@@ -14,7 +14,7 @@ You may get the commit hash from git log. Don't forget to push tags `git push or
 
 Alternative way to tag: `git tag -a v6.0.0 2e1a00609d5a0dbc91bcda2421df0f61bdfc6b10 -m "v6.0.0" -s`
 
-When tagging a new release, make sure to increment version in package.json and other files (we have a script for that: `./scripts/edit-version-number.sh`)  
+When tagging a new release, make sure to increment the version in `package.json`, `package-lock.json`, `ios/Shroud.xcodeproj/project.pbxproj` (`MARKETING_VERSION`) and `android/app/build.gradle` (`versionName`/`versionCode`)  
 In the commit where you up version you can have the commit message as
 `"REL vX.X.X: Summary message"`.
 
