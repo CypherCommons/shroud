@@ -163,23 +163,18 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     return undefined;
   };
 
-  // Writes the wallets and their metadata to disk, then runs `afterWrite` whether the write worked or not.
-  // Callers can't wait for the write itself: runAfterInteractions calls an async task without awaiting it,
-  // which is also why a failure is reported here, where it would otherwise go unhandled.
-  const writeToDisk = useCallback(
-    (afterWrite?: () => void) =>
-      InteractionManager.runAfterInteractions(async () => {
-        try {
-          shroudApp.tx_metadata = txMetadata.current;
-          await shroudApp.saveToDisk();
-        } catch (error) {
-          console.error('[StorageProvider] Saving to disk failed:', error);
-        } finally {
-          afterWrite?.();
-        }
-      }),
-    [],
-  );
+  const forceWalletsUpdate = useCallback(() => {
+    setWallets([...shroudApp.getWallets()]);
+  }, []);
+
+  // Writes the wallets and their metadata to disk once interactions are over, and resolves once they're
+  // written. runAfterInteractions only starts a task and never waits on its promise, so the wait comes
+  // first and the write after it. ShroudApp.saveToDisk reports a failed write itself, with an alert.
+  const writeToDisk = useCallback(async () => {
+    await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
+    shroudApp.tx_metadata = txMetadata.current;
+    await shroudApp.saveToDisk();
+  }, []);
 
   const saveToDisk = useCallback(
     async (force: boolean = false) => {
@@ -187,30 +182,35 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
         console.debug('Not saving empty wallets array');
         return;
       }
-      // A new `wallets` is what re-renders the screens showing them. After a failed write too: what a
-      // fetch put into the wallets should show either way.
-      await writeToDisk(() => setWallets([...shroudApp.getWallets()]));
+      try {
+        await writeToDisk();
+      } finally {
+        // A new `wallets` is what re-renders the screens showing them. After a failed write too: what a
+        // fetch put into the wallets should show either way.
+        forceWalletsUpdate();
+      }
+    },
+    [writeToDisk, forceWalletsUpdate],
+  );
+
+  // The wallets' own saves, without saveToDisk's re-render: a scan saves its progress as it goes, and a
+  // wallet change anything shows is announced through the balance callback instead. Debounced, for the
+  // bursts a scan asks for; `immediately` for one that can't wait, like a scan paused on the app's way
+  // into the background, where the system can end it.
+  const persistTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const persistWallets = useCallback(
+    ({ immediately = false }: { immediately?: boolean } = {}) => {
+      if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
+      persistTimeoutRef.current = null;
+      const persist = () => {
+        if (shroudApp.getWallets().length === 0) return;
+        writeToDisk().catch(error => console.error('[StorageProvider] Saving to disk failed:', error));
+      };
+      if (immediately) persist();
+      else persistTimeoutRef.current = setTimeout(persist, 2000);
     },
     [writeToDisk],
   );
-
-  const forceWalletsUpdate = useCallback(() => {
-    setWallets([...shroudApp.getWallets()]);
-  }, []);
-
-  // saveToDisk without its re-render, for the wallets' own saves: a scan saves its progress as it goes,
-  // and a wallet change anything shows is announced through the balance callback instead.
-  const persistToDisk = useCallback(async () => {
-    if (shroudApp.getWallets().length === 0) return;
-    await writeToDisk();
-  }, [writeToDisk]);
-
-  // Debounced persist to avoid excessive saves during rapid scans
-  const persistTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const debouncedPersist = useCallback(() => {
-    if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
-    persistTimeoutRef.current = setTimeout(() => persistToDisk(), 2000);
-  }, [persistToDisk]);
 
   useEffect(() => {
     return () => {
@@ -231,7 +231,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
         wallet.setOnBalanceChangeCallback(forceWalletsUpdate);
       }
       if ('setOnPersistCallback' in wallet && typeof wallet.setOnPersistCallback === 'function') {
-        wallet.setOnPersistCallback(debouncedPersist);
+        wallet.setOnPersistCallback(persistWallets);
       }
       // NOTE: there is a single shared `scanState`. This assumes at most one scannable
       // (silent-payments) wallet is active at a time; multiple would clobber each other here.
@@ -244,7 +244,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       setWallets([...shroudApp.getWallets()]);
       return true;
     },
-    [forceWalletsUpdate, debouncedPersist],
+    [forceWalletsUpdate, persistWallets],
   );
 
   const deleteWallet = useCallback((wallet: TWallet) => {
@@ -336,7 +336,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
           wallet.setOnBalanceChangeCallback(forceWalletsUpdate);
         }
         if ('setOnPersistCallback' in wallet && typeof wallet.setOnPersistCallback === 'function') {
-          wallet.setOnPersistCallback(debouncedPersist);
+          wallet.setOnPersistCallback(persistWallets);
         }
         // NOTE: there is a single shared `scanState`. This assumes at most one scannable
         // (silent-payments) wallet is active at a time; multiple would clobber each other here.
@@ -346,7 +346,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
         }
       });
     },
-    [forceWalletsUpdate, debouncedPersist],
+    [forceWalletsUpdate, persistWallets],
   );
 
   /** Drop callbacks so a wallet left behind on another chain cannot write into the live UI. */

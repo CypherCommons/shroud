@@ -1,13 +1,11 @@
 import React, { useContext } from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
 
 import { ShroudApp } from '../../class';
-import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
-import { StorageContext, StorageProvider } from '../../components/Context/StorageProvider';
+import { StorageContext } from '../../components/Context/StorageProvider';
 import type { ScanProgress, ScanStateInfo } from '../../helpers/silent-payments/types';
 import { useScanState, useScanStatus } from '../../hooks/context/useScanState';
-
-const TEST_SEED = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+import { renderStorageWithWallet } from '../helpers/storageProvider';
 
 const progressAt = (percentComplete: number): ScanProgress => ({
   currentBlock: 900_000,
@@ -20,13 +18,12 @@ const progressAt = (percentComplete: number): ScanProgress => ({
 
 describe('unit - scan state contexts', () => {
   const renders = { storage: 0, scanState: 0, scanStatus: 0 };
-  let storage: React.ContextType<typeof StorageContext>;
   let scanState: ScanStateInfo;
 
   // stand-ins for the screens under the provider: what each reads, and how often it renders
   const StorageReader = () => {
     renders.storage++;
-    storage = useContext(StorageContext);
+    useContext(StorageContext);
     return null;
   };
   const ScanStateReader = () => {
@@ -45,18 +42,13 @@ describe('unit - scan state contexts', () => {
   });
 
   it('re-renders only the scan’s readers on a progress report, and status readers only when the status changes', () => {
-    render(
-      <StorageProvider>
+    const { wallet } = renderStorageWithWallet(
+      <>
         <StorageReader />
         <ScanStateReader />
         <ScanStatusReader />
-      </StorageProvider>,
+      </>,
     );
-    const wallet = new HDSilentPaymentsWallet();
-    wallet.setSecret(TEST_SEED);
-    act(() => {
-      storage.addWallet(wallet);
-    });
     const before = { ...renders };
 
     act(() => (wallet as any)._emitScanState('scanning', { progress: progressAt(10) }));

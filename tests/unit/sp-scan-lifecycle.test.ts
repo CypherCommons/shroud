@@ -318,10 +318,34 @@ describe('scan lifecycle', () => {
 
       wallet.pauseScan();
       expect(onPersist).toHaveBeenCalledTimes(2);
+      // and straight away, rather than after the usual wait for more to save
+      expect(onPersist).toHaveBeenLastCalledWith({ immediately: true });
 
       wallet.resumeScan();
       goOn.resolve();
       await scan;
+    });
+
+    it('re-renders and saves at once when a window confirms a coin held unconfirmed', async () => {
+      const wallet = track(syncedWallet());
+      (wallet as any)._utxo = [{ ...coin('found0', 'addr-0'), height: 0, blockTime: 0 }]; // as a broadcast leaves it
+      const onPersist = scanWindows(wallet, [0, 5_000]);
+      // the second window, 5s in, confirms it
+      jest
+        .spyOn(wallet as any, 'processTransactions')
+        .mockResolvedValueOnce({ utxos: [], lastScannedBlock: 0 })
+        .mockResolvedValueOnce({
+          utxos: [{ ...coin('found0', 'addr-0'), height: TIP + 1, blockTime: 1_750_000_000 }],
+          lastScannedBlock: 0,
+        });
+      const onBalanceChange = jest.fn();
+      wallet.setOnBalanceChangeCallback(onBalanceChange);
+
+      await wallet.scanForPayments();
+
+      expect(onBalanceChange).toHaveBeenCalled(); // the transaction list is rebuilt only for a new `wallets`
+      expect(onPersist).toHaveBeenCalledTimes(3); // the first window, the one that confirmed it, and the end
+      expect(wallet.getTransactions().find(tx => tx.txid === 'found0')?.timestamp).toBe(1_750_000_000);
     });
 
     it('saves at once when a window finds coins', async () => {

@@ -1,34 +1,18 @@
-import React, { useContext } from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act } from '@testing-library/react-native';
 
 import { ShroudApp } from '../../class';
-import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
-import { StorageContext, StorageProvider } from '../../components/Context/StorageProvider';
+import { defer } from '../helpers/defer';
+import { renderStorageWithWallet } from '../helpers/storageProvider';
 
-const TEST_SEED = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-
-// runAfterInteractions starts its task from a setImmediate, and nothing waits for the task to finish
+// runAfterInteractions starts its task from a setImmediate
 const settle = () => act(() => new Promise(resolve => setImmediate(resolve)));
 
 describe('unit - StorageProvider saves', () => {
-  let storage: React.ContextType<typeof StorageContext>;
-  const StorageReader = () => {
-    storage = useContext(StorageContext);
-    return null;
-  };
-
+  let storage: ReturnType<typeof renderStorageWithWallet>['storage'];
   const withWallet = () => {
-    render(
-      <StorageProvider>
-        <StorageReader />
-      </StorageProvider>,
-    );
-    const wallet = new HDSilentPaymentsWallet();
-    wallet.setSecret(TEST_SEED);
-    act(() => {
-      storage.addWallet(wallet);
-    });
-    return wallet;
+    const rendered = renderStorageWithWallet();
+    storage = rendered.storage;
+    return rendered.wallet;
   };
 
   afterEach(() => {
@@ -36,26 +20,43 @@ describe('unit - StorageProvider saves', () => {
     jest.restoreAllMocks();
   });
 
+  it('resolves once the wallets are written, not once their write has started', async () => {
+    withWallet();
+    const written = defer<void>();
+    jest.spyOn(ShroudApp.getInstance(), 'saveToDisk').mockReturnValue(written.promise);
+
+    let saved = false;
+    act(() => {
+      storage()
+        .saveToDisk()
+        .then(() => {
+          saved = true;
+        });
+    });
+    await settle();
+    expect(saved).toBe(false);
+
+    await act(async () => written.resolve());
+    expect(saved).toBe(true);
+  });
+
   it('shows what the wallets hold after a save, even one that failed', async () => {
     withWallet();
     jest.spyOn(ShroudApp.getInstance(), 'saveToDisk').mockRejectedValue(new Error('disk full'));
-    const logged = jest.spyOn(console, 'error').mockImplementation(() => {});
-    const before = storage.wallets;
+    const before = storage().wallets;
 
     await act(async () => {
-      await storage.saveToDisk();
+      await expect(storage().saveToDisk()).rejects.toThrow('disk full');
     });
-    await settle();
 
-    expect(storage.wallets).not.toBe(before);
-    expect(logged).toHaveBeenCalledWith('[StorageProvider] Saving to disk failed:', expect.any(Error));
+    expect(storage().wallets).not.toBe(before);
   });
 
   it('keeps `wallets` as it is when a wallet saves its own progress, so nothing re-renders for it', async () => {
     const wallet = withWallet();
     const save = jest.spyOn(ShroudApp.getInstance(), 'saveToDisk').mockResolvedValue(undefined as never);
     const timers = jest.spyOn(global, 'setTimeout');
-    const before = storage.wallets;
+    const before = storage().wallets;
 
     act(() => (wallet as any).onPersistCallback());
     // run the debounced save now rather than wait 2s for it
@@ -64,6 +65,17 @@ describe('unit - StorageProvider saves', () => {
     await settle();
 
     expect(save).toHaveBeenCalledTimes(1);
-    expect(storage.wallets).toBe(before);
+    expect(storage().wallets).toBe(before);
+  });
+
+  it('saves at once for a wallet that can’t wait, as a scan paused on the app’s way into the background', async () => {
+    const wallet = withWallet();
+    const save = jest.spyOn(ShroudApp.getInstance(), 'saveToDisk').mockResolvedValue(undefined as never);
+
+    act(() => (wallet as any).onPersistCallback()); // a save asked for in the usual way, still waiting
+    act(() => (wallet as any).onPersistCallback({ immediately: true }));
+    await settle();
+
+    expect(save).toHaveBeenCalledTimes(1); // the one waiting went with it
   });
 });

@@ -1,19 +1,18 @@
 import React from 'react';
-import { AppState, AppStateStatus } from 'react-native';
-import { act, render } from '@testing-library/react-native';
+import { AppStateStatus } from 'react-native';
+import { render } from '@testing-library/react-native';
 
 import ScanAutoPause from '../../components/ScanAutoPause';
 import type { IScannableWallet, ScanStatus } from '../../helpers/silent-payments';
 import { useScanStatus } from '../../hooks/context/useScanState';
+import { fakeAppState } from '../helpers/appState';
 
 jest.mock('../../hooks/context/useScanState');
 
 const mockUseScanStatus = useScanStatus as jest.Mock;
 
 describe('unit - ScanAutoPause', () => {
-  // This test's live AppState listeners, so it can send the app to the background and back.
-  let appStateListeners: Set<(state: AppStateStatus) => void>;
-  const setAppState = (state: AppStateStatus) => act(() => appStateListeners.forEach(listener => listener(state)));
+  let setAppState: (state: AppStateStatus) => void;
 
   let wallet: IScannableWallet;
   let rerenderWith: (status: ScanStatus) => void;
@@ -28,11 +27,7 @@ describe('unit - ScanAutoPause', () => {
   };
 
   beforeEach(() => {
-    appStateListeners = new Set();
-    (AppState.addEventListener as jest.Mock).mockImplementation((_type: string, listener: (state: AppStateStatus) => void) => {
-      appStateListeners.add(listener);
-      return { remove: () => appStateListeners.delete(listener) };
-    });
+    ({ setAppState } = fakeAppState());
     wallet = { pauseScan: jest.fn(), resumeScan: jest.fn() } as unknown as IScannableWallet;
   });
 

@@ -96,6 +96,9 @@ const settleWithin = async (promise: Promise<unknown>, ms: number): Promise<void
 
 type UpdateBirthHeightOptions = { resetScan?: boolean; pendingTimestamp?: number | null };
 
+/** Asks for the wallet to be saved: after a short wait for more to save, unless `immediately`. */
+type PersistCallback = (options?: { immediately?: boolean }) => void;
+
 export type OwnedOutput = {
   vout: number;
   value: number; // sats
@@ -165,7 +168,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   private _activeSpentCheck: Promise<void> | null = null;
   private _lastProgressPersistAt: number = 0;
   private onBalanceChangeCallback: (() => void) | null = null;
-  private onPersistCallback: (() => void) | null = null;
+  private onPersistCallback: PersistCallback | null = null;
   private _sp_spending_txs: Transaction[] = [];
   private _sp_pending_inputs: Set<string> = new Set(); // "txid:vout"
 
@@ -216,7 +219,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     this.onBalanceChangeCallback = callback;
   }
 
-  setOnPersistCallback(callback: (() => void) | null): void {
+  setOnPersistCallback(callback: PersistCallback | null): void {
     this.onPersistCallback = callback;
   }
 
@@ -236,8 +239,9 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       });
       this._emitScanState('paused');
       // Progress is saved only now and then while a scan runs (see commitUTXOs), and a paused scan may never
-      // resume: a scan is paused on the app's way into the background, where the system can end it.
-      this.onPersistCallback?.();
+      // resume: a scan is paused on the app's way into the background, where the system can end it. So now,
+      // rather than after the usual wait for more to save.
+      this.onPersistCallback?.({ immediately: true });
     }
   }
 
@@ -396,7 +400,11 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     this.spUTXOsCache = null;
   }
 
-  private addUTXO(utxo: SilentPaymentUTXO): boolean {
+  /**
+   * 'added' for a coin new to the wallet, 'confirmed' when it fills in the block details of a coin held
+   * unconfirmed, or null when the wallet already knew all of it.
+   */
+  private addUTXO(utxo: SilentPaymentUTXO): 'added' | 'confirmed' | null {
     const key = `${utxo.txid}:${utxo.vout}`;
     const existing = this._utxo.find(u => `${u.txid}:${u.vout}` === key) as SilentPaymentUTXO | undefined;
 
@@ -409,13 +417,14 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         existing.blockHash = utxo.blockHash;
         existing.blockTime = utxo.blockTime;
         this.invalidateUTXOCache();
+        return 'confirmed';
       }
-      return false;
+      return null;
     }
 
     this._utxo.push(utxo);
     this.invalidateUTXOCache();
-    return true;
+    return 'added';
   }
 
   private markUTXOAsSpent(txid: string, vout: number): boolean {
@@ -672,11 +681,12 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
   private commitUTXOs(utxos: SilentPaymentUTXO[], newLastScannedBlock: number): number {
     let addedCount = 0;
+    let coinsChanged = false;
 
     for (const utxo of utxos) {
-      if (this.addUTXO(utxo)) {
-        addedCount++;
-      }
+      const change = this.addUTXO(utxo);
+      if (change === 'added') addedCount++;
+      if (change !== null) coinsChanged = true;
     }
 
     // Always update lastScannedBlock to track progress, even if no UTXOs found
@@ -684,15 +694,16 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       this.lastScannedBlock = newLastScannedBlock;
     }
 
-    // Trigger callbacks if state changed
-    if (addedCount > 0) {
+    // New coins, or a coin's block details filled in: both change what the transaction list shows, and only a
+    // new `wallets` from this callback rebuilds it (the saves below don't)
+    if (coinsChanged) {
       this.onBalanceChangeCallback?.();
     }
 
     // Coins found are saved at once; progress alone now and then (see PROGRESS_PERSIST_INTERVAL_MS),
     // and once more where the scan ends (scanForPayments).
     const now = Date.now();
-    if (newLastScannedBlock > 0 && (addedCount > 0 || now - this._lastProgressPersistAt >= PROGRESS_PERSIST_INTERVAL_MS)) {
+    if (newLastScannedBlock > 0 && (coinsChanged || now - this._lastProgressPersistAt >= PROGRESS_PERSIST_INTERVAL_MS)) {
       this._lastProgressPersistAt = now;
       this.onPersistCallback?.();
     }
@@ -1017,14 +1028,14 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     // Deliberately not commitUTXOs(): this is a single-txid lookup, not a range scan, so it must
     // not move lastScannedBlock forward (that would let a later forward scan skip over blocks
     // that were never actually scanned) or persist when nothing new was found.
-    let newlyAdded = false;
+    let coinsChanged = false;
     for (const utxo of result.utxos) {
-      if (this.addUTXO(utxo)) {
-        newlyAdded = true;
+      if (this.addUTXO(utxo) !== null) {
+        coinsChanged = true;
       }
     }
 
-    if (newlyAdded) {
+    if (coinsChanged) {
       this.onBalanceChangeCallback?.();
       this.onPersistCallback?.();
     }

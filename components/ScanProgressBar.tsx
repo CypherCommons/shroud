@@ -10,7 +10,8 @@ import type { IScannableWallet } from '../helpers/silent-payments';
 import { useCheckForPayments } from '../hooks/useCheckForPayments';
 import { DetailViewStackParamList } from '../navigation/DetailViewStackParamList';
 import { useTheme } from './themes';
-import { useScanState } from '../hooks/context/useScanState';
+import { useScanState, useScanStatus } from '../hooks/context/useScanState';
+import { useSyncDisplayStatus } from '../hooks/useSyncDisplayStatus';
 import { ClashFont } from '../constants/fonts';
 
 interface Props {
@@ -19,17 +20,21 @@ interface Props {
 
 type NavigationProps = NativeStackNavigationProp<DetailViewStackParamList>;
 
-// Reads the scan's state itself, so a progress report re-renders this banner rather than the home screen.
+/**
+ * The home screen's line on the scan. It reads the scan's status alone: a running scan reports its progress
+ * every few hundred milliseconds, which this banner doesn't show, and only the rows that show a block number
+ * read the whole state. Status changes go through the Sync screen's hysteresis, so the scan each new block
+ * brings doesn't flash it either.
+ */
 const ScanProgressBar: React.FC<Props> = ({ wallet }) => {
   const { colors } = useTheme();
-  const scanState = useScanState();
   // the same check the Sync screen runs, so a retry from here answers the tap and shows as running there too
   const { check, checking } = useCheckForPayments(wallet);
+  const { status } = useSyncDisplayStatus(useScanStatus(), checking);
   const navigation = useNavigation<NavigationProps>();
+  const openSyncScreen = () => navigation.navigate('SyncScreen');
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseAnimRef = useRef<Animated.CompositeAnimation | null>(null);
-
-  const { status, progress, lastScannedBlock } = scanState;
 
   useEffect(() => {
     if (status === 'scanning') {
@@ -47,64 +52,16 @@ const ScanProgressBar: React.FC<Props> = ({ wallet }) => {
     return () => pulseAnimRef.current?.stop();
   }, [status, pulseAnim]);
 
-  const isDone = status === 'idle' && lastScannedBlock > 0;
-  if (status === 'idle' && !isDone) return null;
+  if (status === 'done') return <SyncedRow onPress={openSyncScreen} />;
 
-  if (isDone) {
-    const blockText = loc.formatString(loc.sync.banner_synced, { blockHeight: lastScannedBlock.toLocaleString() });
-    return (
-      <TouchableOpacity
-        style={[styles.container, { borderColor: colors.accentSubtle, backgroundColor: colors.surfaceSubtle }]}
-        onPress={() => navigation.navigate('SyncScreen')}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel={blockText as string}
-      >
-        <View style={styles.leftRow}>
-          <View style={styles.glyphBox}>
-            <Icon name="check" type="material" size={20} color={colors.statusSuccess} />
-          </View>
-          <Text style={[styles.bannerText, { color: colors.textSecondary }]} numberOfLines={1}>
-            {blockText}
-          </Text>
-        </View>
-        <ChevronRightIcon color={colors.iconSecondary} />
-      </TouchableOpacity>
-    );
-  }
-
-  if (status === 'paused') {
-    const pausedBlock = progress?.currentBlock ?? lastScannedBlock;
-    const blockText = loc.formatString(loc.sync.banner_paused_at, { blockHeight: pausedBlock.toLocaleString() });
-    return (
-      <View style={[styles.container, { borderColor: colors.accentSubtle, backgroundColor: colors.surfaceSubtle }]}>
-        <TouchableOpacity
-          style={styles.leftRow}
-          onPress={() => navigation.navigate('SyncScreen')}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={blockText as string}
-        >
-          <View style={styles.glyphBox}>
-            <Icon name="pause" type="material" size={20} color={colors.textMuted} />
-          </View>
-          <Text style={[styles.bannerText, { color: colors.textSecondary }]} numberOfLines={1}>
-            {blockText}
-          </Text>
-        </TouchableOpacity>
-        <Pressable onPress={() => wallet.resumeScan()} hitSlop={8} accessibilityRole="button" accessibilityLabel={loc.sync.banner_resume}>
-          <Text style={[styles.actionText, { color: colors.textBrand }]}>{loc.sync.banner_resume}</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  if (status === 'paused') return <PausedRow onPress={openSyncScreen} onResume={() => wallet.resumeScan()} />;
 
   if (status === 'error') {
     return (
       <View style={[styles.container, { borderColor: colors.statusError, backgroundColor: colors.surfaceCaution }]}>
         <TouchableOpacity
           style={styles.leftRow}
-          onPress={() => navigation.navigate('SyncScreen')}
+          onPress={openSyncScreen}
           activeOpacity={0.7}
           accessibilityRole="button"
           accessibilityLabel={loc.sync.banner_error}
@@ -135,7 +92,7 @@ const ScanProgressBar: React.FC<Props> = ({ wallet }) => {
   return (
     <TouchableOpacity
       style={[styles.container, { borderColor: colors.accentSubtle, backgroundColor: colors.surfaceSubtle }]}
-      onPress={() => navigation.navigate('SyncScreen')}
+      onPress={openSyncScreen}
       activeOpacity={0.7}
       accessibilityRole="button"
       accessibilityLabel={bannerText}
@@ -151,6 +108,64 @@ const ScanProgressBar: React.FC<Props> = ({ wallet }) => {
       </View>
       <Icon name="chevron-right" type="material" size={20} color={colors.iconSecondary} />
     </TouchableOpacity>
+  );
+};
+
+/** Caught up: the block the wallet has scanned to, or nothing before its first scan. */
+const SyncedRow: React.FC<{ onPress: () => void }> = ({ onPress }) => {
+  const { colors } = useTheme();
+  const { lastScannedBlock } = useScanState();
+  if (lastScannedBlock <= 0) return null;
+
+  const blockText = loc.formatString(loc.sync.banner_synced, { blockHeight: lastScannedBlock.toLocaleString() });
+  return (
+    <TouchableOpacity
+      style={[styles.container, { borderColor: colors.accentSubtle, backgroundColor: colors.surfaceSubtle }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={blockText as string}
+    >
+      <View style={styles.leftRow}>
+        <View style={styles.glyphBox}>
+          <Icon name="check" type="material" size={20} color={colors.statusSuccess} />
+        </View>
+        <Text style={[styles.bannerText, { color: colors.textSecondary }]} numberOfLines={1}>
+          {blockText}
+        </Text>
+      </View>
+      <ChevronRightIcon color={colors.iconSecondary} />
+    </TouchableOpacity>
+  );
+};
+
+/** Paused: the block the scan stopped at, and a way to carry on. */
+const PausedRow: React.FC<{ onPress: () => void; onResume: () => void }> = ({ onPress, onResume }) => {
+  const { colors } = useTheme();
+  const { progress, lastScannedBlock } = useScanState();
+  const pausedBlock = progress?.currentBlock ?? lastScannedBlock;
+  const blockText = loc.formatString(loc.sync.banner_paused_at, { blockHeight: pausedBlock.toLocaleString() });
+
+  return (
+    <View style={[styles.container, { borderColor: colors.accentSubtle, backgroundColor: colors.surfaceSubtle }]}>
+      <TouchableOpacity
+        style={styles.leftRow}
+        onPress={onPress}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={blockText as string}
+      >
+        <View style={styles.glyphBox}>
+          <Icon name="pause" type="material" size={20} color={colors.textMuted} />
+        </View>
+        <Text style={[styles.bannerText, { color: colors.textSecondary }]} numberOfLines={1}>
+          {blockText}
+        </Text>
+      </TouchableOpacity>
+      <Pressable onPress={onResume} hitSlop={8} accessibilityRole="button" accessibilityLabel={loc.sync.banner_resume}>
+        <Text style={[styles.actionText, { color: colors.textBrand }]}>{loc.sync.banner_resume}</Text>
+      </Pressable>
+    </View>
   );
 };
 

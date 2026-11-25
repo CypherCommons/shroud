@@ -32,7 +32,6 @@ import { scanQrHelper } from '../../helpers/scan-qr.ts';
 import { scanErrorMessage } from '../../helpers/scanErrorMessage';
 import QRScanIcon from '../../components/icons/QRScanIcon';
 import { ClashFont } from '../../constants/fonts';
-import { satoshiToLocalCurrency } from '../../modules/currency';
 import SearchIcon from '../../components/icons/SearchIcon';
 import ShieldReceiveIcon from '../../components/icons/ShieldReceiveIcon';
 import ReceiveArrowIcon from '../../components/icons/ReceiveArrowIcon';
@@ -41,6 +40,7 @@ import AddIcon from '../../components/icons/AddIcon';
 import ContactRow from '../../components/ContactRow';
 import ContactsEmptyState from '../../components/ContactsEmptyState';
 import EmptyStateCard from '../../components/EmptyStateCard';
+import FiatBalance from '../../components/FiatBalance';
 import FittedAmount from '../../components/FittedAmount';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import { ContactListItem } from '../../class/contacts';
@@ -476,8 +476,6 @@ const WalletsList: React.FC = () => {
     const balance = wallet.getBalance();
     const preferredUnit = wallet.getPreferredBalanceUnit();
     const displayNum = isBalanceHidden ? HIDDEN_AMOUNT : String(formatBalanceWithoutSuffix(balance, preferredUnit, true));
-    // No ≈ while hidden: it has nothing to qualify, and the dots alone center under the ones above.
-    const fiatLine = isBalanceHidden ? HIDDEN_AMOUNT : `≈ ${satoshiToLocalCurrency(balance)}`;
     const hasBalance = balance > 0;
 
     return (
@@ -498,7 +496,7 @@ const WalletsList: React.FC = () => {
             </FittedAmount>
             <Text style={[styles.balanceUnit, stylesHook.alternativeText]}>{preferredUnit}</Text>
           </View>
-          <Text style={[styles.balanceFiat, stylesHook.alternativeText]}>{fiatLine}</Text>
+          <FiatBalance sats={balance} hidden={isBalanceHidden} style={[styles.balanceFiat, stylesHook.alternativeText]} />
         </TouchableOpacity>
 
         {scanWallet && <ScanProgressBar wallet={scanWallet} />}
