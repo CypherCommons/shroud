@@ -7,7 +7,7 @@ module.exports = {
   },
   moduleFileExtensions: ['js', 'json', 'ts', 'tsx'],
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native(-.*)?|@react-native(-community)?|expo(-.*)?|@expo(nent)?/.*)|@rneui|@react-navigation|@lodev09)',
+    'node_modules/(?!((jest-)?react-native(-.*)?|@react-native(-community)?|expo(-.*)?|@expo(nent)?/.*)|@rneui|@react-navigation|@lodev09|@internet-privacy|applesauce-.*|nostr-tools|@noble|@scure|@hpke|nanoid)',
   ],
   setupFiles: ['./tests/setup.js'],
   watchPathIgnorePatterns: ['<rootDir>/node_modules'],

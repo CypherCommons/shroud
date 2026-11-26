@@ -38,13 +38,14 @@ import ShieldReceiveIcon from '../../components/icons/ShieldReceiveIcon';
 import ReceiveArrowIcon from '../../components/icons/ReceiveArrowIcon';
 import PayArrowIcon from '../../components/icons/PayArrowIcon';
 import AddIcon from '../../components/icons/AddIcon';
-import ContactRow from '../../components/ContactRow';
+import ContactRow, { ContactChatInfo } from '../../components/ContactRow';
 import ContactsEmptyState from '../../components/ContactsEmptyState';
 import EmptyStateCard from '../../components/EmptyStateCard';
 import FittedAmount from '../../components/FittedAmount';
 import UnderlineTabs from '../../components/UnderlineTabs';
 import { ContactListItem } from '../../class/contacts';
 import { useContacts } from '../../hooks/context/useContacts';
+import { useChat } from '../../helpers/chat/ChatProvider';
 import useTabSwipe from '../../hooks/useTabSwipe';
 
 // The second section holds whichever tab is selected, so it is named for the role, not the content.
@@ -140,6 +141,7 @@ const WalletsList: React.FC = () => {
   const navigation = useExtendedNavigation<NavigationProps>();
   const { contactList } = useContacts();
   const sendToAddress = useSendToAddress();
+  const { service: chatService, unavailable: chatUnavailable, peers: chatPeers } = useChat();
   const [activeTab, setActiveTab] = useState(HomeTab.Transactions);
   const listRef = useRef<SectionList<any | string, SectionData>>(null);
   // A responder inside the list can't stop it scrolling on iOS, so a sideways swipe that drifts
@@ -388,6 +390,18 @@ const WalletsList: React.FC = () => {
   );
 
   const openContactDetail = useCallback((address: string) => navigation.navigate('ContactDetail', { address }), [navigation]);
+  const openChat = useCallback((address: string) => navigation.navigate('ChatThread', { address }), [navigation]);
+
+  // Unread counts for the message shortcut, by contact address.
+  const chatByAddress = useMemo(() => {
+    const map = new Map<string, ContactChatInfo>();
+    if (!chatService) return map;
+    for (const peer of chatPeers) {
+      const address = chatService.addressForPubkey(peer.peer);
+      if (address) map.set(address, { onShroud: true, unread: peer.unread });
+    }
+    return map;
+  }, [chatService, chatPeers]);
 
   // Prefixed: the Contacts screen tags its own bare rows `ContactListContact-`, and this screen
   // stays mounted underneath it.
@@ -399,12 +413,14 @@ const WalletsList: React.FC = () => {
           contact={item}
           onPress={openContactDetail}
           onPay={sendToAddress}
+          onMessage={chatUnavailable === undefined ? openChat : undefined}
+          chat={chatByAddress.get(item.address)}
           style={styles.contactCard}
           testID={`HomeContact-${item.address}`}
         />
       </Animated.View>
     ),
-    [openContactDetail, sendToAddress, tabSwipeStyle, tabSwipeHandlers],
+    [openContactDetail, openChat, chatUnavailable, chatByAddress, sendToAddress, tabSwipeStyle, tabSwipeHandlers],
   );
 
   const changeWalletBalanceUnit = useCallback(async () => {

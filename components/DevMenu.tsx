@@ -139,6 +139,21 @@ const DevMenu: React.FC = () => {
         );
       });
 
+      DevSettings.addMenuItem('Chat self-test', async () => {
+        try {
+          // Required lazily: pulls in marmot-ts and the noble crypto shim only when the item is used.
+          const { runChatSelfTest } = require('../helpers/chat/selfTest') as typeof import('../helpers/chat/selfTest');
+          const result = await runChatSelfTest();
+          const lines = result.steps.map(s => `${s.ok ? '✓' : '✗'} ${s.name} (${s.ms} ms)${s.error ? `\n   ${s.error}` : ''}`);
+          lines.push(`\nTotal: ${result.totalMs} ms · native crypto.subtle: ${result.hasNativeSubtle ? 'yes' : 'no (noble shim)'}`);
+          console.log(`[chat-self-test] ${result.ok ? 'PASS' : 'FAIL'}\n${lines.join('\n')}`);
+          Alert.alert(`Chat self-test: ${result.ok ? 'PASS' : 'FAIL'}`, lines.join('\n'));
+        } catch (e: any) {
+          console.log(`[chat-self-test] FAIL (load) ${e?.stack ?? e}`);
+          Alert.alert('Chat self-test: FAIL', String(e?.message ?? e));
+        }
+      });
+
       DevSettings.addMenuItem('Purge Wallet Transactions', () => {
         if (wallets.length === 0) {
           Alert.alert('No wallets available');

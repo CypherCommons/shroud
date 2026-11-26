@@ -43,6 +43,10 @@ export type DetailViewStackParamList = {
   DenominationSettings: undefined;
   Contacts: undefined;
   ContactDetail: { address: string };
+  // `address` for a saved contact; `peer` (a chat pubkey) for someone who is not one.
+  ChatThread: { address?: string; peer?: string };
+  ChatRequests: undefined;
+  ChatSettings: undefined;
   // Discriminated: an 'edit' without an address would render an Edit form that silently inserts
   // a second contact, because upsertContact would see no editingAddress.
   ContactEdit: { mode: 'add'; address?: string } | { mode: 'edit'; address: string };

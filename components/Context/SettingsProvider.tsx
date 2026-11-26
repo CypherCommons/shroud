@@ -24,6 +24,8 @@ const TotalWalletsBalancePreferredUnit = 'TotalWalletsBalancePreferredUnit';
 const ThemePreferenceKey = 'ThemePreference';
 const PinLayoutScrambledKey = 'PinLayoutScrambled';
 const HideBalanceKey = 'HideBalance';
+const ChatEnabledKey = 'ChatEnabled';
+const ChatTorNoticeSeenKey = 'ChatTorNoticeSeen';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -68,6 +70,15 @@ const getIsHideBalanceEnabled = (): Promise<boolean> => readPref(HideBalanceKey,
 
 const persistIsHideBalanceEnabled = (value: boolean): Promise<void> => writePref(HideBalanceKey, value ? '1' : '0');
 
+// On unless the user turned it off: only an explicit '0' disables Shroud Chat.
+const getIsChatEnabled = (): Promise<boolean> => readPref(ChatEnabledKey, value => value !== '0', true);
+
+const persistIsChatEnabled = (value: boolean): Promise<void> => writePref(ChatEnabledKey, value ? '1' : '0');
+
+const getChatTorNoticeSeen = (): Promise<boolean> => readPref(ChatTorNoticeSeenKey, value => value === '1', false);
+
+const persistChatTorNoticeSeen = (value: boolean): Promise<void> => writePref(ChatTorNoticeSeenKey, value ? '1' : '0');
+
 interface SettingsContextType {
   preferredFiatCurrency: TFiatUnit;
   setPreferredFiatCurrencyStorage: (currency: TFiatUnit) => Promise<void>;
@@ -102,6 +113,12 @@ interface SettingsContextType {
   isBalanceHidden: boolean;
   /** The home screen's eye. Leaves the setting alone, and lasts until the app goes to the background. */
   toggleBalanceHidden: () => void;
+  /** The "Shroud Chat" setting. On by default; turning it off stops chat without deleting its data. */
+  isChatEnabled: boolean;
+  setIsChatEnabledStorage: (value: boolean) => Promise<void>;
+  /** Whether the one-time "chat uses the clearnet even with Tor on" notice has been shown. */
+  chatTorNoticeSeen: boolean;
+  setChatTorNoticeSeenStorage: (value: boolean) => Promise<void>;
 }
 
 const defaultSettingsContext: SettingsContextType = {
@@ -135,6 +152,10 @@ const defaultSettingsContext: SettingsContextType = {
   setIsHideBalanceEnabledStorage: async () => {},
   isBalanceHidden: false,
   toggleBalanceHidden: () => {},
+  isChatEnabled: true,
+  setIsChatEnabledStorage: async () => {},
+  chatTorNoticeSeen: false,
+  setChatTorNoticeSeenStorage: async () => {},
 };
 
 export const SettingsContext = createContext<SettingsContextType>(defaultSettingsContext);
@@ -156,6 +177,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
   const [selectedBlockExplorer, setSelectedBlockExplorer] = useState<BlockExplorer>(BLOCK_EXPLORERS.default);
   const [isPinLayoutScrambled, setIsPinLayoutScrambled] = useState<boolean>(false);
   const [isHideBalanceEnabled, setIsHideBalanceEnabled] = useState<boolean>(false);
+  const [isChatEnabled, setIsChatEnabled] = useState<boolean>(true);
+  const [chatTorNoticeSeen, setChatTorNoticeSeen] = useState<boolean>(false);
   // What the eye chose, over the setting. Intentionally not persisted: every launch starts from the setting.
   const [balanceHiddenOverride, setBalanceHiddenOverride] = useState<boolean | null>(null);
   const isBalanceHidden = balanceHiddenOverride ?? isHideBalanceEnabled;
@@ -205,6 +228,8 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
         getIsHideBalanceEnabled().then(hideBalance => {
           setIsHideBalanceEnabled(hideBalance);
         }),
+        getIsChatEnabled().then(setIsChatEnabled),
+        getChatTorNoticeSeen().then(setChatTorNoticeSeen),
       ];
 
       const results = await Promise.allSettled(promises);
@@ -378,6 +403,24 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
     }
   }, []);
 
+  const setIsChatEnabledStorage = useCallback(async (value: boolean): Promise<void> => {
+    try {
+      await persistIsChatEnabled(value);
+      setIsChatEnabled(value);
+    } catch (e) {
+      console.error('Error setting isChatEnabled:', e);
+    }
+  }, []);
+
+  const setChatTorNoticeSeenStorage = useCallback(async (value: boolean): Promise<void> => {
+    try {
+      await persistChatTorNoticeSeen(value);
+      setChatTorNoticeSeen(value);
+    } catch (e) {
+      console.error('Error setting chatTorNoticeSeen:', e);
+    }
+  }, []);
+
   const toggleBalanceHidden = useCallback(
     () => setBalanceHiddenOverride(override => !(override ?? isHideBalanceEnabled)),
     [isHideBalanceEnabled],
@@ -415,6 +458,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       setIsHideBalanceEnabledStorage,
       isBalanceHidden,
       toggleBalanceHidden,
+      isChatEnabled,
+      setIsChatEnabledStorage,
+      chatTorNoticeSeen,
+      setChatTorNoticeSeenStorage,
     }),
     [
       preferredFiatCurrency,
@@ -446,6 +493,10 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = React.m
       setIsHideBalanceEnabledStorage,
       isBalanceHidden,
       toggleBalanceHidden,
+      isChatEnabled,
+      setIsChatEnabledStorage,
+      chatTorNoticeSeen,
+      setChatTorNoticeSeenStorage,
     ],
   );
 

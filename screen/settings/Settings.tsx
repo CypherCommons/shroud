@@ -7,6 +7,7 @@ import PinPrompt from '../../components/PinPrompt';
 import GeneralIcon from '../../components/icons/GeneralIcon';
 import CurrencyIcon from '../../components/icons/CurrencyIcon';
 import ContactIcon from '../../components/icons/ContactIcon';
+import ChatIcon from '../../components/icons/ChatIcon';
 import SecurityIcon from '../../components/icons/SecurityIcon';
 import NetworkIcon from '../../components/icons/NetworkIcon';
 import AboutIcon from '../../components/icons/AboutIcon';
@@ -19,7 +20,7 @@ import { getAppVersionLabel } from '../../helpers/appVersion';
 import { ClashFont } from '../../constants/fonts';
 import { IconProps } from '../../components/icons/types';
 
-type SettingsRoute = 'General' | 'Currency' | 'Contacts' | 'Security' | 'NetworkSettings' | 'About';
+type SettingsRoute = 'General' | 'Currency' | 'Contacts' | 'ChatSettings' | 'Security' | 'NetworkSettings' | 'About';
 
 interface RowConfig {
   Icon: React.FC<IconProps>;
@@ -54,6 +55,14 @@ const MAIN_ROWS: RowConfig[] = [
     subtitle: loc.contacts.settings_subtitle,
     route: 'Contacts',
     testID: 'ContactsButton',
+  },
+  {
+    Icon: ChatIcon,
+    colorToken: 'brandPrimary',
+    title: loc.chat.title,
+    subtitle: loc.chat.settings_subtitle,
+    route: 'ChatSettings',
+    testID: 'ChatSettingsButton',
   },
   {
     Icon: SecurityIcon,
