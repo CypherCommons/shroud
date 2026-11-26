@@ -1,12 +1,13 @@
 import assert from 'assert';
 import React from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppStateStatus } from 'react-native';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import DefaultPreference from 'react-native-default-preference';
 
 import { SettingsProvider } from '../../components/Context/SettingsProvider';
 import { useSettings } from '../../hooks/context/useSettings';
 import { useStorage } from '../../hooks/context/useStorage';
+import { fakeAppState } from '../helpers/appState';
 
 jest.mock('../../hooks/context/useStorage');
 jest.mock('../../modules/Electrum', () => ({
@@ -30,18 +31,12 @@ const mockUseStorage = useStorage as jest.Mock;
 const wrapper = ({ children }: { children: React.ReactNode }) => <SettingsProvider>{children}</SettingsProvider>;
 
 describe('unit - SettingsProvider', () => {
-  // This test's live AppState listeners, so it can send the app to the background.
-  let appStateListeners: Set<(state: AppStateStatus) => void>;
-  const setAppState = (state: AppStateStatus) => act(() => appStateListeners.forEach(listener => listener(state)));
+  let setAppState: (state: AppStateStatus) => void;
 
   beforeEach(async () => {
     mockUseStorage.mockReturnValue({ walletsInitialized: true });
     await DefaultPreference.clearAll();
-    appStateListeners = new Set();
-    (AppState.addEventListener as jest.Mock).mockImplementation((_type: string, listener: (state: AppStateStatus) => void) => {
-      appStateListeners.add(listener);
-      return { remove: () => appStateListeners.delete(listener) };
-    });
+    ({ setAppState } = fakeAppState());
   });
 
   it('defaults themePreference to system and persists a change across a remount', async () => {

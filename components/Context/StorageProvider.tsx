@@ -10,7 +10,7 @@ import * as Electrum from '../../modules/Electrum';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
 import { startAndDecrypt } from '../../modules/start-and-decrypt';
 import { navigationRef } from '../../NavigationService';
-import { type ScanStateInfo, IDLE_SCAN_STATE, isScannable } from '../../helpers/silent-payments';
+import { type ScanStateInfo, type ScanStatus, IDLE_SCAN_STATE, isScannable } from '../../helpers/silent-payments';
 import { getActiveNetworkId, type NetworkId } from '../../modules/network';
 import { assertNetworkSwitchable, rollbackNetworkSwitch, switchNetworkBackends } from '../../modules/networkPreference';
 import { clearPin } from '../../helpers/pinLock';
@@ -53,7 +53,6 @@ interface StorageContextType {
   getItem: typeof shroudApp.getItem;
   setItem: typeof shroudApp.setItem;
   handleWalletDeletion: (walletID: string) => Promise<boolean>;
-  scanState: ScanStateInfo;
   activeNetworkId: NetworkId;
   switchNetwork: (next: NetworkId) => Promise<void>;
   isSwitchingNetwork: boolean;
@@ -68,6 +67,12 @@ export enum WalletTransactionsStatus {
 
 // @ts-ignore default value does not match the type
 export const StorageContext = createContext<StorageContextType>(undefined);
+
+// The scan's state lives apart from StorageContext, which nearly every screen reads: a running scan
+// reports progress every few hundred milliseconds, and each report would re-render all of them.
+export const ScanStateContext = createContext<ScanStateInfo>(IDLE_SCAN_STATE);
+// Only the status, for readers that don't care how far a scan has got.
+export const ScanStatusContext = createContext<ScanStatus>('idle');
 
 export const StorageProvider = ({ children }: { children: React.ReactNode }) => {
   const txMetadata = useRef<TTXMetadata>(shroudApp.tx_metadata);
@@ -158,33 +163,54 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     return undefined;
   };
 
+  const forceWalletsUpdate = useCallback(() => {
+    setWallets([...shroudApp.getWallets()]);
+  }, []);
+
+  // Writes the wallets and their metadata to disk once interactions are over, and resolves once they're
+  // written. runAfterInteractions only starts a task and never waits on its promise, so the wait comes
+  // first and the write after it. ShroudApp.saveToDisk reports a failed write itself, with an alert.
+  const writeToDisk = useCallback(async () => {
+    await new Promise<void>(resolve => InteractionManager.runAfterInteractions(() => resolve()));
+    shroudApp.tx_metadata = txMetadata.current;
+    await shroudApp.saveToDisk();
+  }, []);
+
   const saveToDisk = useCallback(
     async (force: boolean = false) => {
       if (!force && shroudApp.getWallets().length === 0) {
         console.debug('Not saving empty wallets array');
         return;
       }
-      await InteractionManager.runAfterInteractions(async () => {
-        shroudApp.tx_metadata = txMetadata.current;
-        await shroudApp.saveToDisk();
-        const w: TWallet[] = [...shroudApp.getWallets()];
-        setWallets(w);
-      });
+      try {
+        await writeToDisk();
+      } finally {
+        // A new `wallets` is what re-renders the screens showing them. After a failed write too: what a
+        // fetch put into the wallets should show either way.
+        forceWalletsUpdate();
+      }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [txMetadata.current],
+    [writeToDisk, forceWalletsUpdate],
   );
 
-  const forceWalletsUpdate = useCallback(() => {
-    setWallets([...shroudApp.getWallets()]);
-  }, []);
-
-  // Debounced persist to avoid excessive saves during rapid scans
+  // The wallets' own saves, without saveToDisk's re-render: a scan saves its progress as it goes, and a
+  // wallet change anything shows is announced through the balance callback instead. Debounced, for the
+  // bursts a scan asks for; `immediately` for one that can't wait, like a scan paused on the app's way
+  // into the background, where the system can end it.
   const persistTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const debouncedPersist = useCallback(() => {
-    if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
-    persistTimeoutRef.current = setTimeout(() => saveToDisk(), 2000);
-  }, [saveToDisk]);
+  const persistWallets = useCallback(
+    ({ immediately = false }: { immediately?: boolean } = {}) => {
+      if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
+      persistTimeoutRef.current = null;
+      const persist = () => {
+        if (shroudApp.getWallets().length === 0) return;
+        writeToDisk().catch(error => console.error('[StorageProvider] Saving to disk failed:', error));
+      };
+      if (immediately) persist();
+      else persistTimeoutRef.current = setTimeout(persist, 2000);
+    },
+    [writeToDisk],
+  );
 
   useEffect(() => {
     return () => {
@@ -205,7 +231,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
         wallet.setOnBalanceChangeCallback(forceWalletsUpdate);
       }
       if ('setOnPersistCallback' in wallet && typeof wallet.setOnPersistCallback === 'function') {
-        wallet.setOnPersistCallback(debouncedPersist);
+        wallet.setOnPersistCallback(persistWallets);
       }
       // NOTE: there is a single shared `scanState`. This assumes at most one scannable
       // (silent-payments) wallet is active at a time; multiple would clobber each other here.
@@ -218,7 +244,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       setWallets([...shroudApp.getWallets()]);
       return true;
     },
-    [forceWalletsUpdate, debouncedPersist],
+    [forceWalletsUpdate, persistWallets],
   );
 
   const deleteWallet = useCallback((wallet: TWallet) => {
@@ -310,7 +336,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
           wallet.setOnBalanceChangeCallback(forceWalletsUpdate);
         }
         if ('setOnPersistCallback' in wallet && typeof wallet.setOnPersistCallback === 'function') {
-          wallet.setOnPersistCallback(debouncedPersist);
+          wallet.setOnPersistCallback(persistWallets);
         }
         // NOTE: there is a single shared `scanState`. This assumes at most one scannable
         // (silent-payments) wallet is active at a time; multiple would clobber each other here.
@@ -320,7 +346,7 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
         }
       });
     },
-    [forceWalletsUpdate, debouncedPersist],
+    [forceWalletsUpdate, persistWallets],
   );
 
   /** Drop callbacks so a wallet left behind on another chain cannot write into the live UI. */
@@ -471,13 +497,15 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
         console.debug('[refreshAllWalletTransactions] Refresh completed successfully');
       } catch (error) {
         console.error('[refreshAllWalletTransactions] Error:', error);
+        // what it did fetch shows anyway: the home list is rebuilt only when `wallets` changes
+        forceWalletsUpdate();
       } finally {
         console.debug('[refreshAllWalletTransactions] Resetting wallet transaction status and refresh lock');
         setWalletTransactionUpdateStatus(WalletTransactionsStatus.NONE);
         refreshingRef.current = false;
       }
     },
-    [saveToDisk],
+    [saveToDisk, forceWalletsUpdate],
   );
 
   const fetchAndSaveWalletTransactions = useCallback(
@@ -511,9 +539,10 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
           setWalletTransactionUpdateStatus(WalletTransactionsStatus.NONE);
         }
         if (noErr) await saveToDisk();
+        else forceWalletsUpdate();
       });
     },
-    [saveToDisk, wallets],
+    [saveToDisk, forceWalletsUpdate, wallets],
   );
 
   // Every change to the stored wallets is followed by a new `wallets`, and another chain's wallets
@@ -537,9 +566,11 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       (async () => {
         await w.fetchBalance();
         if (isScannable(w) && !w.isScanActive()) await w.fetchTransactions();
+        // show what that fetched: nothing else re-renders the home list for it
+        forceWalletsUpdate();
       })().catch((e: any) => console.warn('[addAndSaveWallet] sync error:', e));
     },
-    [wallets, addWallet, saveToDisk],
+    [wallets, addWallet, saveToDisk, forceWalletsUpdate],
   );
 
   const value: StorageContextType = useMemo(
@@ -575,7 +606,6 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       walletTransactionUpdateStatus,
       setWalletTransactionUpdateStatus,
       handleWalletDeletion,
-      scanState,
       activeNetworkId,
       switchNetwork,
       isSwitchingNetwork,
@@ -596,7 +626,6 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       wipeDevice,
       walletTransactionUpdateStatus,
       handleWalletDeletion,
-      scanState,
       activeNetworkId,
       switchNetwork,
       isSwitchingNetwork,
@@ -604,5 +633,11 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     ],
   );
 
-  return <StorageContext.Provider value={value}>{children}</StorageContext.Provider>;
+  return (
+    <StorageContext.Provider value={value}>
+      <ScanStatusContext.Provider value={scanState.status}>
+        <ScanStateContext.Provider value={scanState}>{children}</ScanStateContext.Provider>
+      </ScanStatusContext.Provider>
+    </StorageContext.Provider>
+  );
 };
