@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useReducer, useRef, useMemo, useState } 
 import { useFocusEffect } from '@react-navigation/native';
 import useAppState from '../../hooks/useAppState';
 import ScanProgressBar from '../../components/ScanProgressBar';
-import { useScanActions, useScannableWallet } from '../../hooks/useScannableWallet';
+import { useScannableWallet } from '../../hooks/useScannableWallet';
 import { Animated, InteractionManager, SectionList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import A from '../../modules/analytics';
 import { getClipboardContent } from '../../modules/clipboard';
@@ -284,7 +284,6 @@ const WalletsList: React.FC = () => {
   }, [isLarge, wallets]);
 
   const scanWallet = useScannableWallet();
-  const scanActions = useScanActions(scanWallet);
 
   useEffect(() => {
     if (!scanWallet) return;
@@ -520,7 +519,7 @@ const WalletsList: React.FC = () => {
           <Text style={[styles.balanceFiat, stylesHook.alternativeText]}>{fiatLine}</Text>
         </TouchableOpacity>
 
-        {scanWallet && <ScanProgressBar scanState={scanState} onResume={scanActions.resume} onRetry={scanActions.retry} />}
+        {scanWallet && <ScanProgressBar scanState={scanState} wallet={scanWallet} />}
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.actionBtnWide, stylesHook.receiveBtnStyle]}
@@ -563,7 +562,6 @@ const WalletsList: React.FC = () => {
     colors,
     changeWalletBalanceUnit,
     scanWallet,
-    scanActions,
     scanState,
     triggerZeroBalanceToast,
     onReceiveButtonPressed,
