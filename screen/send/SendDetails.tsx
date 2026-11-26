@@ -183,9 +183,11 @@ const SendDetails = () => {
     ({ address, amount, memo }: { address: string; amount?: number; memo?: string }) => {
       setAddresses(addrs => {
         const a = { ...addrs[0], address };
-        if (amount) {
-          a.amount = String(amount);
-          a.amountSats = btcToSatoshi(String(amount));
+        // a request can ask for float noise or more than 8 decimals; only whole sats can be sent
+        const amountSats = amount ? Math.round(btcToSatoshi(amount)) : 0;
+        if (amountSats > 0) {
+          a.amount = satoshiToBTC(amountSats);
+          a.amountSats = amountSats;
           a.unit = BitcoinUnit.BTC;
         }
         return [a, ...addrs.slice(1)];
