@@ -149,8 +149,9 @@ const SendDetails = () => {
     displayUnit === BitcoinUnit.LOCAL_CURRENCY
       ? `≈ ${formatBalance(amountSatsNum, walletUnit, true)}`
       : `≈ ${satoshiToLocalCurrency(amountSatsNum)}`;
-  const isFormValid = !!recipient?.address && amountSatsNum > 0;
-  const hasFeeEstimate = !!feePrecalc.current && amountSatsNum > 0;
+  const hasAmount = amountSatsNum > 0;
+  const isFormValid = !!recipient?.address && hasAmount;
+  const hasFeeEstimate = !!feePrecalc.current && hasAmount;
 
   const onChangeAmount = useCallback(
     (text: string) => {
@@ -921,11 +922,11 @@ const SendDetails = () => {
               });
             }}
             // stays tappable when the fee can't be paid, so the rate can be lowered
-            disabled={isLoading || amountSatsNum <= 0}
-            style={[styles.feeSummary, stylesHook.feeSummary, amountSatsNum <= 0 && stylesHook.feeSummaryDisabled]}
+            disabled={isLoading || !hasAmount}
+            style={[styles.feeSummary, stylesHook.feeSummary, !hasAmount && stylesHook.feeSummaryDisabled]}
           >
             <View style={styles.feeSummaryTexts}>
-              <Text style={[styles.feeSummaryLabel, amountSatsNum > 0 ? stylesHook.feeSummaryLabel : stylesHook.feeSummaryTextDisabled]}>
+              <Text style={[styles.feeSummaryLabel, hasAmount ? stylesHook.feeSummaryLabel : stylesHook.feeSummaryTextDisabled]}>
                 {loc.send.network_fee}
               </Text>
               {hasFeeEstimate ? (
@@ -935,13 +936,13 @@ const SendDetails = () => {
                     {` · ${feeRate} ${loc.units.sat_vbyte} ≈ ${feeEtaLabel}`}
                   </Text>
                 </Text>
-              ) : amountSatsNum > 0 ? (
+              ) : hasAmount ? (
                 <Text style={[styles.feeSummaryValue, stylesHook.feeSummaryError]}>{loc.send.fee_exceeds_balance}</Text>
               ) : (
                 <Text style={[styles.feeSummaryValue, stylesHook.feeSummaryTextDisabled]}>{loc.send.enter_amount_to_estimate}</Text>
               )}
             </View>
-            {amountSatsNum > 0 && <ChevronRightIcon color={colors.iconSecondary} />}
+            {hasAmount && <ChevronRightIcon color={colors.iconSecondary} />}
           </Pressable>
         </View>
       </KeyboardAwareScrollView>
