@@ -137,6 +137,23 @@ const getDefaultPeer = (): Peer | undefined => getHardcodedPeers()[0];
 export const getSuggestedServers = (): Peer[] => getHardcodedPeers().map(peer => ({ ...peer }));
 
 let mainClient: typeof ElectrumClient | undefined;
+
+/**
+ * Closes a client and fails the requests still waiting on it. electrum-client's close() swaps out the onClose that
+ * fails them before the socket's 'close' event arrives, so without this every request in flight when a connection
+ * is dropped (a keepalive timeout, a network switch) would wait forever, and anything awaiting it with it.
+ */
+export function closeElectrumClient(client: typeof ElectrumClient | undefined): void {
+  if (!client) return;
+  const waiting: Record<string, (error: Error) => void> = client.callback_message_queue ?? {};
+  client.close();
+  for (const id of Object.keys(waiting)) {
+    const fail = waiting[id];
+    delete waiting[id];
+    fail(new Error('Electrum connection closed'));
+  }
+}
+
 let mainConnected: boolean = false;
 let wasConnectedAtLeastOnce: boolean = false;
 let serverName: string | false = false;
@@ -355,7 +372,7 @@ export async function connectMain(): Promise<void> {
         // most likely got a timeout from electrum ping. lets reconnect
         // but only if we were previously connected (mainConnected), otherwise theres other
         // code which does connection retries
-        mainClient?.close();
+        closeElectrumClient(mainClient);
         mainClient = undefined;
         mainConnected = false;
         // dropping `mainConnected` flag ensures there wont be reconnection race condition if several
@@ -403,7 +420,7 @@ export async function connectMain(): Promise<void> {
   } catch (e) {
     mainConnected = false;
     console.log('bad connection:', JSON.stringify(usingPeer), e);
-    mainClient?.close();
+    closeElectrumClient(mainClient);
     mainClient = undefined;
     if (e instanceof WrongChainError) {
       // Retrying the same server cannot help, and a silent fallback would hide a misconfigured
@@ -416,7 +433,7 @@ export async function connectMain(): Promise<void> {
   if (!mainConnected) {
     console.log('retry');
     connectionAttempt = connectionAttempt + 1;
-    mainClient?.close();
+    closeElectrumClient(mainClient);
     mainClient = undefined;
     if (connectionAttempt >= 5) {
       presentNetworkErrorAlert(usingPeer);
@@ -443,7 +460,7 @@ const presentNetworkErrorAlert = async (usingPeer?: Peer, message?: string) => {
         text: loc.wallets.list_tryagain,
         onPress: () => {
           connectionAttempt = 0;
-          mainClient?.close();
+          closeElectrumClient(mainClient);
           mainClient = undefined;
           setTimeout(connectMain, 500);
         },
@@ -453,7 +470,7 @@ const presentNetworkErrorAlert = async (usingPeer?: Peer, message?: string) => {
         text: loc._.cancel,
         onPress: () => {
           connectionAttempt = 0;
-          mainClient?.close();
+          closeElectrumClient(mainClient);
           mainClient = undefined;
         },
         style: 'cancel',
@@ -1233,7 +1250,7 @@ export const testConnection = async function (
 };
 
 export const forceDisconnect = (): void => {
-  mainClient?.close();
+  closeElectrumClient(mainClient);
 };
 
 /**
@@ -1253,7 +1270,7 @@ export const resetForNetworkSwitch = (): void => {
   latestBlock = { height: undefined, time: undefined };
   currentPeerIndex = randomPeerIndex();
   try {
-    outgoing?.close();
+    closeElectrumClient(outgoing);
   } catch (e) {
     console.warn('Error closing Electrum during a network switch:', e);
   }

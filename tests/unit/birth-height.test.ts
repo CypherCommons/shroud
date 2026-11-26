@@ -1,23 +1,15 @@
 import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
 import { BIP352_ACTIVATION_HEIGHT } from '../../modules/constants';
-import * as indexerModule from '../../modules/SilentPaymentIndexer';
 import { SilentPaymentIndexer } from '../../modules/SilentPaymentIndexer';
+import { stubIndexer as stubIndexerWith, TIP } from '../helpers/silentPayments';
 
 const TEST_SEED = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const CREATED_AT = 1_750_000_000; // some unix-seconds timestamp
-const TIP = 900_000;
 const RESOLVED = 890_000;
 
-const stubIndexer = (overrides: Record<string, any> = {}) => {
-  const scanForwardWithCallback = jest.fn().mockResolvedValue(undefined);
-  jest.spyOn(indexerModule, 'getDefaultIndexer').mockReturnValue({
-    getLatestBlockHeight: jest.fn().mockResolvedValue({ height: TIP }),
-    getBlockHeightByTimestamp: jest.fn().mockResolvedValue({ blockHeight: RESOLVED }),
-    scanForwardWithCallback,
-    ...overrides,
-  } as any);
-  return scanForwardWithCallback;
-};
+const stubIndexer = (overrides: Record<string, any> = {}) =>
+  stubIndexerWith({ getBlockHeightByTimestamp: jest.fn().mockResolvedValue({ blockHeight: RESOLVED }), ...overrides })
+    .scanForwardWithCallback;
 
 const makeWallet = () => {
   const w = new HDSilentPaymentsWallet();
@@ -71,7 +63,7 @@ describe('deferred birth height (indexer down at creation/import)', () => {
     const scan = stubIndexer({ getBlockHeightByTimestamp: jest.fn().mockResolvedValue(response) });
     const w = pendingWallet();
 
-    await expect(w.scanForPayments()).resolves.toBe(0);
+    await expect(w.scanForPayments()).rejects.toThrow('BIRTH_HEIGHT_PENDING');
     expect(scan).not.toHaveBeenCalled();
     expect(w.getPendingBirthTimestamp()).toBe(CREATED_AT);
   });
@@ -80,9 +72,10 @@ describe('deferred birth height (indexer down at creation/import)', () => {
     const scan = stubIndexer({ getBlockHeightByTimestamp: jest.fn().mockRejectedValue(new Error('indexer down')) });
     const w = pendingWallet();
 
-    // first two refreshes defer rather than rescan the whole chain
-    await expect(w.scanForPayments()).resolves.toBe(0);
-    await expect(w.scanForPayments()).resolves.toBe(0);
+    // first two refreshes defer rather than rescan the whole chain, and say nothing was scanned
+    await expect(w.scanForPayments()).rejects.toThrow('BIRTH_HEIGHT_PENDING');
+    await expect(w.scanForPayments()).rejects.toThrow('BIRTH_HEIGHT_PENDING');
+    expect(w.getScanState().status).toBe('error');
     expect(scan).not.toHaveBeenCalled();
     expect(w.getPendingBirthTimestamp()).toBe(CREATED_AT);
 

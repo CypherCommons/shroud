@@ -72,6 +72,24 @@ const SCAN_ETA_ROLLING_WINDOW = 10;
 // Consecutive failed birth-height lookups before we stop deferring and scan from the fallback height.
 const BIRTH_RESOLUTION_MAX_ATTEMPTS = 3;
 const POLLING_INTERVAL_MS = 30000;
+// After repeated failed checks, polls back off to 30s, 1m, 2m, 4m, then every 5m apart: the error clears
+// itself once the indexer is back, without asking it every 30s while it's down.
+const POLLING_MAX_BACKOFF_MS = 5 * 60 * 1000;
+// Electrum requests have no timeout of their own, and one sent on a connection that died without an error is
+// never answered: no scan or payment check waits longer than this on one.
+const ELECTRUM_WAIT_MS = 20000;
+// The scan couldn't start: the wallet's birth height is still being looked up (see _resolvePendingBirthHeight).
+const BIRTH_HEIGHT_PENDING = 'BIRTH_HEIGHT_PENDING';
+
+/** Waits for `promise` to settle, but no longer than `ms`. Never rejects. */
+const settleWithin = async (promise: Promise<unknown>, ms: number): Promise<void> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>(resolve => {
+    timer = setTimeout(resolve, ms);
+  });
+  await Promise.race([promise.catch(() => {}), timeout]);
+  clearTimeout(timer);
+};
 
 type UpdateBirthHeightOptions = { resetScan?: boolean; pendingTimestamp?: number | null };
 
@@ -135,8 +153,13 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   private spChangeByOutpoint: Map<string, boolean> = new Map();
   private activeScanPromise: Promise<number> | null = null;
   private cancelScanCallbackScan: boolean = false;
-  private pollingIntervalId: NodeJS.Timeout | null = null;
-  private isPollingActive: boolean = false;
+  private _pollTimer: ReturnType<typeof setTimeout> | null = null;
+  // failed checks in a row, for the polls' backoff (see POLLING_MAX_BACKOFF_MS)
+  private _consecutiveScanFailures: number = 0;
+  // shared while they run, so checks and scans started meanwhile join them rather than send their requests again
+  private _activeCheck: Promise<number> | null = null;
+  private _activeRegularSync: Promise<void> | null = null;
+  private _activeSpentCheck: Promise<void> | null = null;
   private onBalanceChangeCallback: (() => void) | null = null;
   private onPersistCallback: (() => void) | null = null;
   private _sp_spending_txs: Transaction[] = [];
@@ -162,8 +185,11 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     'spChangeByOutpoint',
     'activeScanPromise',
     'cancelScanCallbackScan',
-    'pollingIntervalId',
-    'isPollingActive',
+    '_pollTimer',
+    '_consecutiveScanFailures',
+    '_activeCheck',
+    '_activeRegularSync',
+    '_activeSpentCheck',
     'onBalanceChangeCallback',
     'onPersistCallback',
     '_scanState',
@@ -176,6 +202,10 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     '_onScanStateChangeCallback',
     '_utxo',
   ]);
+
+  // Runtime fields this class no longer has. Wallets saved before runtime fields were kept out of storage can still
+  // carry them, so fromJson skips them rather than restore them as stray properties.
+  private static readonly RETIRED_RUNTIME_KEYS: ReadonlySet<string> = new Set(['pollingIntervalId', 'isPollingActive']);
 
   setOnBalanceChangeCallback(callback: (() => void) | null): void {
     this.onBalanceChangeCallback = callback;
@@ -204,21 +234,49 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   }
 
   resumeScan(): void {
-    if (this._scanPaused) {
-      this._scanPaused = false;
+    if (this._clearPause()) {
       this._scanSamples = [];
-      this._scanResumeResolver?.();
-      this._scanResumeResolver = null;
-      this._scanResumePromise = null;
       if (this.activeScanPromise !== null) {
         this._emitScanState('scanning');
       }
     }
   }
 
+  /** Lets a paused scan carry on, or drops a pause its scan no longer needs. False when nothing was paused. */
+  private _clearPause(): boolean {
+    if (!this._scanPaused) return false;
+    this._scanPaused = false;
+    this._scanResumeResolver?.();
+    this._scanResumeResolver = null;
+    this._scanResumePromise = null;
+    return true;
+  }
+
   private _emitScanState(status: ScanStatus, overrides?: Partial<ScanStateInfo>): void {
     this._scanState = { ...this._scanState, status, ...overrides, lastScannedBlock: this.lastScannedBlock };
     this._onScanStateChangeCallback?.(this._scanState);
+  }
+
+  /**
+   * Emits idle or error only when that isn't the state already: polls end here every 30s, and every
+   * emission re-renders whatever reads the scan state, changed or not.
+   */
+  private _settle(status: 'idle' | 'error', error: string | null = null): void {
+    const state = this._scanState;
+    if (state.status === status && state.error === error && state.lastScannedBlock === this.lastScannedBlock) return;
+    this._emitScanState(status, status === 'idle' ? IDLE_SCAN_STATE : { error });
+  }
+
+  /** A check reached the indexer: drop any backoff, and keep watching for blocks once at the tip. */
+  private _onCheckSucceeded(atTip: boolean): void {
+    this._consecutiveScanFailures = 0;
+    if (atTip) this._schedulePoll(POLLING_INTERVAL_MS);
+  }
+
+  /** Keeps polling after a failed check, so its error clears itself once the indexer is back, backing off. */
+  private _onCheckFailed(): void {
+    this._consecutiveScanFailures++;
+    this._schedulePoll(Math.min(POLLING_INTERVAL_MS * 2 ** (this._consecutiveScanFailures - 1), POLLING_MAX_BACKOFF_MS));
   }
 
   private async _waitIfPaused(): Promise<void> {
@@ -269,7 +327,8 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         wallet._sp_pending_inputs = new Set(data[key] || []);
       } else if (
         key !== 'networkId' && // resolved above; the raw value may be unrecognised
-        !HDSilentPaymentsWallet.NON_PERSISTED_KEYS.has(key)
+        !HDSilentPaymentsWallet.NON_PERSISTED_KEYS.has(key) &&
+        !HDSilentPaymentsWallet.RETIRED_RUNTIME_KEYS.has(key)
       ) {
         (wallet as any)[key] = data[key];
       }
@@ -633,12 +692,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
   cancelScan(): void {
     this.cancelScanCallbackScan = true;
     // unblock any pending pause so the scan loop can exit cleanly
-    if (this._scanPaused) {
-      this._scanPaused = false;
-      this._scanResumeResolver?.();
-      this._scanResumeResolver = null;
-      this._scanResumePromise = null;
-    }
+    this._clearPause();
     // NOTE: intentionally do NOT call disconnectIndexer() here. The indexer is an app-wide
     // singleton initialised once in App.tsx; nulling it on a per-wallet cancel/delete leaves
     // the whole app without an indexer until restart (e.g. a subsequent wallet import throws
@@ -667,27 +721,27 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     }
   }
 
-  private startPolling(): void {
-    if (this.isPollingActive) {
-      return;
-    }
+  /**
+   * Checks again in `delayMs`, in place of any check already due. Each check's end schedules the next (see
+   * _onCheckSucceeded and _onCheckFailed), so the wait is counted from the last check, whoever started it.
+   */
+  private _schedulePoll(delayMs: number): void {
+    this.stopPolling();
+    // a cancelled wallet stays stopped: its chain may no longer be the one the indexer serves
+    if (this.cancelScanCallbackScan) return;
 
-    this.isPollingActive = true;
-
-    this.pollingIntervalId = setInterval(async () => {
-      try {
-        await this.scanForPayments();
-      } catch (error) {
+    this._pollTimer = setTimeout(() => {
+      this._pollTimer = null;
+      this.scanForPayments().catch(error => {
         console.warn('[SP] Polling scan failed:', error instanceof Error ? error.message : error);
-      }
-    }, POLLING_INTERVAL_MS);
+      });
+    }, delayMs);
   }
 
   private stopPolling(): void {
-    if (this.pollingIntervalId !== null) {
-      clearInterval(this.pollingIntervalId);
-      this.pollingIntervalId = null;
-      this.isPollingActive = false;
+    if (this._pollTimer !== null) {
+      clearTimeout(this._pollTimer);
+      this._pollTimer = null;
     }
   }
 
@@ -702,7 +756,8 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
    *
    * @param {ScanProgressCallback} onProgress - Optional callback for progress updates
    * @param {boolean} forceFullScan - Force a full scan ignoring lastScannedBlock (default: false)
-   * @returns {Promise<number>} - Number of new UTXOs found
+   * @returns {Promise<number>} - Number of new UTXOs found. Rejects when the scan fails, or can't start
+   * because the wallet's birth height is still being looked up.
    */
   async scanForPayments(onProgress?: ScanProgressCallback, forceFullScan: boolean = false): Promise<number> {
     if (this.cancelScanCallbackScan) {
@@ -716,15 +771,33 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     this.cancelScanCallbackScan = false;
     this.activeScanPromise = this.performScan(onProgress, forceFullScan);
 
+    let result: number;
     try {
-      const result = await this.activeScanPromise;
-      await this.markSpentSilentPaymentUTXOs();
-      return result;
+      result = await this.activeScanPromise;
     } finally {
+      // Cleared once the scan itself settles, before the spent check below. The state reads idle (or
+      // error) by then, so a check started now must run rather than join this one.
       this.activeScanPromise = null;
+      // A pause can outlive its scan: one that failed while paused, or one paused before it got going and then
+      // found nothing to scan. Left behind, it would hold up the next scan for good.
+      this._clearPause();
       // don't cancelScanCallbackScan here — if cancelScan() was called during this scan,
       // the flag must stay true so subsequent calls to scanForPayments() exit early.
     }
+
+    // a cancelled wallet's chain may have been switched away from, so Electrum may serve another one
+    if (!this.cancelScanCallbackScan) {
+      await this._checkSpends();
+    }
+    return result;
+  }
+
+  /** markSpentSilentPaymentUTXOs, joining one already running, waited on for ELECTRUM_WAIT_MS at most. */
+  private _checkSpends(): Promise<void> {
+    this._activeSpentCheck ??= this.markSpentSilentPaymentUTXOs().finally(() => {
+      this._activeSpentCheck = null;
+    });
+    return settleWithin(this._activeSpentCheck, ELECTRUM_WAIT_MS);
   }
 
   private async performScan(onProgress?: ScanProgressCallback, forceFullScan: boolean = false): Promise<number> {
@@ -741,32 +814,31 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       }
 
       if (!(await this._resolvePendingBirthHeight(indexer, latestHeight))) {
-        // birth height still unknown, so there is no correct range to scan yet. the next refresh retries.
-        this._emitScanState('idle', IDLE_SCAN_STATE);
-        return 0;
+        // birth height still unknown, so there is no correct range to scan yet: nothing was checked
+        throw new Error(BIRTH_HEIGHT_PENDING);
       }
 
       // After the pending-birth resolution above, which may have just moved `_birthHeight`.
-      const effectiveBirthHeight = this.getEffectiveBirthHeight();
-
-      let startHeight: number;
+      const startHeight = !forceFullScan && this.lastScannedBlock > 0 ? this.lastScannedBlock + 1 : this.getEffectiveBirthHeight();
       const endHeight: number = latestHeight;
 
-      if (!forceFullScan && this.lastScannedBlock > 0) {
-        startHeight = this.lastScannedBlock + 1;
-
-        if (startHeight > latestHeight) {
-          return 0;
-        }
-      } else {
-        startHeight = effectiveBirthHeight;
-      }
-
       if (startHeight > endHeight) {
+        // Nothing new is still a successful check: clear any error an earlier one left, and keep
+        // watching for the next block.
+        this._settle('idle');
+        this._onCheckSucceeded(true);
         return 0;
       }
 
-      this._emitScanState('scanning', { startedAt: this._scanStartTime, progress: null, eta: null, etaComputedAt: null, error: null });
+      // A pause can land before the scan gets here (pauseScan only needs the scan to exist): it then starts paused,
+      // as it says, rather than reading as scanning while it waits.
+      this._emitScanState(this._scanPaused ? 'paused' : 'scanning', {
+        startedAt: this._scanStartTime,
+        progress: null,
+        eta: null,
+        etaComputedAt: null,
+        error: null,
+      });
 
       let totalUTXOsAdded = 0;
 
@@ -834,25 +906,30 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         () => this.cancelScanCallbackScan,
       );
 
-      this._emitScanState('idle', IDLE_SCAN_STATE);
-
-      if (this.lastScannedBlock >= latestHeight && !this.isPollingActive && !this.cancelScanCallbackScan) {
-        this.startPolling();
-      }
+      this._settle('idle');
+      this._onCheckSucceeded(this.lastScannedBlock >= latestHeight);
 
       return totalUTXOsAdded;
     } catch (error: any) {
       if (error.message === 'SCAN_CANCELLED') {
-        this._emitScanState('idle', IDLE_SCAN_STATE);
+        this._settle('idle');
         return 0;
       }
 
+      if (error.message === BIRTH_HEIGHT_PENDING) {
+        // Only refreshes and checks retry the lookup, not polls: three failed lookups fall back to scanning
+        // from activation, and polls would use them up within minutes.
+        this.stopPolling();
+      } else {
+        this._onCheckFailed();
+      }
+
       if (error.message?.includes('not initialized')) {
-        this._emitScanState('error', { error: 'Silent Payment Indexer not initialized.' });
+        this._settle('error', 'Silent Payment Indexer not initialized.');
         throw new Error('Silent Payment Indexer not initialized. Please configure the indexer first.');
       }
 
-      this._emitScanState('error', { error: error.message ?? 'Unknown scan error' });
+      this._settle('error', error.message ?? 'Unknown scan error');
       throw error;
     }
   }
@@ -1035,6 +1112,10 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     await super.fetchBalance();
   }
 
+  /**
+   * Starts the silent payment scan without waiting for it: a refresh holds a lock and gives up after
+   * 30s, and a catch-up scan can run far longer. checkForPayments waits for it.
+   */
   async fetchTransactions(): Promise<void> {
     try {
       await super.fetchTransactions();
@@ -1057,6 +1138,87 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         console.warn('[SP] Scan failed:', spError?.message || spError);
       }
     }
+  }
+
+  /**
+   * "Check for payments now", for a screen that shows the check running and then its outcome, where
+   * fetchTransactions only starts the scan. Syncs the regular addresses and scans side by side
+   * (joining a scan already in flight rather than starting another), and settles once both have.
+   * Resolves with the new silent payment outputs. Rejects when nothing was checked: the scan failed,
+   * couldn't start because the birth height is still being looked up, or was cancelled. A failed
+   * Electrum sync is only logged, as in fetchTransactions: it says nothing about the scan. Side by side
+   * is safe because the regular sync never touches _utxo, the one piece of state the scan shares, which
+   * is also why fetchUtxo has no place here.
+   */
+  checkForPayments(): Promise<number> {
+    if (this.cancelScanCallbackScan) {
+      // stopped, for a deleted wallet or a chain switched away from: reporting it checked would be untrue
+      return Promise.reject(new Error('SCAN_CANCELLED'));
+    }
+
+    this._activeCheck ??= this._runCheck().finally(() => {
+      this._activeCheck = null;
+    });
+    return this._activeCheck;
+  }
+
+  private async _runCheck(): Promise<number> {
+    const regular = this._syncRegularAddresses();
+    try {
+      const found = await this.scanForPayments();
+      // a cancel ends the scan quietly, as if there were nothing to scan: the check still didn't happen
+      if (this.cancelScanCallbackScan) throw new Error('SCAN_CANCELLED');
+      return found;
+    } finally {
+      await settleWithin(regular, ELECTRUM_WAIT_MS);
+    }
+  }
+
+  /**
+   * The regular addresses' half of a payment check: what a refresh does for them. Joins one already
+   * running, so checks a dead connection leaves waiting don't pile up their requests. Never rejects.
+   */
+  private _syncRegularAddresses(): Promise<void> {
+    this._activeRegularSync ??= this._runRegularSync().finally(() => {
+      this._activeRegularSync = null;
+    });
+    return this._activeRegularSync;
+  }
+
+  private async _runRegularSync(): Promise<void> {
+    const before = this._regularSyncSnapshot();
+    try {
+      // first, as a refresh does: fetchTransactions only fetches addresses whose cached balance or
+      // history suggests a change, so it alone would miss a new payment to an address already used
+      await this.fetchBalance();
+      await super.fetchTransactions();
+    } catch (error) {
+      console.warn('[SP] Regular sync during a payment check failed:', error);
+    }
+
+    // Nothing else would show what it fetched, or save it. Usually that's nothing new, and then neither runs:
+    // one re-renders every screen reading the wallets, the other writes every wallet, both on the JS thread.
+    if (this._regularSyncSnapshot() !== before) {
+      this.onBalanceChangeCallback?.();
+      this.onPersistCallback?.();
+    }
+  }
+
+  /**
+   * What a regular sync can change that a screen shows: how far the addresses go, each one's balance, and each
+   * transaction with its confirmations (a row counts them up to 7).
+   */
+  private _regularSyncSnapshot(): string {
+    const parts: unknown[] = [this.next_free_address_index, this.next_free_change_address_index];
+    for (const balances of [this._balances_by_external_index, this._balances_by_internal_index]) {
+      for (const [index, { c, u }] of Object.entries(balances)) parts.push(index, c, u);
+    }
+    for (const txsByIndex of [this._txs_by_external_index, this._txs_by_internal_index]) {
+      for (const [index, txs] of Object.entries(txsByIndex)) {
+        for (const tx of txs) parts.push(index, tx.txid, tx.confirmations);
+      }
+    }
+    return parts.join();
   }
 
   getUTXOs(): SilentPaymentUTXO[] {
@@ -1819,9 +1981,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     this.onPersistCallback = null;
     this._onScanStateChangeCallback = null;
     this._scanState = IDLE_SCAN_STATE;
-    this._scanPaused = false;
-    this._scanResumeResolver = null;
-    this._scanResumePromise = null;
+    this._clearPause();
     this._scanSamples = [];
   }
 }
