@@ -149,8 +149,9 @@ const SendDetails = () => {
     displayUnit === BitcoinUnit.LOCAL_CURRENCY
       ? `≈ ${formatBalance(amountSatsNum, walletUnit, true)}`
       : `≈ ${satoshiToLocalCurrency(amountSatsNum)}`;
-  const isFormValid = !!recipient?.address && amountSatsNum > 0;
-  const hasFeeEstimate = !!feePrecalc.current && amountSatsNum > 0;
+  const hasAmount = amountSatsNum > 0;
+  const isFormValid = !!recipient?.address && hasAmount;
+  const hasFeeEstimate = !!feePrecalc.current && hasAmount;
 
   const onChangeAmount = useCallback(
     (text: string) => {
@@ -409,7 +410,8 @@ const SendDetails = () => {
           newFeePrecalc[opt.key] = fee;
           break;
         } catch (e: any) {
-          if (e.message.includes('Not enough') && !flag) {
+          // the rate in use, chosen or default, must fit the real amount, so it never falls back to send-max
+          if (e.message.includes('Not enough') && !flag && opt.key !== 'current') {
             flag = true;
             targets = targets.map((t, index) => (index > 0 ? { ...t, value: 546 } : { address: t.address }));
             continue;
@@ -798,6 +800,7 @@ const SendDetails = () => {
     feeSummaryLabel: { color: colors.textMuted },
     feeSummaryValue: { color: colors.textPrimary },
     feeSummaryTextDisabled: { color: colors.textDisabled },
+    feeSummaryError: { color: colors.statusError },
     feeSummaryValueMeta: { color: colors.textMuted },
   });
 
@@ -920,11 +923,12 @@ const SendDetails = () => {
                 customFee,
               });
             }}
-            disabled={isLoading || !hasFeeEstimate}
-            style={[styles.feeSummary, stylesHook.feeSummary, !hasFeeEstimate && stylesHook.feeSummaryDisabled]}
+            // stays tappable when the fee can't be paid, so the rate can be lowered
+            disabled={isLoading || !hasAmount}
+            style={[styles.feeSummary, stylesHook.feeSummary, !hasAmount && stylesHook.feeSummaryDisabled]}
           >
             <View style={styles.feeSummaryTexts}>
-              <Text style={[styles.feeSummaryLabel, hasFeeEstimate ? stylesHook.feeSummaryLabel : stylesHook.feeSummaryTextDisabled]}>
+              <Text style={[styles.feeSummaryLabel, hasAmount ? stylesHook.feeSummaryLabel : stylesHook.feeSummaryTextDisabled]}>
                 {loc.send.network_fee}
               </Text>
               {hasFeeEstimate ? (
@@ -934,11 +938,13 @@ const SendDetails = () => {
                     {` · ${feeRate} ${loc.units.sat_vbyte} ≈ ${feeEtaLabel}`}
                   </Text>
                 </Text>
+              ) : hasAmount ? (
+                <Text style={[styles.feeSummaryValue, stylesHook.feeSummaryError]}>{loc.send.fee_exceeds_balance}</Text>
               ) : (
                 <Text style={[styles.feeSummaryValue, stylesHook.feeSummaryTextDisabled]}>{loc.send.enter_amount_to_estimate}</Text>
               )}
             </View>
-            {hasFeeEstimate && <ChevronRightIcon color={colors.iconSecondary} />}
+            {hasAmount && <ChevronRightIcon color={colors.iconSecondary} />}
           </Pressable>
         </View>
       </KeyboardAwareScrollView>
