@@ -46,7 +46,7 @@ const ShroudAppComponent = () => {
 
 AppRegistry.registerComponent('Shroud', () => ShroudAppComponent);
 
-// Android: WorkManager → BackgroundScanService starts this headless task.
+// Android: WorkManager → BackgroundScanWorker starts this headless task.
 AppRegistry.registerHeadlessTask('BackgroundScan', () => BackgroundScanHeadless);
 
 // iOS: BGTaskScheduler tasks arrive as events from the BackgroundScanManager

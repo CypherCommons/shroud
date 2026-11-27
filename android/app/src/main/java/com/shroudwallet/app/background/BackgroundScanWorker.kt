@@ -131,7 +131,7 @@ class BackgroundScanWorker(appContext: Context, params: WorkerParameters) : Work
 
     private fun markLastRun() {
         applicationContext
-            .getSharedPreferences("group.org.bitshala.shroud", Context.MODE_PRIVATE)
+            .getSharedPreferences("com.shroudwallet.app.background", Context.MODE_PRIVATE)
             .edit()
             .putLong("background_scan_last_run_at", System.currentTimeMillis())
             .apply()

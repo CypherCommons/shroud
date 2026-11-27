@@ -10,7 +10,7 @@ import type { SilentPaymentUTXOSerializable, StagedScanData } from './types';
  * on a locked device can write it. The payload is small: a cursor plus the few
  * UTXOs found since the app was last opened.
  */
-const SERVICE = 'org.bitshala.shroud.background.staging';
+const SERVICE = 'com.shroudwallet.app.background.staging';
 
 const KEYCHAIN_OPTIONS: SetOptions = {
   service: SERVICE,

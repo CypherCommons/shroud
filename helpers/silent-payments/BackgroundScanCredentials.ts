@@ -11,7 +11,7 @@ import type { ScanCredentials } from './types';
  * spend public key can detect incoming payments but cannot spend, so exposing them
  * after first unlock does not weaken custody of funds.
  */
-const SERVICE = 'org.bitshala.shroud.background.scancreds';
+const SERVICE = 'com.shroudwallet.app.background.scancreds';
 
 const KEYCHAIN_OPTIONS: SetOptions = {
   service: SERVICE,

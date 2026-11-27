@@ -12,7 +12,7 @@ const DEFAULT_TIME_BUDGET_MS = 25000;
 /**
  * Entry point for OS-driven background scans.
  * Android: registered via AppRegistry.registerHeadlessTask('BackgroundScan', ...)
- * and started by BackgroundScanService — the resolved promise notifies completion.
+ * and started by BackgroundScanWorker — the resolved promise notifies completion.
  * iOS: invoked by the onBackgroundScanStart listener in index.js; finish() maps
  * to BGTask.setTaskCompleted, so it MUST be called on every path.
  */

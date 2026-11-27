@@ -34,7 +34,7 @@ class BackgroundScanModule(reactContext: ReactApplicationContext) : ReactContext
         const val CHANNEL_ID = "shroud_scan"
         private const val PERIOD_MINUTES = 15L
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 4352
-        private const val PREFS_NAME = "group.org.bitshala.shroud"
+        private const val PREFS_NAME = "com.shroudwallet.app.background"
         private const val PREF_ENABLED = "background_scan_enabled"
         private const val PREF_LAST_RUN_AT = "background_scan_last_run_at"
     }
