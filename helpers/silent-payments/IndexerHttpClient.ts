@@ -56,7 +56,8 @@ export class IndexerHttpClient {
     if (!response.ok) {
       // 4xx is a definitive client-side rejection (bad request, not found, etc.) - retrying the
       // same request won't produce a different outcome, so don't burn the remaining attempts on it.
-      const retryable = response.status < 400 || response.status >= 500;
+      // 429 is the exception: the indexer's rate limit, which the backoff is there to wait out.
+      const retryable = response.status < 400 || response.status >= 500 || response.status === 429;
       return { ok: false, retryable, answered: true, message: `HTTP error! status: ${response.status}` };
     }
 

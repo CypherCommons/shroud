@@ -88,6 +88,10 @@ export type Transaction = {
    * the list shows such a self-transfer as a send and a receive (see splitSelfTransfer).
    */
   selfTransfer?: { value: number; address?: string };
+  /** Block height once confirmed, so confirmations can be derived from the scan tip. */
+  height?: number;
+  /** Spent by another wallet on the same seed. The real txid is unknown. */
+  external?: boolean;
 };
 
 /**

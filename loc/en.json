@@ -414,7 +414,9 @@
         "eta_1d": "ETA: In ~1 day",
         "list_title": "Transactions",
         "updating": "Updating...",
-        "amount_hidden": "Amount hidden"
+        "amount_hidden": "Amount hidden",
+        "external_spend": "Unknown",
+        "external_spend_txid": "Unknown (spent from another wallet)"
     },
     "wallets": {
         "details_address": "Standard Address",
