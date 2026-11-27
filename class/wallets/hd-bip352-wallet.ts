@@ -1235,6 +1235,10 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       }
       const totalValue = utxoGroup.reduce((sum, utxo) => sum + utxo.value, 0);
       const firstUtxo = utxoGroup[0];
+      // height 0 is a mempool payment found by scanByTxid. A confirmed one counts from the scan
+      // tip, and is at least 1 when the scan hasn't caught up to its block yet.
+      const height = Math.max(...utxoGroup.map(utxo => utxo.height));
+      const confirmations = height > 0 ? Math.max(this.lastScannedBlock - height + 1, 1) : 0;
 
       spIncomingTransactions.push({
         txid,
@@ -1245,7 +1249,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
         weight: 0,
         locktime: 0,
         value: totalValue,
-        confirmations: 7, // FIXME: dont assume stuff
+        confirmations,
         blockhash: firstUtxo.blockHash,
         time: firstUtxo.blockTime,
         blocktime: firstUtxo.blockTime,
