@@ -35,12 +35,15 @@ export interface SilentPaymentTarget {
  * test this verifies the bech32m HRP, so a mainnet `sp1` address is rejected on signet and a
  * `tsp1` address is rejected on mainnet instead of being mistaken for a regular on-chain
  * address and paid out verbatim.
+ *
+ * The decoder itself only checks the checksum, HRP and version and then slices the payload at
+ * byte 33, so the BIP-352 v0 shape (exactly two 33-byte compressed public keys) is checked here.
  */
 export function isSilentPaymentAddress(address: string | undefined, network: bitcoin.Network): boolean {
   if (!address) return false;
   try {
-    decodeSilentPaymentAddress(address, network);
-    return true;
+    const { scanKey, spendKey } = decodeSilentPaymentAddress(address, network);
+    return scanKey.length === 33 && spendKey.length === 33 && ecc.isPoint(scanKey) && ecc.isPoint(spendKey);
   } catch {
     return false;
   }
