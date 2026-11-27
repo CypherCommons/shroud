@@ -61,8 +61,17 @@ function getEnglishPrefixCompletions(): Map<string, string> {
 // eslint-disable-next-line no-control-regex -- \x00-\x1f/\x7f are intentionally stripped, not accidental
 const MNEMONIC_SEPARATOR_PATTERN = /[\x00-\x2f\x3a-\x40\x5b-\x60\x7b-\xa0\u2000-\u206f]/g;
 
+// Drops numbers standing alone ("1. abandon 2. ability"), as password managers and other wallets'
+// backups list the words. No wordlist word holds a digit.
 function cleanMnemonicText(secret: string): string {
-  return secret.trim().toLowerCase().replace(MNEMONIC_SEPARATOR_PATTERN, ' ').replace(/\s+/g, ' ').trim();
+  return secret
+    .trim()
+    .toLowerCase()
+    .replace(MNEMONIC_SEPARATOR_PATTERN, ' ')
+    .split(/\s+/)
+    .filter(word => !/^\d+$/.test(word))
+    .join(' ')
+    .trim();
 }
 
 // Completes a partial English word only when it isn't already a complete word in some
