@@ -1,5 +1,5 @@
 import { isSilentPaymentAddress } from '../helpers/silent-payments';
-import { getActiveNetwork } from '../modules/network';
+import { getActiveNetwork, getAllNetworks } from '../modules/network';
 
 export const MAX_CONTACT_NAME_LENGTH = 50;
 
@@ -49,6 +49,13 @@ export const isValidContactAddress = (addr: string): boolean => {
   const normalized = normalizeAddress(addr);
   return isSilentPaymentAddress(normalized, getActiveNetwork().bitcoinjs);
 };
+
+/**
+ * Contacts for every chain share one map in the storage bucket, the same way wallets do, so reading
+ * that map has to accept any network's HRP. Checking only the active one would drop the other
+ * chain's contacts on load and the next save would erase them from disk.
+ */
+const isKnownNetworkAddress = (addr: string): boolean => getAllNetworks().some(n => isSilentPaymentAddress(addr, n.bitcoinjs));
 
 export const getContact = (contacts: TContacts, address: string): TContact | undefined => contacts[normalizeAddress(address)];
 
@@ -128,9 +135,9 @@ export const searchContacts = (list: ContactListItem[], query: string): ContactL
  * have no such field, so a missing or malformed value reads as an empty map — that tolerance
  * is the whole migration path for existing installs.
  *
- * The key is the primary key and is validated like any other field: an entry the send flow could
- * not pay is dropped rather than shown as a live contact that upsertContact then refuses to
- * rename.
+ * The key is the primary key and is validated like any other field: an entry no network could
+ * pay is dropped rather than shown as a live contact that upsertContact then refuses to rename.
+ * Another network's contacts are kept, see isKnownNetworkAddress.
  */
 export const readContacts = (raw: unknown): TContacts => {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return {};
@@ -141,7 +148,7 @@ export const readContacts = (raw: unknown): TContacts => {
     if (typeof record?.name !== 'string') continue;
 
     const normalized = normalizeAddress(address);
-    if (!isValidContactAddress(normalized)) {
+    if (!isKnownNetworkAddress(normalized)) {
       console.warn('dropping contact with unpayable address');
       continue;
     }

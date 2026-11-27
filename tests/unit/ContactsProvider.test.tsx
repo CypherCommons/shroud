@@ -1,11 +1,13 @@
 import assert from 'assert';
 import React from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { bech32m } from 'bech32';
 
 import { ShroudApp } from '../../class';
 import { ContactsProvider } from '../../components/Context/ContactsProvider';
 import { useContacts } from '../../hooks/context/useContacts';
 import { useStorage } from '../../hooks/context/useStorage';
+import { setActiveNetwork } from '../../modules/network';
 
 jest.mock('../../hooks/context/useStorage');
 
@@ -14,6 +16,7 @@ const shroudApp = ShroudApp.getInstance();
 
 const ADDR_A = 'sp1qqfqnnv8czppwysafq3uwgwvsc638hc8rx3hscuddh0xa2yd746s7xqh6yy9ncjnqhqxazct0fzh98w7lpkm5fvlepqec2yy0sxlq4j6ccc3h6t0g';
 const ADDR_B = 'sp1qqvchcnrcqpdutxhpf57ptn3wajj0ymqxwzu9g6vj9uxx3wuvlykhyqh99hyh33y5593802pzw5rtw040zrw9f8re52tgcwngc5974w5evuufdy0m';
+const TSP_A = bech32m.encode('tsp', bech32m.decode(ADDR_A, 118).words, 130);
 
 describe('ContactsProvider', () => {
   let saveToDisk: jest.Mock;
@@ -99,6 +102,38 @@ describe('ContactsProvider', () => {
     assert.deepStrictEqual(result.current.validate({ name: 'Someone Else', address: ADDR_A }), [
       { field: 'address', code: 'duplicate', conflictName: 'Anmol Sharma' },
     ]);
+  });
+
+  it("lists only the active network's contacts and keeps the rest on save", async () => {
+    shroudApp.contacts = {
+      [ADDR_A]: { name: 'Anmol Sharma', createdAt: 1000, colorIndex: 2 },
+      [TSP_A]: { name: 'Signet Faucet', createdAt: 1000, colorIndex: 1 },
+    };
+    mockUseStorage.mockReturnValue({ saveToDisk, walletsInitialized: true, activeNetworkId: 'bitcoin' });
+    const { result, rerender } = renderContacts();
+
+    assert.deepStrictEqual(
+      result.current.contactList.map(c => c.address),
+      [ADDR_A],
+    );
+
+    await act(async () => {
+      await result.current.saveContact({ name: 'Lena Fischer', address: ADDR_B });
+    });
+    assert.deepStrictEqual(Object.keys(shroudApp.contacts).sort(), [ADDR_A, ADDR_B, TSP_A].sort());
+
+    try {
+      setActiveNetwork('signet');
+      mockUseStorage.mockReturnValue({ saveToDisk, walletsInitialized: true, activeNetworkId: 'signet' });
+      rerender({});
+
+      assert.deepStrictEqual(
+        result.current.contactList.map(c => c.address),
+        [TSP_A],
+      );
+    } finally {
+      setActiveNetwork('bitcoin');
+    }
   });
 
   it('resetContacts re-syncs from the singleton after it is mutated directly', () => {

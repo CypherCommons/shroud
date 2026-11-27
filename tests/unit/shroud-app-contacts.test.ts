@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNFS from 'react-native-fs';
 
 import { ShroudApp } from '../../class/shroud-app';
+import { setActiveNetwork } from '../../modules/network';
 
 describe('ShroudApp persistence', () => {
   // Every case builds its own ShroudApp but they all share one `data` key, and the last one
@@ -33,6 +34,28 @@ describe('ShroudApp persistence', () => {
     const reloaded = new ShroudApp();
     assert.strictEqual(await reloaded.loadFromDisk(), true);
     assert.deepStrictEqual(reloaded.contacts, { [ADDR_A]: { name: 'Anmol Sharma', createdAt: 1000, colorIndex: 2 } });
+  });
+
+  // The network choice is persisted and applied before loadFromDisk, so a relaunch after
+  // switching chains loads and saves the shared contacts map under the other network.
+  it('keeps mainnet contacts through a relaunch and save on signet', async () => {
+    try {
+      const app = new ShroudApp();
+      app.contacts = { [ADDR_A]: { name: 'Anmol Sharma', createdAt: 1000, colorIndex: 2 } };
+      await app.saveToDisk();
+
+      setActiveNetwork('signet');
+      const onSignet = new ShroudApp();
+      assert.strictEqual(await onSignet.loadFromDisk(), true);
+      await onSignet.saveToDisk();
+
+      setActiveNetwork('bitcoin');
+      const back = new ShroudApp();
+      assert.strictEqual(await back.loadFromDisk(), true);
+      assert.deepStrictEqual(back.contacts, { [ADDR_A]: { name: 'Anmol Sharma', createdAt: 1000, colorIndex: 2 } });
+    } finally {
+      setActiveNetwork('bitcoin');
+    }
   });
 
   it('starts with an empty contacts map', () => {
