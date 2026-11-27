@@ -1,4 +1,4 @@
-package org.bitshala.shroud.background
+package com.shroudwallet.app.background
 
 import android.Manifest
 import android.app.NotificationChannel
@@ -22,8 +22,8 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.modules.core.PermissionAwareActivity
 import com.facebook.react.modules.core.PermissionListener
-import org.bitshala.shroud.MainActivity
-import org.bitshala.shroud.R
+import com.shroudwallet.app.MainActivity
+import com.shroudwallet.app.R
 import java.util.concurrent.TimeUnit
 
 class BackgroundScanModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
@@ -145,7 +145,7 @@ class BackgroundScanModule(reactContext: ReactApplicationContext) : ReactContext
             return
         }
 
-        val activity = currentActivity as? PermissionAwareActivity
+        val activity = reactApplicationContext.currentActivity as? PermissionAwareActivity
         if (activity == null) {
             promise.resolve(false)
             return

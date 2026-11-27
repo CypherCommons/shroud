@@ -20,8 +20,8 @@ import UserNotifications
 @objc(BackgroundScanManager)
 class BackgroundScanManager: RCTEventEmitter {
 
-    static let appRefreshTaskId = "org.bitshala.shroud.fetchTxsForWallet"
-    static let processingTaskId = "org.bitshala.shroud.scanCatchup"
+    static let appRefreshTaskId = "com.shroudwallet.app.fetchTxsForWallet"
+    static let processingTaskId = "com.shroudwallet.app.scanCatchup"
 
     private static let enabledKey = "background_scan_enabled"
     private static let lastRunAtKey = "background_scan_last_run_at"

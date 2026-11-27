@@ -57,8 +57,9 @@ function credentials(overrides: Partial<ScanCredentials> = {}): ScanCredentials 
   return {
     walletID: 'wallet-1',
     scanPrivkeyHex: '11'.repeat(32),
-    spendPubkeyHex: '02' + '22'.repeat(32),
+    spendPubkeysHex: ['02' + '22'.repeat(32), '03' + '33'.repeat(32)],
     silentPaymentAddress: 'sp1qtest',
+    networkId: 'bitcoin',
     baseUrl: 'http://indexer.test',
     cursor: 0,
     birthHeight: BIRTH,

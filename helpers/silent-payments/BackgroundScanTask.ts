@@ -1,7 +1,7 @@
 import { Buffer } from 'buffer';
 
-import { BIP352_ACTIVATION_HEIGHT } from '../../modules/constants';
 import { postLocalNotification } from '../../modules/BackgroundScanManager';
+import { getNetwork } from '../../modules/network';
 import { initializeRustJsiBridge } from '../../modules/RustJsiBridge';
 import { SilentPaymentIndexer } from '../../modules/SilentPaymentIndexer';
 import loc from '../../loc';
@@ -80,8 +80,18 @@ async function doRunBackgroundScan(params: BackgroundScanParams): Promise<Backgr
 
   // Private indexer instance: must not clobber the foreground singleton's
   // config when running in a still-warm app runtime.
-  const indexer = new SilentPaymentIndexer({ baseUrl: credentials.baseUrl, timeout: BG_REQUEST_TIMEOUT_MS });
-  const processor = new RustTransactionProcessor(credentials.scanPrivkeyHex, credentials.spendPubkeyHex);
+  const network = getNetwork(credentials.networkId);
+  const indexer = new SilentPaymentIndexer({
+    baseUrl: credentials.baseUrl,
+    onionUrl: credentials.onionUrl,
+    timeout: BG_REQUEST_TIMEOUT_MS,
+  });
+  const processor = new RustTransactionProcessor(
+    credentials.scanPrivkeyHex,
+    credentials.spendPubkeysHex,
+    credentials.silentPaymentAddress,
+    network,
+  );
 
   let tipHeight: number;
   try {
@@ -94,7 +104,7 @@ async function doRunBackgroundScan(params: BackgroundScanParams): Promise<Backgr
   const staging = await readStaging();
   const stagedCursor = staging && staging.walletID === credentials.walletID ? staging.cursor : 0;
   const cursor = Math.max(credentials.cursor, stagedCursor);
-  const effectiveBirthHeight = Math.max(credentials.birthHeight, BIP352_ACTIVATION_HEIGHT);
+  const effectiveBirthHeight = Math.max(credentials.birthHeight, network.bip352ActivationHeight);
   // Mirrors performScan: resume after the cursor, or start at birth for a never-scanned wallet.
   const startHeight = cursor > 0 ? cursor + 1 : effectiveBirthHeight;
 
@@ -115,7 +125,7 @@ async function doRunBackgroundScan(params: BackgroundScanParams): Promise<Backgr
     try {
       const response = await indexer.getTransactionsByRange(rangeStart, rangeEnd);
       const valid = response.transactions.filter(tx => tx.scanTweak && tx.outputs && tx.outputs.length > 0);
-      const matched = valid.length > 0 ? await processor.processBatch(valid, credentials.silentPaymentAddress) : [];
+      const matched = valid.length > 0 ? await processor.processBatch(valid) : [];
 
       // Stage UTXOs and cursor in one write — the cursor never points past
       // blocks whose finds weren't saved, so a kill mid-run is always safe.

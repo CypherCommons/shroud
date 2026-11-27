@@ -77,6 +77,7 @@ class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate {
     }
 
     override func applicationDidEnterBackground(_ application: UIApplication) {
+        super.applicationDidEnterBackground(application)
         BackgroundScanManager.scheduleBGTasks()
     }
 

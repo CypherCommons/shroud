@@ -1,4 +1,4 @@
-package org.bitshala.shroud.background
+package com.shroudwallet.app.background
 
 import android.content.Context
 import android.util.Log
@@ -53,10 +53,9 @@ class BackgroundScanWorker(appContext: Context, params: WorkerParameters) : Work
     }
 
     private fun awaitReactContext(): ReactContext? {
-        val reactNativeHost = (applicationContext as ReactApplication).reactNativeHost
-        val reactInstanceManager = reactNativeHost.reactInstanceManager
+        val reactHost = (applicationContext as ReactApplication).reactHost ?: return null
 
-        reactInstanceManager.currentReactContext?.let { return it }
+        reactHost.currentReactContext?.let { return it }
 
         val latch = CountDownLatch(1)
         var obtainedContext: ReactContext? = null
@@ -64,27 +63,25 @@ class BackgroundScanWorker(appContext: Context, params: WorkerParameters) : Work
         val listener = object : ReactInstanceEventListener {
             override fun onReactContextInitialized(context: ReactContext) {
                 obtainedContext = context
-                reactInstanceManager.removeReactInstanceEventListener(this)
+                reactHost.removeReactInstanceEventListener(this)
                 latch.countDown()
             }
         }
 
         UiThreadUtil.runOnUiThread {
             // Re-check on the UI thread: the context may have appeared in between.
-            val current = reactInstanceManager.currentReactContext
+            val current = reactHost.currentReactContext
             if (current != null) {
                 obtainedContext = current
                 latch.countDown()
             } else {
-                reactInstanceManager.addReactInstanceEventListener(listener)
-                if (!reactInstanceManager.hasStartedCreatingInitialContext()) {
-                    reactInstanceManager.createReactContextInBackground()
-                }
+                reactHost.addReactInstanceEventListener(listener)
+                reactHost.start()
             }
         }
 
         latch.await(REACT_BOOT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-        if (obtainedContext == null) reactInstanceManager.removeReactInstanceEventListener(listener)
+        if (obtainedContext == null) reactHost.removeReactInstanceEventListener(listener)
         return obtainedContext
     }
 

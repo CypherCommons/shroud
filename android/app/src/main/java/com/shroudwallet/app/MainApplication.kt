@@ -14,7 +14,7 @@ import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
 import com.facebook.react.modules.i18nmanager.I18nUtil
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ExpoReactHostFactory
-import org.bitshala.shroud.background.BackgroundScanPackage
+import com.shroudwallet.app.background.BackgroundScanPackage
 
 class MainApplication : Application(), ReactApplication {
 

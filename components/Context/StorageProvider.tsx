@@ -427,6 +427,12 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
         attachWalletCallbacks(incomingWallets);
         setActiveNetworkIdState(next);
         setWallets([...incomingWallets]);
+
+        // Background scanning follows the visible wallet: re-provision its scan credentials for
+        // this chain, or tear them down if there is no wallet here.
+        syncBackgroundScanState(incomingWallets).catch(error =>
+          console.warn('[StorageProvider] Background scan re-sync after network switch failed:', error),
+        );
       } catch (error) {
         // Stay on the chain the UI is still showing: restore the module (and the stored
         // preference), then hand the outgoing wallets their callbacks back.

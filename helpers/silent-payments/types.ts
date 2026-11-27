@@ -1,4 +1,5 @@
 import { Utxo } from '../../class/wallets/types';
+import type { NetworkId } from '../../modules/network';
 
 interface IndexerOutput {
   transactionId: string;
@@ -138,9 +139,13 @@ export type ScanProgressCallback = (progress: ScanProgress) => void | Promise<vo
 export interface ScanCredentials {
   walletID: string;
   scanPrivkeyHex: string;
-  spendPubkeyHex: string;
+  /** Main spend pubkey plus the label-0 (change) one — the scanner tries both. */
+  spendPubkeysHex: string[];
   silentPaymentAddress: string;
+  networkId: NetworkId;
   baseUrl: string;
+  /** This network's indexer over Tor, when it has one. */
+  onionUrl?: string;
   /** Floor for the background cursor, refreshed after foreground scans. */
   cursor: number;
   birthHeight: number;

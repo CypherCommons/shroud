@@ -584,9 +584,14 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     return { keyPair, tapInternalKey };
   }
 
+  /** Every spend pubkey a scan has to try: the main one and label-0 change. */
+  getSpendPublicKeys(): Uint8Array[] {
+    return this.getSpendKeyCandidates().map(candidate => candidate.spendPub);
+  }
+
   getScanPrivateKey(): Uint8Array {
     const seed = this.getSeed();
-    return getScanPrivateKey(seed);
+    return getScanPrivateKey(seed, this.getNetworkConfig());
   }
 
   getBirthHeight(): number {
@@ -626,7 +631,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     // may have scanned from the BIP-352 activation height; adopting such a low
     // cursor into a never-scanned wallet (lastScannedBlock = 0) would drag the
     // next foreground scan years behind its real birth height.
-    const effectiveBirthHeight = Math.max(this._birthHeight, BIP352_ACTIVATION_HEIGHT);
+    const effectiveBirthHeight = this.getEffectiveBirthHeight();
     const cursorAdvanced = staged.cursor > this.lastScannedBlock && staged.cursor >= effectiveBirthHeight;
     if (cursorAdvanced) {
       this.lastScannedBlock = staged.cursor;

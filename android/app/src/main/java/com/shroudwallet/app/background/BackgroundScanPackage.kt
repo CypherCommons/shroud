@@ -1,4 +1,4 @@
-package org.bitshala.shroud.background
+package com.shroudwallet.app.background
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule

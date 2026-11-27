@@ -22,9 +22,11 @@ export async function provisionScanCredentials(wallet: HDSilentPaymentsWallet, b
   const credentials: ScanCredentials = {
     walletID: wallet.getID(),
     scanPrivkeyHex: Buffer.from(wallet.getScanPrivateKey()).toString('hex'),
-    spendPubkeyHex: Buffer.from(wallet.getSpendPublicKey()).toString('hex'),
+    spendPubkeysHex: wallet.getSpendPublicKeys().map(key => Buffer.from(key).toString('hex')),
     silentPaymentAddress: wallet.getSilentPaymentAddress()!,
+    networkId: wallet.getNetworkConfig().id,
     baseUrl,
+    onionUrl: wallet.getNetworkConfig().indexerOnionUrl || undefined,
     cursor: wallet.getLastScannedBlock(),
     birthHeight: wallet.getBirthHeight(),
     schema: 1,
@@ -39,7 +41,7 @@ export async function readScanCredentials(): Promise<ScanCredentials | null> {
     if (!result) return null;
 
     const credentials = JSON.parse(result.password) as ScanCredentials;
-    if (credentials.schema !== 1 || !credentials.scanPrivkeyHex || !credentials.spendPubkeyHex) return null;
+    if (credentials.schema !== 1 || !credentials.scanPrivkeyHex || !credentials.spendPubkeysHex?.length) return null;
 
     return credentials;
   } catch (error) {
