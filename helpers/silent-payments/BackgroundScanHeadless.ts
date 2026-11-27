@@ -24,8 +24,9 @@ export default async function BackgroundScanHeadless(data: BackgroundScanTaskDat
       timeBudgetMs: data?.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS,
       reason: data?.reason,
     });
-    // Bailing because the live app owns scanning is a successful no-op, not a failure.
-    success = result.bailedReason === undefined || result.bailedReason === 'foreground-active';
+    // Bailing because the live app or another run owns scanning is a successful no-op, not a failure.
+    success =
+      result.bailedReason === undefined || result.bailedReason === 'foreground-active' || result.bailedReason === 'already-running';
   } catch (error) {
     console.warn('[BackgroundScan] Task failed:', error);
   } finally {

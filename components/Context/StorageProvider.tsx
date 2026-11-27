@@ -220,6 +220,16 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
           .catch(error => console.warn('[StorageProvider] Foreground staged merge failed:', error));
       } else {
         markForegroundInactive();
+        if (state === 'background') {
+          // Background runs start from this cursor: record how far the foreground got, so they
+          // don't re-find (and re-notify) payments the wallet already has.
+          const scanWallet = findScannableWallet(shroudApp.getWallets());
+          if (scanWallet) {
+            updateScanCursor(scanWallet.getID(), scanWallet.getLastScannedBlock()).catch(error =>
+              console.warn('[StorageProvider] Background scan cursor update failed:', error),
+            );
+          }
+        }
       }
     });
     return () => subscription.remove();
@@ -331,6 +341,11 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
 
   const resetWallets = useCallback(() => {
     setWallets(shroudApp.getWallets());
+    // The visible storage changed (e.g. to the decoy): background scanning must not keep
+    // running for the wallet that is no longer on screen.
+    syncBackgroundScanState(shroudApp.getWallets()).catch(error =>
+      console.warn('[StorageProvider] Background scan re-sync after storage reset failed:', error),
+    );
   }, []);
 
   // Forgot-PIN reset: wipes the wallet data and the PIN. The queued save is cancelled and txMetadata
@@ -342,6 +357,8 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     }
     txMetadata.current = {};
     await shroudApp.wipeAllData();
+    // The scan key, staged results and OS scheduling live outside the wallet storage.
+    await teardownBackgroundScanState();
     await clearPin();
     setWallets([]);
   }, []);
@@ -453,20 +470,22 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
       const currentWallets = shroudApp.getWallets();
       attachWalletCallbacks(currentWallets);
 
-      // Merge staged background-scan results and (re-)provision scan credentials
-      // BEFORE exposing wallets — the foreground scan kicked off by WalletsList
-      // must start from the merged cursor, not behind it.
+      // Merge staged background-scan results BEFORE exposing wallets — the foreground scan
+      // kicked off by WalletsList must start from the merged cursor, not behind it. Only the
+      // merge: provisioning can prompt for notification permission, and the wallet list must
+      // not wait on that.
       (async () => {
         try {
-          const merged = await syncBackgroundScanState(currentWallets);
+          const merged = await mergeStagedResults(currentWallets);
           if (merged > 0) {
             await saveToDisk();
           }
         } catch (error) {
-          console.warn('[StorageProvider] Background scan sync failed:', error);
+          console.warn('[StorageProvider] Staged background-scan merge failed:', error);
         } finally {
           setWallets(currentWallets);
         }
+        syncBackgroundScanState(currentWallets).catch(error => console.warn('[StorageProvider] Background scan sync failed:', error));
       })();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

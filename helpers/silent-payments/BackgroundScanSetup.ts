@@ -4,7 +4,7 @@ import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
 import type { TWallet } from '../../class/wallets/types';
 import { requestNotificationPermission, startBackgroundScanning, stopBackgroundScanning } from '../../modules/BackgroundScanManager';
 import { getDefaultIndexer } from '../../modules/SilentPaymentIndexer';
-import { deleteScanCredentials, provisionScanCredentials, readScanCredentials } from './BackgroundScanCredentials';
+import { deleteScanCredentials, provisionScanCredentials, readScanCredentials, updateScanCursor } from './BackgroundScanCredentials';
 import { clearStaging, readStaging } from './ScanStagingStore';
 
 const USER_PREF_KEY = 'background_scan_user_pref'; // 'on' | 'off'; absent = on (default)
@@ -14,20 +14,6 @@ export async function isBackgroundScanningEnabledByUser(): Promise<boolean> {
     return (await AsyncStorage.getItem(USER_PREF_KEY)) !== 'off';
   } catch {
     return true;
-  }
-}
-
-export async function setBackgroundScanningUserPref(enabled: boolean): Promise<void> {
-  await AsyncStorage.setItem(USER_PREF_KEY, enabled ? 'on' : 'off');
-  try {
-    if (enabled) {
-      await requestNotificationPermission();
-      await startBackgroundScanning();
-    } else {
-      await stopBackgroundScanning();
-    }
-  } catch (error) {
-    console.warn('[BackgroundScan] Failed to toggle native scheduling:', error);
   }
 }
 
@@ -52,10 +38,24 @@ export async function mergeStagedResults(wallets: TWallet[]): Promise<number> {
 
   const merged = wallet.mergeStagedScanResults(staged);
   await clearStaging();
+  // The wallet now covers everything that was staged. Move the background cursor with it, or the
+  // next run starts behind, finds the same payments again and notifies a second time.
+  await updateScanCursor(wallet.getID(), wallet.getLastScannedBlock());
   if (merged > 0) {
     console.log(`[BackgroundScan] Merged ${merged} staged UTXO(s) on foreground`);
   }
   return merged;
+}
+
+/** Remove credentials, staged data and OS scheduling for a deleted wallet. */
+export async function teardownBackgroundScanState(): Promise<void> {
+  await deleteScanCredentials();
+  await clearStaging();
+  try {
+    await stopBackgroundScanning();
+  } catch (error) {
+    console.warn('[BackgroundScan] Failed to stop native scheduling:', error);
+  }
 }
 
 /**
@@ -92,6 +92,12 @@ export async function syncBackgroundScanState(wallets: TWallet[]): Promise<numbe
     }
   }
 
+  // The scan key only leaves the wallet storage while the user wants background scanning.
+  if (!(await isBackgroundScanningEnabledByUser())) {
+    await teardownBackgroundScanState();
+    return merged;
+  }
+
   const hadCredentials = (await readScanCredentials()) !== null;
   try {
     // Same indexer the foreground scan uses (initialized in App.tsx from env).
@@ -102,29 +108,22 @@ export async function syncBackgroundScanState(wallets: TWallet[]): Promise<numbe
     return merged;
   }
 
-  if (await isBackgroundScanningEnabledByUser()) {
-    try {
-      if (!hadCredentials) {
-        // First provisioning for this wallet: ask for notification permission
-        // while we're in the foreground, then enable scheduling.
-        await requestNotificationPermission();
-      }
-      await startBackgroundScanning();
-    } catch (error) {
-      console.warn('[BackgroundScan] Failed to start native scheduling:', error);
+  try {
+    if (!hadCredentials) {
+      // First provisioning for this wallet: ask for notification permission
+      // while we're in the foreground, then enable scheduling.
+      await requestNotificationPermission();
     }
+    await startBackgroundScanning();
+  } catch (error) {
+    console.warn('[BackgroundScan] Failed to start native scheduling:', error);
   }
 
   return merged;
 }
 
-/** Remove credentials, staged data and OS scheduling for a deleted wallet. */
-export async function teardownBackgroundScanState(): Promise<void> {
-  await deleteScanCredentials();
-  await clearStaging();
-  try {
-    await stopBackgroundScanning();
-  } catch (error) {
-    console.warn('[BackgroundScan] Failed to stop native scheduling:', error);
-  }
+export async function setBackgroundScanningUserPref(enabled: boolean, wallets: TWallet[]): Promise<void> {
+  await AsyncStorage.setItem(USER_PREF_KEY, enabled ? 'on' : 'off');
+  // Off removes the scan key, staged results and OS scheduling; on provisions them again.
+  await syncBackgroundScanState(wallets);
 }

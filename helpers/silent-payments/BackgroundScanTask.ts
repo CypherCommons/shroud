@@ -21,13 +21,13 @@ export interface BackgroundScanResult {
   newUtxos: number;
   newCursor: number;
   caughtUp: boolean;
-  bailedReason?: 'foreground-active' | 'no-credentials' | 'indexer-unreachable' | 'cancelled';
+  bailedReason?: 'foreground-active' | 'no-credentials' | 'indexer-unreachable' | 'cancelled' | 'already-running';
 }
 
 const RANGE_BATCH_SIZE = 50; // matches SilentPaymentIndexer.scanBlocks
 /**
- * Short per-request timeout (vs the foreground 100s): fetchWithRetries retries
- * 3x with no backoff, so a hung indexer must not eat the whole iOS budget.
+ * Short per-request timeout (vs the foreground 100s). The indexer client retries 3x with backoff
+ * on top of this, so on its own it does not bound a run — `withDeadline` does.
  */
 const BG_REQUEST_TIMEOUT_MS = 8000;
 /** Headroom reserved for the final staging write + native completion. */
@@ -42,6 +42,14 @@ let activeRun: Promise<BackgroundScanResult> | null = null;
  */
 export function requestBackgroundScanCancel(): void {
   cancelRequested = true;
+}
+
+/** Reject once the run's deadline passes, so one slow request can't outlive the OS time budget. */
+function withDeadline<T>(promise: Promise<T>, deadline: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Background scan deadline reached')), Math.max(0, deadline - Date.now()));
+    promise.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
 }
 
 function toSerializable(utxo: SilentPaymentUTXO): SilentPaymentUTXOSerializable {
@@ -123,7 +131,7 @@ async function doRunBackgroundScan(params: BackgroundScanParams): Promise<Backgr
     const rangeEnd = Math.min(rangeStart + RANGE_BATCH_SIZE - 1, tipHeight);
 
     try {
-      const response = await indexer.getTransactionsByRange(rangeStart, rangeEnd);
+      const response = await withDeadline(indexer.getTransactionsByRange(rangeStart, rangeEnd), deadline);
       const valid = response.transactions.filter(tx => tx.scanTweak && tx.outputs && tx.outputs.length > 0);
       const matched = valid.length > 0 ? await processor.processBatch(valid) : [];
 
@@ -169,13 +177,14 @@ async function doRunBackgroundScan(params: BackgroundScanParams): Promise<Backgr
  * on next open. Never touches the main wallet storage (unreadable while the
  * device is locked) and never holds spending keys.
  *
- * Single-flight: concurrent invocations (e.g. iOS refresh + processing tasks
- * firing together) share one run — interleaved loops would race the staging
- * read-modify-write.
+ * Single-flight: interleaved loops would race the staging read-modify-write, so an
+ * invocation that finds a run in progress (e.g. iOS refresh + processing tasks firing
+ * together) returns at once instead of joining it. Joining would tie the run to the
+ * joiner's lifetime: its OS task expiring would cancel a run it does not own.
  */
 export async function runBackgroundScan(params: BackgroundScanParams): Promise<BackgroundScanResult> {
   if (activeRun) {
-    return activeRun;
+    return { blocksScanned: 0, newUtxos: 0, newCursor: 0, caughtUp: false, bailedReason: 'already-running' };
   }
 
   activeRun = doRunBackgroundScan(params);

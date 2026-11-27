@@ -1,7 +1,8 @@
 import { BIP352_ACTIVATION_HEIGHT } from '../../modules/constants.ts';
 import type { ScanCredentials, StagedScanData } from '../../helpers/silent-payments/types.ts';
 // jest.mock calls below are hoisted above this import by ts-jest
-import { runBackgroundScan } from '../../helpers/silent-payments/BackgroundScanTask.ts';
+import { runBackgroundScan, requestBackgroundScanCancel } from '../../helpers/silent-payments/BackgroundScanTask.ts';
+import { getNetwork } from '../../modules/network.ts';
 
 const mockReadScanCredentials = jest.fn();
 const mockReadStaging = jest.fn();
@@ -11,6 +12,13 @@ const mockPostLocalNotification = jest.fn();
 const mockGetLatestBlockHeight = jest.fn();
 const mockGetTransactionsByRange = jest.fn();
 const mockProcessBatch = jest.fn();
+const mockSilentPaymentIndexer = jest.fn().mockImplementation(() => ({
+  getLatestBlockHeight: () => mockGetLatestBlockHeight(),
+  getTransactionsByRange: (start: number, end: number) => mockGetTransactionsByRange(start, end),
+}));
+const mockRustTransactionProcessor = jest.fn().mockImplementation(() => ({
+  processBatch: (...args: unknown[]) => mockProcessBatch(...args),
+}));
 
 jest.mock('../../helpers/silent-payments/BackgroundScanCredentials', () => ({
   readScanCredentials: () => mockReadScanCredentials(),
@@ -34,16 +42,17 @@ jest.mock('../../modules/RustJsiBridge', () => ({
 }));
 
 jest.mock('../../modules/SilentPaymentIndexer', () => ({
-  SilentPaymentIndexer: jest.fn().mockImplementation(() => ({
-    getLatestBlockHeight: () => mockGetLatestBlockHeight(),
-    getTransactionsByRange: (start: number, end: number) => mockGetTransactionsByRange(start, end),
-  })),
+  // An arrow function would not be constructible with `new`; a function expression
+  // returning the mock instance is.
+  SilentPaymentIndexer: function MockSilentPaymentIndexer(...args: unknown[]) {
+    return mockSilentPaymentIndexer(...args);
+  },
 }));
 
 jest.mock('../../helpers/silent-payments/RustTransactionProcessor', () => ({
-  RustTransactionProcessor: jest.fn().mockImplementation(() => ({
-    processBatch: (...args: unknown[]) => mockProcessBatch(...args),
-  })),
+  RustTransactionProcessor: function MockRustTransactionProcessor(...args: unknown[]) {
+    return mockRustTransactionProcessor(...args);
+  },
 }));
 
 // loc pulls in currency/AsyncStorage at module scope; stub the one string table we use
@@ -64,6 +73,7 @@ function credentials(overrides: Partial<ScanCredentials> = {}): ScanCredentials 
     cursor: 0,
     birthHeight: BIRTH,
     schema: 1,
+    ...overrides,
   };
 }
 
@@ -224,5 +234,76 @@ describe('runBackgroundScan', () => {
 
     expect(result.bailedReason).toBeUndefined();
     expect(result.newUtxos).toBe(1);
+  });
+
+  it('scans with every spend key and the onion URL from the credentials', async () => {
+    mockReadScanCredentials.mockResolvedValue(credentials({ onionUrl: 'http://x.onion' }));
+    mockGetLatestBlockHeight.mockResolvedValue({ height: BIRTH });
+
+    await runBackgroundScan({ timeBudgetMs: 60000 });
+
+    expect(mockRustTransactionProcessor).toHaveBeenCalledTimes(1);
+    expect(mockRustTransactionProcessor).toHaveBeenCalledWith(
+      credentials().scanPrivkeyHex,
+      credentials().spendPubkeysHex, // both spend pubkeys — scanning with only the first misses change outputs
+      'sp1qtest',
+      getNetwork('bitcoin'),
+    );
+    expect(mockSilentPaymentIndexer).toHaveBeenCalledTimes(1);
+    expect(mockSilentPaymentIndexer).toHaveBeenCalledWith(
+      expect.objectContaining({ baseUrl: 'http://indexer.test', onionUrl: 'http://x.onion', timeout: 8000 }),
+    );
+  });
+
+  it("uses the credential network's activation height, not mainnet's", async () => {
+    // Signet's floor is 0; a wallet born at 100 must scan from 100, not from the
+    // mainnet BIP-352 activation height the getNetwork('bitcoin') path would give.
+    mockReadScanCredentials.mockResolvedValue(credentials({ networkId: 'signet', birthHeight: 100 }));
+    mockGetLatestBlockHeight.mockResolvedValue({ height: 120 });
+
+    await runBackgroundScan({ timeBudgetMs: 60000 });
+
+    expect(mockGetTransactionsByRange).toHaveBeenCalledTimes(1);
+    expect(mockGetTransactionsByRange).toHaveBeenCalledWith(100, 120);
+    expect(mockRustTransactionProcessor).toHaveBeenCalledWith(
+      credentials().scanPrivkeyHex,
+      credentials().spendPubkeysHex,
+      'sp1qtest',
+      getNetwork('signet'),
+    );
+  });
+
+  it('does not join a run already in progress; the joining start is a successful no-op', async () => {
+    let resolveTip!: (value: { height: number }) => void;
+    mockGetLatestBlockHeight.mockImplementation(() => new Promise<{ height: number }>(resolve => (resolveTip = resolve)));
+
+    const first = runBackgroundScan({ timeBudgetMs: 60000 });
+    // A second task (e.g. the iOS refresh task firing while a processing run is going)
+    // must return at once. Joining would let the second task's expiry cancel the first.
+    const second = await runBackgroundScan({ timeBudgetMs: 60000 });
+
+    expect(second).toEqual({ blocksScanned: 0, newUtxos: 0, newCursor: 0, caughtUp: false, bailedReason: 'already-running' });
+
+    await new Promise<void>(resolve => setImmediate(resolve)); // let the first run reach the hanging tip fetch
+    resolveTip({ height: BIRTH });
+    const firstResult = await first;
+    expect(firstResult.bailedReason).toBeUndefined(); // the joiner did not cancel the run it found
+    expect(firstResult.caughtUp).toBe(true);
+    mockGetLatestBlockHeight.mockResolvedValue({ height: BIRTH });
+  });
+
+  it('stops between ranges once cancellation is requested', async () => {
+    let resolveTip!: (value: { height: number }) => void;
+    mockGetLatestBlockHeight.mockImplementation(() => new Promise<{ height: number }>(resolve => (resolveTip = resolve)));
+
+    const run = runBackgroundScan({ timeBudgetMs: 60000 });
+    requestBackgroundScanCancel(); // e.g. the iOS expiry handler fires while the run waits on the indexer
+    await new Promise<void>(resolve => setImmediate(resolve)); // let the run reach the hanging tip fetch
+    resolveTip({ height: BIRTH + 149 });
+
+    const result = await run;
+    expect(result.bailedReason).toBe('cancelled');
+    expect(mockGetTransactionsByRange).not.toHaveBeenCalled();
+    mockGetLatestBlockHeight.mockResolvedValue({ height: BIRTH });
   });
 });

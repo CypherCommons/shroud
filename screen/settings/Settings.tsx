@@ -1,8 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
 import { usePreventRemove } from '@react-navigation/native';
-import { StyleSheet, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
-import ListItem from '../../components/ListItem';
-import { isBackgroundScanningEnabledByUser, setBackgroundScanningUserPref } from '../../helpers/silent-payments/BackgroundScanSetup';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import SafeAreaScrollView from '../../components/SafeAreaScrollView';
 import SettingsRow from '../../components/SettingsRow';
 import PinPrompt from '../../components/PinPrompt';
@@ -93,21 +91,6 @@ const Settings: React.FC = () => {
   const { deleteWallet, isPinPromptVisible, cancelPinPrompt, onPinCorrect } = useDeleteWallet();
   // Back while the PIN is asked for drops the delete and stays on Settings, like the recovery phrase screen.
   usePreventRemove(isPinPromptVisible, cancelPinPrompt);
-  const [backgroundScanEnabled, setBackgroundScanEnabled] = useState<boolean>(true);
-
-  useEffect(() => {
-    isBackgroundScanningEnabledByUser().then(setBackgroundScanEnabled);
-  }, []);
-
-  const onBackgroundScanSwitch = useCallback(async (value: boolean) => {
-    setBackgroundScanEnabled(value);
-    try {
-      await setBackgroundScanningUserPref(value);
-    } catch (error) {
-      console.warn('[Settings] Failed to toggle background scanning:', error);
-      setBackgroundScanEnabled(!value);
-    }
-  }, []);
 
   const cardStyle = [styles.card, { borderColor: colors.borderDefault, backgroundColor: colors.fieldBackground }];
 
@@ -133,17 +116,6 @@ const Settings: React.FC = () => {
           />
         ))}
       </View>
-
-      <ListItem
-        title={loc.settings.background_scan}
-        subtitle={loc.settings.background_scan_explain}
-        Component={TouchableWithoutFeedback}
-        testID="BackgroundScanSwitch"
-        switch={{
-          value: backgroundScanEnabled,
-          onValueChange: onBackgroundScanSwitch,
-        }}
-      />
 
       <View style={[cardStyle, styles.cardGap]}>
         {SECONDARY_ROWS.map((row, index) => (
