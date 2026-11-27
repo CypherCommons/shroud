@@ -20,6 +20,7 @@ import ThemeSettings from '../screen/settings/ThemeSettings';
 import DenominationSettings from '../screen/settings/DenominationSettings';
 import Licensing from '../screen/settings/Licensing';
 import About from '../screen/settings/About';
+import IndexerSettings from '../screen/settings/IndexerSettings';
 import ElectrumServerSettings from '../screen/settings/ElectrumServerSettings';
 import BlockExplorerSettings from '../screen/settings/BlockExplorerSettings';
 import TorSettings from '../screen/settings/TorSettings';
@@ -149,6 +150,11 @@ const DetailViewStackScreensStack = () => {
       />
       <DetailViewStack.Screen name="Licensing" component={Licensing} options={navigationStyle({ title: loc.settings.license })(theme)} />
       <DetailViewStack.Screen name="About" component={About} options={navigationStyle({ title: loc.settings.about })(theme)} />
+      <DetailViewStack.Screen
+        name="IndexerSettings"
+        component={IndexerSettings}
+        options={navigationStyle({ title: loc.settings.indexer_title })(theme)}
+      />
       <DetailViewStack.Screen
         name="ElectrumServerSettings"
         component={ElectrumServerSettings}

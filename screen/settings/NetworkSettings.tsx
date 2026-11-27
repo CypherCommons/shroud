@@ -13,6 +13,7 @@ import { useStorage } from '../../hooks/context/useStorage';
 import { useSettings } from '../../hooks/context/useSettings';
 import * as Electrum from '../../modules/Electrum';
 import { getNetwork } from '../../modules/network';
+import { getDefaultIndexer } from '../../modules/SilentPaymentIndexer';
 import loc from '../../loc';
 import { ClashFont } from '../../constants/fonts';
 
@@ -24,6 +25,7 @@ const NetworkSettings: React.FC = () => {
   const { scanState, activeNetworkId } = useStorage();
   const { selectedBlockExplorer } = useSettings();
   const [config, setConfig] = useState<ElectrumConfig>({});
+  const [indexerUrl, setIndexerUrl] = useState(() => getDefaultIndexer().getBaseUrl());
   const [preferredServer, setPreferredServer] = useState<Electrum.ElectrumServerItem>();
 
   useFocusEffect(
@@ -31,6 +33,7 @@ const NetworkSettings: React.FC = () => {
       Electrum.getPreferredServer().then(setPreferredServer);
 
       const pollConfig = async () => {
+        setIndexerUrl(getDefaultIndexer().getBaseUrl());
         let next: ElectrumConfig;
         try {
           next = await Electrum.getConfig();
@@ -108,6 +111,24 @@ const NetworkSettings: React.FC = () => {
           onPress={() => navigation.navigate('ElectrumServerSettings')}
           showSeparator={false}
           testID="ChangeServerRow"
+        />
+      </SettingsCard>
+
+      <SettingsSectionHeader style={styles.sectionHeaderGap}>{loc.settings.indexer_title}</SettingsSectionHeader>
+      <SettingsCard>
+        <View style={styles.serverRow}>
+          <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>{loc.settings.indexer_url}</Text>
+        </View>
+        <View style={[styles.addressBar, { backgroundColor: colors.background }]}>
+          <Text selectable testID="IndexerAddress" style={[styles.serverAddress, { color: colors.textPrimary }]}>
+            {indexerUrl}
+          </Text>
+        </View>
+        <SettingsNavRow
+          title={loc.settings.indexer_change}
+          onPress={() => navigation.navigate('IndexerSettings')}
+          showSeparator={false}
+          testID="ChangeIndexerRow"
         />
       </SettingsCard>
 

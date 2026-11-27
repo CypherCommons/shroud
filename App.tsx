@@ -17,6 +17,7 @@ import { useSettings } from './hooks/context/useSettings';
 import { initializeRustJsiBridge } from './modules/RustJsiBridge';
 import { configureIndexerEndpoints, getNetwork } from './modules/network';
 import { bootActiveNetwork } from './modules/networkPreference';
+import { hydrateIndexerPreferences } from './modules/indexerPreference';
 import presentAlert from './components/Alert';
 import { useColorScheme } from 'react-native';
 
@@ -80,7 +81,11 @@ const App = () => {
 
     initializeRustJsiBridge();
 
-    bootActiveNetwork()
+    hydrateIndexerPreferences()
+      .catch(() => {
+        // Storage unavailable: use the built-in indexers for this run.
+      })
+      .then(() => bootActiveNetwork())
       .then(({ id, fellBackFrom, reason }) => {
         if (fellBackFrom) {
           const from = getNetwork(fellBackFrom).displayName;

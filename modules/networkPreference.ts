@@ -1,4 +1,5 @@
 import DefaultPreference from 'react-native-default-preference';
+import { getIndexerConfig } from './indexerPreference';
 
 import { GROUP_IO_SHROUD } from './currency';
 import * as Electrum from './Electrum';
@@ -22,8 +23,6 @@ import {
  */
 
 export const NETWORK_PREFERENCE_KEY = 'NetworkPreference';
-
-const INDEXER_TIMEOUT_MS = 100000;
 
 export async function readStoredNetworkId(): Promise<NetworkId> {
   try {
@@ -66,7 +65,7 @@ export function assertNetworkEnabled(id: NetworkId): void {
 }
 
 function hasIndexer(id: NetworkId): boolean {
-  return !!getNetwork(id).indexerBaseUrl;
+  return !!getIndexerConfig(id).baseUrl;
 }
 
 /** Throws if the chain has no indexer configured. Cheap and side-effect free, so call it first. */
@@ -94,13 +93,7 @@ export function pointIndexerAtActiveNetwork(): void {
   const network = getNetwork(getActiveNetworkId());
   assertIndexerConfigured(network.id);
   disconnectIndexer();
-  initializeIndexer({
-    baseUrl: network.indexerBaseUrl,
-    // This chain's own onion address, or none: never another chain's, or Tor would carry the
-    // scan to the wrong indexer.
-    onionUrl: network.indexerOnionUrl || undefined,
-    timeout: INDEXER_TIMEOUT_MS,
-  });
+  initializeIndexer(getIndexerConfig(network.id));
 }
 
 function reconnectElectrum(): void {
