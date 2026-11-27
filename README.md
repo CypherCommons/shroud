@@ -4,6 +4,16 @@
 
 A non-custodial, Bitcoin-only mobile wallet with support for Silent Payments (BIP-352).
 
+## Install
+
+- **iPhone:** [App Store](https://apps.apple.com/app/id6821538806)
+- **Android:** [Google Play](https://play.google.com/store/apps/details?id=com.shroudwallet.app), or the APK from
+  [GitHub Releases](https://github.com/CypherCommons/shroud/releases). To get updates to the APK, add
+  `https://github.com/CypherCommons/shroud` to [Obtainium](https://github.com/ImranR98/Obtainium).
+  [VERIFY.md](VERIFY.md) explains how to check an APK before you install it.
+
+The Google Play app and the GitHub APK are signed with different keys, so one can't update the other.
+
 ## Related Projects
 
 This wallet is built using the following sister repositories:
