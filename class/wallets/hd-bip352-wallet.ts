@@ -1084,14 +1084,15 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
    */
   getUtxo(respectFrozen = false): Utxo[] {
     const spUtxos = this.getUTXOs(); // unspent SP UTXOs only
-    let regularUtxos = this.getRegularUtxos();
-
-    if (!respectFrozen) {
-      regularUtxos = regularUtxos.filter(({ txid, vout }) => !this.getUTXOMetadata(txid, vout).frozen);
-    }
+    const regularUtxos = this.getRegularUtxos();
 
     // Combine regular UTXOs with SP UTXOs (no duplicates since they're from different sources)
-    return [...regularUtxos, ...spUtxos];
+    const utxos = [...regularUtxos, ...spUtxos];
+
+    if (!respectFrozen) {
+      return utxos.filter(({ txid, vout }) => !this.getUTXOMetadata(txid, vout).frozen);
+    }
+    return utxos;
   }
 
   getBalance(): number {
