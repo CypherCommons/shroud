@@ -18,15 +18,17 @@ class DeeplinkSchemaMatch {
    * Maps scanned or pasted input to where it should open, or to the reason it can't.
    *
    * Supported schemes:
-   *   bitcoin:           — payment URI (BIP21), including silent-payment addresses
+   *   bitcoin:           — payment URI (BIP21), including silent-payment addresses and a BIP-321 `sp=`
    *   shroud:bitcoin:    — same, wrapped in the app scheme
    *   shroud:setelectrumserver — configure the Electrum server
    */
   static destinationFor(input: string): TScanDestination {
     const uri = DeeplinkSchemaMatch.canonicalise(input);
     const address = DeeplinkSchemaMatch.extractAddress(uri);
+    const payableOn = (network: bitcoin.Network) =>
+      DeeplinkSchemaMatch.isValidAddress(address, network) || DeeplinkSchemaMatch.silentPaymentParam(uri, network) !== undefined;
 
-    if (DeeplinkSchemaMatch.isValidAddress(address, getActiveNetwork().bitcoinjs)) {
+    if (payableOn(getActiveNetwork().bitcoinjs)) {
       return { send: uri };
     }
 
@@ -37,11 +39,10 @@ class DeeplinkSchemaMatch {
 
     // The active network already failed above, so any match is another chain. Disabled networks
     // count too: their addresses are just as unpayable from here.
-    if (getAllNetworks().some(n => DeeplinkSchemaMatch.isValidAddress(address, n.bitcoinjs))) {
+    if (getAllNetworks().some(n => payableOn(n.bitcoinjs))) {
       return { error: 'wrong_network' };
     }
 
-    // TODO: BIP-321 `sp=` query param (e.g. `bitcoin:?sp=sp1q…`) is not routed yet.
     return { error: 'unrecognized' };
   }
 
@@ -74,6 +75,29 @@ class DeeplinkSchemaMatch {
   /** Takes a canonical URI or a bare address. */
   private static extractAddress(uri: string): string {
     return uri.replace(/^bitcoin:/, '').split('?')[0];
+  }
+
+  /**
+   * The first BIP-321 `sp=` value in a canonical URI that is a silent payment address on `network`.
+   * BIP-321 makes query keys case-insensitive (QR codes are often all uppercase) and lets the key
+   * repeat, so a link can offer one address per network.
+   */
+  private static silentPaymentParam(uri: string, network: bitcoin.Network): string | undefined {
+    const queryStart = uri.indexOf('?');
+    if (!uri.startsWith('bitcoin:') || queryStart === -1) return undefined;
+
+    for (const pair of uri.slice(queryStart + 1).split('&')) {
+      const eq = pair.indexOf('=');
+      if (eq === -1) continue;
+      try {
+        if (decodeURIComponent(pair.slice(0, eq)).toLowerCase() !== 'sp') continue;
+        const value = decodeURIComponent(pair.slice(eq + 1));
+        if (isSilentPaymentAddress(value, network)) return value;
+      } catch {
+        // Malformed `%` escape.
+      }
+    }
+    return undefined;
   }
 
   /** Includes silent-payment addresses. */
@@ -116,6 +140,9 @@ class DeeplinkSchemaMatch {
    * What a payment request fills in on the send form. Never throws: input that isn't a URI comes
    * back as the address, and a `bitcoin:` URI with an option bip21 rejects (a malformed amount)
    * still yields the address in front of its `?`.
+   *
+   * A BIP-321 `sp=` that is valid on the active network replaces the on-chain address, so a link
+   * that offers both pays the silent payment address rather than the reusable fallback.
    */
   static decodeBitcoinUri(uri: string): { address: string; amount?: number; memo: string } {
     let amount;
@@ -139,6 +166,9 @@ class DeeplinkSchemaMatch {
         address = DeeplinkSchemaMatch.extractAddress(canonical) || address;
       }
     }
+    const network = getActiveNetwork().bitcoinjs;
+    const silentPaymentAddress = DeeplinkSchemaMatch.silentPaymentParam(DeeplinkSchemaMatch.canonicalise(uri || ''), network);
+    if (silentPaymentAddress) address = silentPaymentAddress;
     return { address, amount, memo };
   }
 }
