@@ -3,7 +3,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
 import type { TWallet } from '../../class/wallets/types';
 import { requestNotificationPermission, startBackgroundScanning, stopBackgroundScanning } from '../../modules/BackgroundScanManager';
-import { getDefaultIndexer } from '../../modules/SilentPaymentIndexer';
 import { deleteScanCredentials, provisionScanCredentials, readScanCredentials, updateScanCursor } from './BackgroundScanCredentials';
 import { clearStaging, readStaging } from './ScanStagingStore';
 
@@ -21,15 +20,7 @@ export function findScannableWallet(wallets: TWallet[]): HDSilentPaymentsWallet 
   return wallets.find((w): w is HDSilentPaymentsWallet => w instanceof HDSilentPaymentsWallet);
 }
 
-/**
- * Merge-only path, run when the app returns to foreground from suspension: a
- * background scan may have staged finds while we were suspended, and the cold
- * start merge in syncBackgroundScanState won't re-run. Idempotent and cheap
- * when staging is empty.
- *
- * @returns number of staged UTXOs merged (caller should persist if > 0)
- */
-export async function mergeStagedResults(wallets: TWallet[]): Promise<number> {
+async function mergeStaged(wallets: TWallet[]): Promise<number> {
   const wallet = findScannableWallet(wallets);
   if (!wallet) return 0;
 
@@ -42,12 +33,31 @@ export async function mergeStagedResults(wallets: TWallet[]): Promise<number> {
   // next run starts behind, finds the same payments again and notifies a second time.
   await updateScanCursor(wallet.getID(), wallet.getLastScannedBlock());
   if (merged > 0) {
-    console.log(`[BackgroundScan] Merged ${merged} staged UTXO(s) on foreground`);
+    console.log(`[BackgroundScan] Merged ${merged} staged UTXO(s)`);
   }
   return merged;
 }
 
-/** Remove credentials, staged data and OS scheduling for a deleted wallet. */
+let mergeInFlight: Promise<number> | null = null;
+
+/**
+ * Merge whatever background scans have staged into the wallet. Run before the
+ * wallets are shown, and again whenever the app returns to the foreground.
+ * Idempotent and cheap when staging is empty.
+ *
+ * One at a time: app start and the foreground transition both call this, and a
+ * keychain read that overlaps the other call's reset fails on Android.
+ *
+ * @returns number of staged UTXOs merged (caller should persist if > 0)
+ */
+export function mergeStagedResults(wallets: TWallet[]): Promise<number> {
+  mergeInFlight ??= mergeStaged(wallets).finally(() => {
+    mergeInFlight = null;
+  });
+  return mergeInFlight;
+}
+
+/** Remove the scan credentials, staged data and OS scheduling. */
 export async function teardownBackgroundScanState(): Promise<void> {
   await deleteScanCredentials();
   await clearStaging();
@@ -59,50 +69,29 @@ export async function teardownBackgroundScanState(): Promise<void> {
 }
 
 /**
- * Reconcile background-scan state with the loaded wallets. Called once per app
- * start (after wallets are decrypted, BEFORE any foreground scan) and after
- * wallet creation/import:
+ * Reconcile background-scan state with the loaded wallets. Called on app start,
+ * after wallet creation/import, on a network or storage switch, and when the
+ * user flips the setting:
  *  - merges staged background finds into the wallet (idempotent),
- *  - (re-)provisions the scan-only credentials — backfills pre-existing wallets
- *    and self-heals the indexer baseUrl on rebuilds,
- *  - starts/stops the OS scheduling to match the user preference,
- *  - tears everything down when no scannable wallet exists.
+ *  - with a scannable wallet and the setting on: (re-)provisions the scan-only
+ *    credentials and schedules the OS job,
+ *  - otherwise removes the credentials, staged data and scheduling. The scan key
+ *    only leaves the wallet storage while there is something to scan for.
  *
  * @returns number of staged UTXOs merged into the wallet (caller should persist if > 0)
  */
 export async function syncBackgroundScanState(wallets: TWallet[]): Promise<number> {
   const wallet = findScannableWallet(wallets);
+  const merged = await mergeStagedResults(wallets);
 
-  if (!wallet) {
-    await deleteScanCredentials();
-    await clearStaging();
-    try {
-      await stopBackgroundScanning();
-    } catch {} // native module unavailable (e.g. tests) — nothing scheduled anyway
-    return 0;
-  }
-
-  let merged = 0;
-  const staged = await readStaging();
-  if (staged) {
-    merged = wallet.mergeStagedScanResults(staged);
-    await clearStaging();
-    if (merged > 0) {
-      console.log(`[BackgroundScan] Merged ${merged} staged UTXO(s) from background scans`);
-    }
-  }
-
-  // The scan key only leaves the wallet storage while the user wants background scanning.
-  if (!(await isBackgroundScanningEnabledByUser())) {
+  if (!wallet || !(await isBackgroundScanningEnabledByUser())) {
     await teardownBackgroundScanState();
     return merged;
   }
 
   const hadCredentials = (await readScanCredentials()) !== null;
   try {
-    // Same indexer the foreground scan uses (initialized in App.tsx from env).
-    const baseUrl = getDefaultIndexer().getBaseUrl();
-    await provisionScanCredentials(wallet, baseUrl);
+    await provisionScanCredentials(wallet);
   } catch (error) {
     console.warn('[BackgroundScan] Failed to provision scan credentials:', error);
     return merged;

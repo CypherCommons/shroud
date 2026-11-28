@@ -28,11 +28,12 @@ import {
   createTransactionProcessor,
   type IndexerTransaction,
   type SilentPaymentUTXO,
-  type SilentPaymentUTXOSerializable,
   type ScanProgressCallback,
   type ScanStateInfo,
   type ScanStatus,
   IDLE_SCAN_STATE,
+  toSerializableUtxo,
+  fromSerializableUtxo,
   type IScannableWallet,
   isSilentPaymentAddress,
   findSmallestOutpoint,
@@ -258,10 +259,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     for (const key of Object.keys(data)) {
       if (key === '_utxos_serializable') {
         const serializable = data[key] || [];
-        wallet._utxo = serializable.map((utxo: SilentPaymentUTXOSerializable) => ({
-          ...utxo,
-          tweak: new Uint8Array(Buffer.from(utxo.tweakHex, 'hex')),
-        }));
+        wallet._utxo = serializable.map(fromSerializableUtxo);
       } else if (key === 'lastScannedBlock') {
         wallet.lastScannedBlock = data[key] || 0;
       } else if (key === '_birthHeight') {
@@ -305,13 +303,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     // we need spent UTXOs for transaction history and value calculations
     const allSpUtxos = this._utxo.filter(isSilentPaymentUtxo);
 
-    (this as any)._utxos_serializable = allSpUtxos.map((utxo): SilentPaymentUTXOSerializable => {
-      const { tweak, ...rest } = utxo;
-      return {
-        ...rest,
-        tweakHex: Buffer.from(tweak).toString('hex'),
-      };
-    });
+    (this as any)._utxos_serializable = allSpUtxos.map(toSerializableUtxo);
 
     (this as any).lastScannedBlock = this.lastScannedBlock;
     (this as any)._birthHeight = this._birthHeight;
@@ -584,14 +576,10 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     return { keyPair, tapInternalKey };
   }
 
-  /** Every spend pubkey a scan has to try: the main one and label-0 change. */
-  getSpendPublicKeys(): Uint8Array[] {
-    return this.getSpendKeyCandidates().map(candidate => candidate.spendPub);
-  }
-
-  getScanPrivateKey(): Uint8Array {
-    const seed = this.getSeed();
-    return getScanPrivateKey(seed, this.getNetworkConfig());
+  /** The keys the foreground scanner itself uses, so a background scan can never try fewer. */
+  getScanKeys(): RustTransactionProcessor['scanKeys'] {
+    this.ensureTransactionProcessor();
+    return this.transactionProcessor!.scanKeys;
   }
 
   getBirthHeight(): number {
@@ -616,12 +604,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
 
     let addedCount = 0;
     for (const serializable of staged.utxos) {
-      const { tweakHex, ...rest } = serializable;
-      const utxo: SilentPaymentUTXO = {
-        ...rest,
-        tweak: new Uint8Array(Buffer.from(tweakHex, 'hex')),
-      };
-      if (this.addUTXO(utxo)) {
+      if (this.addUTXO(fromSerializableUtxo(serializable))) {
         addedCount++;
       }
     }

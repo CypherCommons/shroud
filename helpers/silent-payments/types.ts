@@ -1,5 +1,6 @@
 import { Utxo } from '../../class/wallets/types';
 import type { NetworkId } from '../../modules/network';
+import { hexToUint8Array, uint8ArrayToHex } from '../../modules/uint8array-extras';
 
 interface IndexerOutput {
   transactionId: string;
@@ -41,6 +42,14 @@ export interface SilentPaymentUTXO extends Utxo {
 
 export interface SilentPaymentUTXOSerializable extends Omit<SilentPaymentUTXO, 'tweak'> {
   tweakHex: string;
+}
+
+export function toSerializableUtxo({ tweak, ...rest }: SilentPaymentUTXO): SilentPaymentUTXOSerializable {
+  return { ...rest, tweakHex: uint8ArrayToHex(tweak) };
+}
+
+export function fromSerializableUtxo({ tweakHex, ...rest }: SilentPaymentUTXOSerializable): SilentPaymentUTXO {
+  return { ...rest, tweak: hexToUint8Array(tweakHex) };
 }
 
 export interface SilentPaymentIndexerConfig {

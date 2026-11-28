@@ -1,3 +1,5 @@
+import { AppState } from 'react-native';
+
 import { BIP352_ACTIVATION_HEIGHT } from '../../modules/constants.ts';
 import type { ScanCredentials, StagedScanData } from '../../helpers/silent-payments/types.ts';
 // jest.mock calls below are hoisted above this import by ts-jest
@@ -7,15 +9,20 @@ import { getNetwork } from '../../modules/network.ts';
 const mockReadScanCredentials = jest.fn();
 const mockReadStaging = jest.fn();
 const mockAppendStagedUtxos = jest.fn();
-const mockIsForegroundActive = jest.fn();
 const mockPostLocalNotification = jest.fn();
 const mockGetLatestBlockHeight = jest.fn();
 const mockGetTransactionsByRange = jest.fn();
 const mockProcessBatch = jest.fn();
-const mockSilentPaymentIndexer = jest.fn().mockImplementation(() => ({
-  getLatestBlockHeight: () => mockGetLatestBlockHeight(),
-  getTransactionsByRange: (start: number, end: number) => mockGetTransactionsByRange(start, end),
-}));
+// Only the two requests are faked; the range loop is the indexer's real one.
+const mockSilentPaymentIndexer = jest.fn().mockImplementation(() => {
+  const { SilentPaymentIndexer: Real } = jest.requireActual('../../modules/SilentPaymentIndexer');
+  return {
+    getLatestBlockHeight: () => mockGetLatestBlockHeight(),
+    getTransactionsByRange: (start: number, end: number) => mockGetTransactionsByRange(start, end),
+    scanForwardWithCallback: Real.prototype.scanForwardWithCallback,
+    scanBlocks: Real.prototype.scanBlocks,
+  };
+});
 const mockRustTransactionProcessor = jest.fn().mockImplementation(() => ({
   processBatch: (...args: unknown[]) => mockProcessBatch(...args),
 }));
@@ -27,10 +34,6 @@ jest.mock('../../helpers/silent-payments/BackgroundScanCredentials', () => ({
 jest.mock('../../helpers/silent-payments/ScanStagingStore', () => ({
   readStaging: () => mockReadStaging(),
   appendStagedUtxos: (...args: unknown[]) => mockAppendStagedUtxos(...args),
-}));
-
-jest.mock('../../helpers/silent-payments/ScanLock', () => ({
-  isForegroundActive: () => mockIsForegroundActive(),
 }));
 
 jest.mock('../../modules/BackgroundScanManager', () => ({
@@ -60,7 +63,8 @@ jest.mock('../../loc', () => ({
   notifications: { received_title: 'Payment received', received_body: 'You received bitcoin.' },
 }));
 
-const BIRTH = BIP352_ACTIVATION_HEIGHT + 1000;
+// On a 50-block boundary: the indexer aligns its request windows to those.
+const BIRTH = BIP352_ACTIVATION_HEIGHT + 1021;
 
 function credentials(overrides: Partial<ScanCredentials> = {}): ScanCredentials {
   return {
@@ -84,7 +88,7 @@ function staging(overrides: Partial<StagedScanData> = {}): StagedScanData {
 describe('runBackgroundScan', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockIsForegroundActive.mockResolvedValue(false);
+    AppState.currentState = 'background';
     mockReadScanCredentials.mockResolvedValue(credentials());
     mockReadStaging.mockResolvedValue(null);
     mockAppendStagedUtxos.mockImplementation(async (_walletID: string, utxos: unknown[]) => utxos.length);
@@ -94,7 +98,7 @@ describe('runBackgroundScan', () => {
   });
 
   it('bails when the foreground app is active', async () => {
-    mockIsForegroundActive.mockResolvedValue(true);
+    AppState.currentState = 'active';
 
     const result = await runBackgroundScan({ timeBudgetMs: 25000 });
 

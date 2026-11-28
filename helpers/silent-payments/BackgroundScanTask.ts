@@ -1,4 +1,4 @@
-import { Buffer } from 'buffer';
+import { AppState } from 'react-native';
 
 import { postLocalNotification } from '../../modules/BackgroundScanManager';
 import { getNetwork } from '../../modules/network';
@@ -8,8 +8,7 @@ import loc from '../../loc';
 import { readScanCredentials } from './BackgroundScanCredentials';
 import { RustTransactionProcessor } from './RustTransactionProcessor';
 import { appendStagedUtxos, readStaging } from './ScanStagingStore';
-import { isForegroundActive } from './ScanLock';
-import type { SilentPaymentUTXO, SilentPaymentUTXOSerializable } from './types';
+import { toSerializableUtxo } from './types';
 
 export interface BackgroundScanParams {
   timeBudgetMs: number;
@@ -24,7 +23,6 @@ export interface BackgroundScanResult {
   bailedReason?: 'foreground-active' | 'no-credentials' | 'indexer-unreachable' | 'cancelled' | 'already-running';
 }
 
-const RANGE_BATCH_SIZE = 50; // matches SilentPaymentIndexer.scanBlocks
 /**
  * Short per-request timeout (vs the foreground 100s). The indexer client retries 3x with backoff
  * on top of this, so on its own it does not bound a run — `withDeadline` does.
@@ -37,8 +35,8 @@ let cancelRequested = false;
 let activeRun: Promise<BackgroundScanResult> | null = null;
 
 /**
- * Cooperative cancellation, wired to the iOS BGTask expiration handler
- * (onBackgroundScanCancel). Checked at range boundaries.
+ * Cooperative cancellation: the iOS BGTask expiration handler (onBackgroundScanCancel),
+ * or the app coming to the foreground mid-run. Checked at range boundaries.
  */
 export function requestBackgroundScanCancel(): void {
   cancelRequested = true;
@@ -50,11 +48,6 @@ function withDeadline<T>(promise: Promise<T>, deadline: number): Promise<T> {
     const timer = setTimeout(() => reject(new Error('Background scan deadline reached')), Math.max(0, deadline - Date.now()));
     promise.then(resolve, reject).finally(() => clearTimeout(timer));
   });
-}
-
-function toSerializable(utxo: SilentPaymentUTXO): SilentPaymentUTXOSerializable {
-  const { tweak, ...rest } = utxo;
-  return { ...rest, tweakHex: Buffer.from(tweak).toString('hex') };
 }
 
 async function doRunBackgroundScan(params: BackgroundScanParams): Promise<BackgroundScanResult> {
@@ -70,7 +63,9 @@ async function doRunBackgroundScan(params: BackgroundScanParams): Promise<Backgr
     bailedReason: reason,
   });
 
-  if (await isForegroundActive()) {
+  // The task shares the app's JS runtime, so this is the live app's own state. The OS and the
+  // Android worker already refuse to start a run in the foreground; this covers the gap between.
+  if (AppState.currentState === 'active') {
     console.log('[BackgroundScan] Foreground app active, bailing');
     return bail('foreground-active');
   }
@@ -116,40 +111,47 @@ async function doRunBackgroundScan(params: BackgroundScanParams): Promise<Backgr
   // Mirrors performScan: resume after the cursor, or start at birth for a never-scanned wallet.
   const startHeight = cursor > 0 ? cursor + 1 : effectiveBirthHeight;
 
-  let blocksScanned = 0;
   let newUtxos = 0;
   let newCursor = cursor;
+  const stopped = () => cancelRequested || Date.now() >= deadline;
 
-  for (let rangeStart = startHeight; rangeStart <= tipHeight; rangeStart += RANGE_BATCH_SIZE) {
-    if (cancelRequested) {
-      return { blocksScanned, newUtxos, newCursor, caughtUp: false, bailedReason: 'cancelled' };
-    }
-    if (Date.now() >= deadline) {
-      break;
-    }
+  try {
+    // The indexer's own range loop: it aborts on a failed range instead of skipping it, which is
+    // what a background run needs — a cursor moved past it would permanently miss payments inside.
+    await withDeadline(
+      indexer.scanForwardWithCallback(
+        startHeight,
+        tipHeight,
+        async (transactions, rangeEnd) => {
+          // A request that outlived the deadline still lands here; the run is over, so don't stage.
+          if (stopped()) throw new Error('SCAN_CANCELLED');
 
-    const rangeEnd = Math.min(rangeStart + RANGE_BATCH_SIZE - 1, tipHeight);
+          const valid = transactions.filter(tx => tx.scanTweak && tx.outputs && tx.outputs.length > 0);
+          const matched = valid.length > 0 ? await processor.processBatch(valid) : [];
 
-    try {
-      const response = await withDeadline(indexer.getTransactionsByRange(rangeStart, rangeEnd), deadline);
-      const valid = response.transactions.filter(tx => tx.scanTweak && tx.outputs && tx.outputs.length > 0);
-      const matched = valid.length > 0 ? await processor.processBatch(valid) : [];
-
-      // Stage UTXOs and cursor in one write — the cursor never points past
-      // blocks whose finds weren't saved, so a kill mid-run is always safe.
-      // Count what is new to staging, not what matched: a range scanned twice must not notify twice.
-      newUtxos += await appendStagedUtxos(credentials.walletID, matched.map(toSerializable), rangeEnd);
-      newCursor = rangeEnd;
-      blocksScanned += rangeEnd - rangeStart + 1;
-    } catch (error) {
-      // Unlike the foreground scan we must NOT skip a failed range: advancing
-      // the cursor past it would permanently miss any payments inside.
-      console.warn(`[BackgroundScan] Range ${rangeStart}-${rangeEnd} failed, stopping:`, error);
-      break;
-    }
+          // Stage UTXOs and cursor in one write — the cursor never points past
+          // blocks whose finds weren't saved, so a kill mid-run is always safe.
+          // Count what is new to staging, not what matched: a range scanned twice must not notify twice.
+          const added = await appendStagedUtxos(credentials.walletID, matched.map(toSerializableUtxo), rangeEnd);
+          newUtxos += added;
+          newCursor = rangeEnd;
+          return added;
+        },
+        undefined,
+        stopped,
+      ),
+      deadline,
+    );
+  } catch (error) {
+    if (!stopped()) console.warn('[BackgroundScan] Scan stopped:', error);
   }
 
-  if (newUtxos > 0) {
+  const blocksScanned = Math.max(0, newCursor - startHeight + 1);
+  const cancelled = cancelRequested;
+
+  // A cancelled run stays quiet: the app is coming forward (it will show the payment itself) or
+  // the OS has already ended the task.
+  if (newUtxos > 0 && !cancelled) {
     try {
       await postLocalNotification(loc.notifications.received_title, loc.notifications.received_body);
     } catch (error) {
@@ -161,10 +163,11 @@ async function doRunBackgroundScan(params: BackgroundScanParams): Promise<Backgr
     blocksScanned,
     newUtxos,
     newCursor,
-    caughtUp: newCursor >= tipHeight,
+    caughtUp: !cancelled && newCursor >= tipHeight,
+    bailedReason: cancelled ? 'cancelled' : undefined,
   };
   console.log(
-    `[BackgroundScan] Done in ${Date.now() - startedAt}ms: ${blocksScanned} blocks, ` +
+    `[BackgroundScan] ${cancelled ? 'Cancelled' : 'Done'} in ${Date.now() - startedAt}ms: ${blocksScanned} blocks, ` +
       `${newUtxos} new UTXOs, cursor ${newCursor}/${tipHeight} (${params.reason ?? 'unknown'})`,
   );
   return result;

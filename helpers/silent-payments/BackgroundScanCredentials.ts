@@ -1,4 +1,3 @@
-import { Buffer } from 'buffer';
 import Keychain, { type SetOptions } from 'react-native-keychain';
 
 import type { HDSilentPaymentsWallet } from '../../class/wallets/hd-bip352-wallet';
@@ -18,15 +17,15 @@ const KEYCHAIN_OPTIONS: SetOptions = {
   accessible: Keychain.ACCESSIBLE.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
 };
 
-export async function provisionScanCredentials(wallet: HDSilentPaymentsWallet, baseUrl: string): Promise<void> {
+export async function provisionScanCredentials(wallet: HDSilentPaymentsWallet): Promise<void> {
+  const network = wallet.getNetworkConfig();
   const credentials: ScanCredentials = {
     walletID: wallet.getID(),
-    scanPrivkeyHex: Buffer.from(wallet.getScanPrivateKey()).toString('hex'),
-    spendPubkeysHex: wallet.getSpendPublicKeys().map(key => Buffer.from(key).toString('hex')),
-    silentPaymentAddress: wallet.getSilentPaymentAddress()!,
-    networkId: wallet.getNetworkConfig().id,
-    baseUrl,
-    onionUrl: wallet.getNetworkConfig().indexerOnionUrl || undefined,
+    ...wallet.getScanKeys(),
+    networkId: network.id,
+    // A headless run cannot rely on the app having applied its .env overrides, so both URLs are stored.
+    baseUrl: network.indexerBaseUrl,
+    onionUrl: network.indexerOnionUrl || undefined,
     cursor: wallet.getLastScannedBlock(),
     birthHeight: wallet.getBirthHeight(),
     schema: 1,

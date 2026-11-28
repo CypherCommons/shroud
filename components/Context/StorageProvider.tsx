@@ -12,7 +12,7 @@ import {
   syncBackgroundScanState,
   teardownBackgroundScanState,
 } from '../../helpers/silent-payments/BackgroundScanSetup';
-import { markForegroundActive, markForegroundInactive } from '../../helpers/silent-payments/ScanLock';
+import { requestBackgroundScanCancel } from '../../helpers/silent-payments/BackgroundScanTask';
 import loc from '../../loc';
 import * as Electrum from '../../modules/Electrum';
 import triggerHapticFeedback, { HapticFeedbackTypes } from '../../modules/hapticFeedback';
@@ -200,35 +200,30 @@ export const StorageProvider = ({ children }: { children: React.ReactNode }) => 
     };
   }, []);
 
-  // Stamp the foreground flag so headless background scans know to bail while
-  // the live app owns scanning (AppState is useless inside a headless context).
-  // On return to foreground, also merge anything a background scan staged while
-  // we were suspended — the cold-start merge won't re-run in that case.
+  // On return to foreground: stop a background scan still in flight (the live app owns scanning
+  // now), and merge anything one staged while we were suspended — the cold-start merge won't
+  // re-run in that case.
   useEffect(() => {
-    // Don't claim the foreground on a cold BACKGROUND launch (BGTask relaunching
-    // a killed app mounts this provider too) — only when actually active.
-    if (AppState.currentState === 'active') {
-      markForegroundActive();
-    }
+    // When the UI starts on a runtime a background scan booted, the app is already active by the
+    // time this mounts and no change event follows. Not on a cold background launch, where the
+    // state is 'background' and the scan should run.
+    if (AppState.currentState === 'active') requestBackgroundScanCancel();
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
-        markForegroundActive();
+        requestBackgroundScanCancel();
         mergeStagedResults(shroudApp.getWallets())
           .then(merged => {
             if (merged > 0) return saveToDisk();
           })
           .catch(error => console.warn('[StorageProvider] Foreground staged merge failed:', error));
-      } else {
-        markForegroundInactive();
-        if (state === 'background') {
-          // Background runs start from this cursor: record how far the foreground got, so they
-          // don't re-find (and re-notify) payments the wallet already has.
-          const scanWallet = findScannableWallet(shroudApp.getWallets());
-          if (scanWallet) {
-            updateScanCursor(scanWallet.getID(), scanWallet.getLastScannedBlock()).catch(error =>
-              console.warn('[StorageProvider] Background scan cursor update failed:', error),
-            );
-          }
+      } else if (state === 'background') {
+        // Background runs start from this cursor: record how far the foreground got, so they
+        // don't re-find (and re-notify) payments the wallet already has.
+        const scanWallet = findScannableWallet(shroudApp.getWallets());
+        if (scanWallet) {
+          updateScanCursor(scanWallet.getID(), scanWallet.getLastScannedBlock()).catch(error =>
+            console.warn('[StorageProvider] Background scan cursor update failed:', error),
+          );
         }
       }
     });

@@ -42,6 +42,11 @@ export class RustTransactionProcessor {
     );
   }
 
+  /** Everything a scan needs and nothing that can spend: what background scanning stores. */
+  get scanKeys(): { scanPrivkeyHex: string; spendPubkeysHex: string[]; silentPaymentAddress: string } {
+    return { scanPrivkeyHex: this.scanPrivkeyHex, spendPubkeysHex: this.spendPubkeysHex, silentPaymentAddress: this.silentPaymentAddress };
+  }
+
   private convertToSilentPaymentUTXO(rustUtxo: RustMatchedUTXO): SilentPaymentUTXO {
     return {
       txid: rustUtxo.txid,
