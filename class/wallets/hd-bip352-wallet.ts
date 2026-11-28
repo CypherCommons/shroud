@@ -28,15 +28,17 @@ import {
   createTransactionProcessor,
   type IndexerTransaction,
   type SilentPaymentUTXO,
-  type SilentPaymentUTXOSerializable,
   type ScanProgressCallback,
   type ScanStateInfo,
   type ScanStatus,
   IDLE_SCAN_STATE,
+  toSerializableUtxo,
+  fromSerializableUtxo,
   type IScannableWallet,
   isSilentPaymentAddress,
   findSmallestOutpoint,
   resolveSilentPaymentTargets,
+  type StagedScanData,
 } from '../../helpers/silent-payments';
 import { clampBirthHeight } from '../../modules/constants';
 import { normaliseStoredNetworkId } from './abstract-wallet';
@@ -109,6 +111,10 @@ type Ownership = {
 // wallet-internal detail.
 type RegularOutputMatch = OwnedOutput & { index: number };
 
+// `implements IScannableWallet` is load-bearing: the isScannable() runtime guard
+// checks for every interface method structurally, so removing one (e.g. in an
+// "unused members" sweep) silently hides the entire scan UI. The implements
+// clause turns that into a compile error.
 export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannableWallet {
   static readonly type = 'HDSilentPaymentsWallet';
   static readonly typeReadable = 'HD Silent Payments';
@@ -253,10 +259,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     for (const key of Object.keys(data)) {
       if (key === '_utxos_serializable') {
         const serializable = data[key] || [];
-        wallet._utxo = serializable.map((utxo: SilentPaymentUTXOSerializable) => ({
-          ...utxo,
-          tweak: new Uint8Array(Buffer.from(utxo.tweakHex, 'hex')),
-        }));
+        wallet._utxo = serializable.map(fromSerializableUtxo);
       } else if (key === 'lastScannedBlock') {
         wallet.lastScannedBlock = data[key] || 0;
       } else if (key === '_birthHeight') {
@@ -300,13 +303,7 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
     // we need spent UTXOs for transaction history and value calculations
     const allSpUtxos = this._utxo.filter(isSilentPaymentUtxo);
 
-    (this as any)._utxos_serializable = allSpUtxos.map((utxo): SilentPaymentUTXOSerializable => {
-      const { tweak, ...rest } = utxo;
-      return {
-        ...rest,
-        tweakHex: Buffer.from(tweak).toString('hex'),
-      };
-    });
+    (this as any)._utxos_serializable = allSpUtxos.map(toSerializableUtxo);
 
     (this as any).lastScannedBlock = this.lastScannedBlock;
     (this as any)._birthHeight = this._birthHeight;
@@ -577,6 +574,67 @@ export class HDSilentPaymentsWallet extends HDTaprootWallet implements IScannabl
       throw new Error(`UTXO ${utxo.txid}:${utxo.vout}: our key does not reproduce the output key of ${utxo.address}`);
     }
     return { keyPair, tapInternalKey };
+  }
+
+  /** The keys the foreground scanner itself uses, so a background scan can never try fewer. */
+  getScanKeys(): RustTransactionProcessor['scanKeys'] {
+    this.ensureTransactionProcessor();
+    return this.transactionProcessor!.scanKeys;
+  }
+
+  getBirthHeight(): number {
+    return this._birthHeight;
+  }
+
+  getLastScannedBlock(): number {
+    return this.lastScannedBlock;
+  }
+
+  /**
+   * Merge UTXOs found by background scans into the wallet. Idempotent: UTXOs
+   * dedup on txid:vout and the cursor never regresses, so re-merging stale
+   * staging (e.g. after a race with a finishing background run) is harmless.
+   *
+   * @returns number of newly added UTXOs
+   */
+  mergeStagedScanResults(staged: StagedScanData | null): number {
+    if (!staged || staged.walletID !== this.getID()) {
+      return 0;
+    }
+
+    let addedCount = 0;
+    for (const serializable of staged.utxos) {
+      if (this.addUTXO(fromSerializableUtxo(serializable))) {
+        addedCount++;
+      }
+    }
+
+    // Only adopt the staged cursor when it's past the wallet's effective birth.
+    // A background scan run with stale credentials (birth height not yet set)
+    // may have scanned from the BIP-352 activation height; adopting such a low
+    // cursor into a never-scanned wallet (lastScannedBlock = 0) would drag the
+    // next foreground scan years behind its real birth height.
+    const effectiveBirthHeight = this.getEffectiveBirthHeight();
+    const cursorAdvanced = staged.cursor > this.lastScannedBlock && staged.cursor >= effectiveBirthHeight;
+    if (cursorAdvanced) {
+      this.lastScannedBlock = staged.cursor;
+      // Surface the advanced cursor to scan-state listeners (home-screen banner,
+      // sync screen). Without this the UI keeps the pre-merge cursor, and when
+      // the merge brings the wallet up to the tip the next foreground scan
+      // early-returns without emitting either — leaving the banner hidden
+      // forever. Re-emit the current status rather than forcing 'idle' so a
+      // paused scan isn't clobbered.
+      this._emitScanState(this._scanState.status);
+    }
+
+    if (addedCount > 0) {
+      this.onBalanceChangeCallback?.();
+    }
+    if (addedCount > 0 || cursorAdvanced) {
+      this.onPersistCallback?.();
+    }
+
+    return addedCount;
   }
 
   private getSeed(): Buffer {

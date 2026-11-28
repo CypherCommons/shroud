@@ -1,4 +1,6 @@
 import { Utxo } from '../../class/wallets/types';
+import type { NetworkId } from '../../modules/network';
+import { hexToUint8Array, uint8ArrayToHex } from '../../modules/uint8array-extras';
 
 interface IndexerOutput {
   transactionId: string;
@@ -40,6 +42,14 @@ export interface SilentPaymentUTXO extends Utxo {
 
 export interface SilentPaymentUTXOSerializable extends Omit<SilentPaymentUTXO, 'tweak'> {
   tweakHex: string;
+}
+
+export function toSerializableUtxo({ tweak, ...rest }: SilentPaymentUTXO): SilentPaymentUTXOSerializable {
+  return { ...rest, tweakHex: uint8ArrayToHex(tweak) };
+}
+
+export function fromSerializableUtxo({ tweakHex, ...rest }: SilentPaymentUTXOSerializable): SilentPaymentUTXO {
+  return { ...rest, tweak: hexToUint8Array(tweakHex) };
 }
 
 export interface SilentPaymentIndexerConfig {
@@ -129,3 +139,38 @@ export interface TransactionByTxidResponse {
 }
 
 export type ScanProgressCallback = (progress: ScanProgress) => void | Promise<void>;
+
+/**
+ * Scan-only credentials for background scanning. Stored in the keychain with
+ * AFTER_FIRST_UNLOCK accessibility so a background task can detect incoming
+ * payments while the device is locked. These keys can detect but NEVER spend.
+ */
+export interface ScanCredentials {
+  walletID: string;
+  scanPrivkeyHex: string;
+  /** Main spend pubkey plus the label-0 (change) one — the scanner tries both. */
+  spendPubkeysHex: string[];
+  silentPaymentAddress: string;
+  networkId: NetworkId;
+  baseUrl: string;
+  /** This network's indexer over Tor, when it has one. */
+  onionUrl?: string;
+  /** Floor for the background cursor, refreshed after foreground scans. */
+  cursor: number;
+  birthHeight: number;
+  schema: 1;
+}
+
+/**
+ * Results of background scans, staged until the main app merges them into the
+ * wallet on next launch/foreground (main wallet storage may be unreadable
+ * while the device is locked or password-encrypted).
+ */
+export interface StagedScanData {
+  walletID: string;
+  /** Highest block height fully staged. Only advanced AFTER utxos are written (kill-safe). */
+  cursor: number;
+  utxos: SilentPaymentUTXOSerializable[];
+  updatedAt: number;
+  schema: 1;
+}

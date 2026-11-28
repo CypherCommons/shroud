@@ -17,6 +17,8 @@
 		84E05A842721191B001A0D3A /* Settings.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 84E05A832721191B001A0D3A /* Settings.bundle */; };
 		8E83D8770CDA1F5302FC33BF /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0FC472CD905D3040C343A3F8 /* Expo.plist */; };
 		9E75EB9CF9B34BAAB06DF721 /* ClashGrotesk-Bold.otf in Resources */ = {isa = PBXBuildFile; fileRef = 037FC3889C64461890790291 /* ClashGrotesk-Bold.otf */; };
+		B6BC5CAA2E1207000000B003 /* BackgroundScanManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6BC5CAA2E1207000000B001 /* BackgroundScanManager.swift */; };
+		B6BC5CAA2E1207000000B004 /* BackgroundScanManager.m in Sources */ = {isa = PBXBuildFile; fileRef = B6BC5CAA2E1207000000B002 /* BackgroundScanManager.m */; };
 		B41C2E562BB3DCB8000FE097 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B41C2E552BB3DCB8000FE097 /* PrivacyInfo.xcprivacy */; };
 		B44033D32BCC368800162242 /* UserDefaultsGroupKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = B44033D22BCC368800162242 /* UserDefaultsGroupKey.swift */; };
 		B440340F2BCC40A400162242 /* fiatUnits.json in Resources */ = {isa = PBXBuildFile; fileRef = B440340E2BCC40A400162242 /* fiatUnits.json */; };
@@ -69,6 +71,8 @@
 		9F1F51A83D044F3BB26A35FC /* libRNSVG-tvOS.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = "libRNSVG-tvOS.a"; sourceTree = "<group>"; };
 		A7C4B1FDAD264618BAF8C335 /* libRNCWebView.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRNCWebView.a; sourceTree = "<group>"; };
 		AB2325650CE04F018697ACFE /* libRNReactNativeHapticFeedback.a */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = archive.ar; path = libRNReactNativeHapticFeedback.a; sourceTree = "<group>"; };
+		B6BC5CAA2E1207000000B001 /* BackgroundScanManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackgroundScanManager.swift; path = BackgroundScan/BackgroundScanManager.swift; sourceTree = SOURCE_ROOT; };
+		B6BC5CAA2E1207000000B002 /* BackgroundScanManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = BackgroundScanManager.m; path = BackgroundScan/BackgroundScanManager.m; sourceTree = SOURCE_ROOT; };
 		B41C2E552BB3DCB8000FE097 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B43B69BA225C46D800925B1E /* libRCTLinking.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; path = libRCTLinking.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		B44033D22BCC368800162242 /* UserDefaultsGroupKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefaultsGroupKey.swift; sourceTree = "<group>"; };
@@ -136,6 +140,8 @@
 			isa = PBXGroup;
 			children = (
 				B461B851299599F800E431AA /* AppDelegate.swift */,
+				B6BC5CAA2E1207000000B001 /* BackgroundScanManager.swift */,
+				B6BC5CAA2E1207000000B002 /* BackgroundScanManager.m */,
 				32C7944323B8879D00BE2AFA /* ShroudRelease.entitlements */,
 				32F0A2502310B0910095C559 /* Shroud.entitlements */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
@@ -580,6 +586,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B6BC5CAA2E1207000000B003 /* BackgroundScanManager.swift in Sources */,
+				B6BC5CAA2E1207000000B004 /* BackgroundScanManager.m in Sources */,
 				B461B852299599F800E431AA /* AppDelegate.swift in Sources */,
 				B44033D32BCC368800162242 /* UserDefaultsGroupKey.swift in Sources */,
 				32B5A32A2334450100F8D608 /* Bridge.swift in Sources */,

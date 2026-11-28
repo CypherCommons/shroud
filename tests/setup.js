@@ -282,10 +282,17 @@ const mockKeychain = {
   SECURITY_LEVEL_ANY: 'MOCK_SECURITY_LEVEL_ANY',
   SECURITY_LEVEL_SECURE_SOFTWARE: 'MOCK_SECURITY_LEVEL_SECURE_SOFTWARE',
   SECURITY_LEVEL_SECURE_HARDWARE: 'MOCK_SECURITY_LEVEL_SECURE_HARDWARE',
+  ACCESSIBLE: {
+    WHEN_UNLOCKED: 'AccessibleWhenUnlocked',
+    AFTER_FIRST_UNLOCK: 'AccessibleAfterFirstUnlock',
+    WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'AccessibleWhenUnlockedThisDeviceOnly',
+    AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 'AccessibleAfterFirstUnlockThisDeviceOnly',
+  },
   setGenericPassword: jest.fn().mockResolvedValue(),
   getGenericPassword: jest.fn().mockResolvedValue(),
   resetGenericPassword: jest.fn().mockResolvedValue(),
 };
+mockKeychain.default = mockKeychain; // support both `import Keychain from` and named imports
 jest.mock('react-native-keychain', () => mockKeychain);
 
 // Per-file mocks in tests/unit/{torManager,socks5Fetch,socksSocket}.test.ts override this with

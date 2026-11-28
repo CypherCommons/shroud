@@ -240,6 +240,8 @@
         "about_app_info_header": "App info",
         "about_version": "Version",
         "about_version_value": "v{version} (build {build})",
+        "background_scan": "Background Scanning",
+        "background_scan_explain": "Periodically check for incoming payments while the app is closed and notify you when bitcoin arrives.",
         "biometrics": "Biometrics",
         "biometrics_no_longer_available": "Your device settings have changed and no longer match the selected security settings in the app. Please re-enable biometrics or passcode, then restart the app to apply these changes.",
         "lock_title": "Shroud is locked",
@@ -520,6 +522,10 @@
         "not_supported": "Silent Payments not supported by this wallet",
         "explanation": "Silent Payment addresses are reusable. Share one address for multiple payments without compromising privacy.",
         "explanation_emphasis": "without compromising privacy"
+    },
+    "notifications": {
+        "received_title": "Payment received",
+        "received_body": "You received bitcoin. Open Shroud to see it."
     },
     "onboarding": {
         "shroud": "Shroud",

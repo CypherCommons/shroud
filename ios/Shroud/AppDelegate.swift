@@ -70,7 +70,15 @@ class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate {
             in: window,
             launchOptions: launchOptions)
 
+        // BGTaskScheduler handlers must be registered before the app finishes launching.
+        BackgroundScanManager.registerBGTasks()
+
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    }
+
+    override func applicationDidEnterBackground(_ application: UIApplication) {
+        super.applicationDidEnterBackground(application)
+        BackgroundScanManager.scheduleBGTasks()
     }
 
     private func registerNotificationCategories() {
@@ -186,6 +194,8 @@ class AppDelegate: ExpoAppDelegate, UNUserNotificationCenterDelegate {
             defaults.synchronize()
 
             DispatchQueue.main.async {
+                // Don't try to present UI during a background (BGTask) launch.
+                guard UIApplication.shared.applicationState != .background else { return }
                 let alert = UIAlertController(
                     title: "Cache Cleared",
                     message: "The document, cache, and temp directories have been cleared.",

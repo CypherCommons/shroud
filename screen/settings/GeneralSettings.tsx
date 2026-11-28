@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import SafeAreaScrollView from '../../components/SafeAreaScrollView';
 import SettingsToggleRow from '../../components/SettingsToggleRow';
 import SettingsNavRow from '../../components/SettingsNavRow';
 import { useTheme } from '../../components/themes';
+import { isBackgroundScanningEnabledByUser, setBackgroundScanningUserPref } from '../../helpers/silent-payments/BackgroundScanSetup';
 import { useExtendedNavigation } from '../../hooks/useExtendedNavigation';
 import { useSettings } from '../../hooks/context/useSettings';
 import { useStorage } from '../../hooks/context/useStorage';
@@ -24,6 +25,25 @@ const GeneralSettings: React.FC = () => {
     setIsDoNotTrackEnabledStorage,
     themePreference,
   } = useSettings();
+
+  const [backgroundScanEnabled, setBackgroundScanEnabled] = useState<boolean>(true);
+
+  useEffect(() => {
+    isBackgroundScanningEnabledByUser().then(setBackgroundScanEnabled);
+  }, []);
+
+  const onBackgroundScanSwitch = useCallback(
+    async (value: boolean) => {
+      setBackgroundScanEnabled(value);
+      try {
+        await setBackgroundScanningUserPref(value, wallets);
+      } catch (error) {
+        console.warn('[Settings] Failed to toggle background scanning:', error);
+        setBackgroundScanEnabled(!value);
+      }
+    },
+    [wallets],
+  );
 
   const cardStyle = [styles.card, { borderColor: colors.borderDefault, backgroundColor: colors.fieldBackground }];
 
@@ -66,8 +86,15 @@ const GeneralSettings: React.FC = () => {
           subtitle={loc.settings.general_crash_reports_subtitle}
           value={!isDoNotTrackEnabled}
           onValueChange={value => setIsDoNotTrackEnabledStorage(!value)}
-          showSeparator={false}
           testID="CrashReportsSwitch"
+        />
+        <SettingsToggleRow
+          title={loc.settings.background_scan}
+          subtitle={loc.settings.background_scan_explain}
+          value={backgroundScanEnabled}
+          onValueChange={onBackgroundScanSwitch}
+          showSeparator={false}
+          testID="BackgroundScanSwitch"
         />
       </View>
 
