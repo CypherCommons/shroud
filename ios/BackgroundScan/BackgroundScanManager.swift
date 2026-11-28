@@ -12,11 +12,10 @@ import UserNotifications
 /// force-completes the task if JS never answers, since iOS terminates apps
 /// that leave BGTasks dangling.
 ///
-/// IMPORTANT: AppDelegate creates a pre-bridge instance for registerBGTasks(),
-/// and React Native later instantiates its own bridge-attached one (which
-/// overwrites `instance` in init, same as MenuElementsEmitter). All task state
-/// is therefore static, and events always route through the CURRENT instance —
-/// never a captured self.
+/// IMPORTANT: AppDelegate calls registerBGTasks() before React Native has created
+/// this module, and a task can fire before it exists. All task state is therefore
+/// static, and events route through whichever instance exists when they are
+/// emitted — never a captured self.
 @objc(BackgroundScanManager)
 class BackgroundScanManager: RCTEventEmitter {
 
@@ -24,7 +23,6 @@ class BackgroundScanManager: RCTEventEmitter {
     static let processingTaskId = "com.shroudwallet.app.scanCatchup"
 
     private static let enabledKey = "background_scan_enabled"
-    private static let lastRunAtKey = "background_scan_last_run_at"
 
     private static let refreshBudgetMs = 25_000
     private static let processingBudgetMs = 4 * 60_000
@@ -40,14 +38,6 @@ class BackgroundScanManager: RCTEventEmitter {
     override init() {
         super.init()
         BackgroundScanManager.instance = self
-    }
-
-    @objc
-    class func sharedInstance() -> BackgroundScanManager {
-        if instance == nil {
-            instance = BackgroundScanManager()
-        }
-        return instance!
     }
 
     override func supportedEvents() -> [String]! {
@@ -179,7 +169,6 @@ class BackgroundScanManager: RCTEventEmitter {
     private static func complete(taskId: String, success: Bool) {
         DispatchQueue.main.async {
             guard let task = pendingTasks.removeValue(forKey: taskId) else { return }
-            UserDefaults.standard.set(Date().timeIntervalSince1970 * 1000, forKey: lastRunAtKey)
             task.setTaskCompleted(success: success)
         }
     }
@@ -199,16 +188,6 @@ class BackgroundScanManager: RCTEventEmitter {
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: BackgroundScanManager.appRefreshTaskId)
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: BackgroundScanManager.processingTaskId)
         resolve(true)
-    }
-
-    @objc(getStatus:rejecter:)
-    func getStatus(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
-        let lastRunAt = UserDefaults.standard.double(forKey: BackgroundScanManager.lastRunAtKey)
-        resolve([
-            "enabled": BackgroundScanManager.isEnabled,
-            "lastRunAt": lastRunAt > 0 ? lastRunAt : NSNull(),
-            "available": true,
-        ] as [String: Any])
     }
 
     @objc(finish:success:)

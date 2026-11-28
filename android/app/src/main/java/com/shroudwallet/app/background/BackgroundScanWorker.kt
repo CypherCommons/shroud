@@ -125,15 +125,6 @@ class BackgroundScanWorker(appContext: Context, params: WorkerParameters) : Work
             return finished
         } finally {
             taskContext.removeTaskEventListener(listener)
-            markLastRun()
         }
-    }
-
-    private fun markLastRun() {
-        applicationContext
-            .getSharedPreferences("com.shroudwallet.app.background", Context.MODE_PRIVATE)
-            .edit()
-            .putLong("background_scan_last_run_at", System.currentTimeMillis())
-            .apply()
     }
 }

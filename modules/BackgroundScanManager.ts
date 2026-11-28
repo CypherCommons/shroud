@@ -21,21 +21,6 @@ const BackgroundScanManagerModule = NativeModules.BackgroundScanManager
       },
     );
 
-export interface BackgroundScanStartEvent {
-  taskId: string;
-  timeBudgetMs: number;
-}
-
-export interface BackgroundScanCancelEvent {
-  taskId: string;
-}
-
-export interface BackgroundScanStatus {
-  enabled: boolean;
-  lastRunAt: number | null;
-  available: boolean;
-}
-
 /** Enable + schedule periodic background scanning (WorkManager / BGTaskScheduler). */
 export function startBackgroundScanning(): Promise<boolean> {
   return BackgroundScanManagerModule.start();
@@ -44,10 +29,6 @@ export function startBackgroundScanning(): Promise<boolean> {
 /** Cancel all scheduled background scanning. */
 export function stopBackgroundScanning(): Promise<boolean> {
   return BackgroundScanManagerModule.stop();
-}
-
-export function getBackgroundScanStatus(): Promise<BackgroundScanStatus> {
-  return BackgroundScanManagerModule.getStatus();
 }
 
 /**

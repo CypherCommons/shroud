@@ -37,7 +37,7 @@ export async function readStaging(): Promise<StagedScanData | null> {
   }
 }
 
-export async function writeStaging(staged: StagedScanData): Promise<void> {
+async function writeStaging(staged: StagedScanData): Promise<void> {
   await Keychain.setGenericPassword(SERVICE, JSON.stringify(staged), KEYCHAIN_OPTIONS);
 }
 

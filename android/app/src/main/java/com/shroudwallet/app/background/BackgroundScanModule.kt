@@ -34,15 +34,9 @@ class BackgroundScanModule(reactContext: ReactApplicationContext) : ReactContext
         const val CHANNEL_ID = "shroud_scan"
         private const val PERIOD_MINUTES = 15L
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 4352
-        private const val PREFS_NAME = "com.shroudwallet.app.background"
-        private const val PREF_ENABLED = "background_scan_enabled"
-        private const val PREF_LAST_RUN_AT = "background_scan_last_run_at"
     }
 
     override fun getName() = NAME
-
-    private val prefs
-        get() = reactApplicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     @ReactMethod
     fun start(promise: Promise) {
@@ -55,7 +49,6 @@ class BackgroundScanModule(reactContext: ReactApplicationContext) : ReactContext
             WorkManager.getInstance(reactApplicationContext)
                 .enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
 
-            prefs.edit().putBoolean(PREF_ENABLED, true).apply()
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("bg_scan_start_failed", e)
@@ -66,25 +59,9 @@ class BackgroundScanModule(reactContext: ReactApplicationContext) : ReactContext
     fun stop(promise: Promise) {
         try {
             WorkManager.getInstance(reactApplicationContext).cancelUniqueWork(WORK_NAME)
-            prefs.edit().putBoolean(PREF_ENABLED, false).apply()
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("bg_scan_stop_failed", e)
-        }
-    }
-
-    @ReactMethod
-    fun getStatus(promise: Promise) {
-        try {
-            val lastRunAt = prefs.getLong(PREF_LAST_RUN_AT, 0L)
-            val result = com.facebook.react.bridge.Arguments.createMap().apply {
-                putBoolean("enabled", prefs.getBoolean(PREF_ENABLED, false))
-                if (lastRunAt > 0) putDouble("lastRunAt", lastRunAt.toDouble()) else putNull("lastRunAt")
-                putBoolean("available", true)
-            }
-            promise.resolve(result)
-        } catch (e: Exception) {
-            promise.reject("bg_scan_status_failed", e)
         }
     }
 
