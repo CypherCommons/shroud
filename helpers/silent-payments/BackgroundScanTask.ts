@@ -137,9 +137,8 @@ async function doRunBackgroundScan(params: BackgroundScanParams): Promise<Backgr
 
       // Stage UTXOs and cursor in one write — the cursor never points past
       // blocks whose finds weren't saved, so a kill mid-run is always safe.
-      await appendStagedUtxos(credentials.walletID, matched.map(toSerializable), rangeEnd);
-
-      newUtxos += matched.length;
+      // Count what is new to staging, not what matched: a range scanned twice must not notify twice.
+      newUtxos += await appendStagedUtxos(credentials.walletID, matched.map(toSerializable), rangeEnd);
       newCursor = rangeEnd;
       blocksScanned += rangeEnd - rangeStart + 1;
     } catch (error) {

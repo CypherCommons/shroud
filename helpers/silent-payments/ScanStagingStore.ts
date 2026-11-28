@@ -17,15 +17,20 @@ const KEYCHAIN_OPTIONS: SetOptions = {
   accessible: Keychain.ACCESSIBLE.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
 };
 
+/** Throws when the keychain cannot be read: only a missing entry means "nothing staged". */
+async function readStagingStrict(): Promise<StagedScanData | null> {
+  const result = await Keychain.getGenericPassword({ service: SERVICE });
+  if (!result) return null;
+
+  const staged = JSON.parse(result.password) as StagedScanData;
+  if (staged.schema !== 1 || typeof staged.cursor !== 'number') return null;
+
+  return staged;
+}
+
 export async function readStaging(): Promise<StagedScanData | null> {
   try {
-    const result = await Keychain.getGenericPassword({ service: SERVICE });
-    if (!result) return null;
-
-    const staged = JSON.parse(result.password) as StagedScanData;
-    if (staged.schema !== 1 || typeof staged.cursor !== 'number') return null;
-
-    return staged;
+    return await readStagingStrict();
   } catch (error) {
     console.warn('[BackgroundScan] Failed to read staging:', error);
     return null;
@@ -41,9 +46,14 @@ export async function writeStaging(staged: StagedScanData): Promise<void> {
  * ever advances — the write happens atomically at the keychain-value level, so a
  * task killed mid-run leaves either the old or the new state, never a cursor
  * pointing past unsaved UTXOs.
+ *
+ * A failed read rejects instead of counting as "nothing staged": writing over it
+ * would drop the earlier finds while the cursor moves past their blocks.
+ *
+ * @returns how many of `utxos` were not staged already
  */
-export async function appendStagedUtxos(walletID: string, utxos: SilentPaymentUTXOSerializable[], newCursor: number): Promise<void> {
-  const existing = await readStaging();
+export async function appendStagedUtxos(walletID: string, utxos: SilentPaymentUTXOSerializable[], newCursor: number): Promise<number> {
+  const existing = await readStagingStrict();
   const base: StagedScanData =
     existing && existing.walletID === walletID ? existing : { walletID, cursor: 0, utxos: [], updatedAt: 0, schema: 1 };
 
@@ -56,6 +66,7 @@ export async function appendStagedUtxos(walletID: string, utxos: SilentPaymentUT
     utxos: [...base.utxos, ...fresh],
     updatedAt: Date.now(),
   });
+  return fresh.length;
 }
 
 export async function clearStaging(): Promise<void> {

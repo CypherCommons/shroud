@@ -87,7 +87,7 @@ describe('runBackgroundScan', () => {
     mockIsForegroundActive.mockResolvedValue(false);
     mockReadScanCredentials.mockResolvedValue(credentials());
     mockReadStaging.mockResolvedValue(null);
-    mockAppendStagedUtxos.mockResolvedValue(undefined);
+    mockAppendStagedUtxos.mockImplementation(async (_walletID: string, utxos: unknown[]) => utxos.length);
     mockPostLocalNotification.mockResolvedValue(undefined);
     mockGetTransactionsByRange.mockResolvedValue({ transactions: [] });
     mockProcessBatch.mockResolvedValue([]);
